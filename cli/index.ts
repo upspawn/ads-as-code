@@ -10,8 +10,9 @@ Commands:
   init          Scaffold a new ads-as-code project
   validate      Validate campaign files and report errors
   auth          Authenticate with ad platforms
-  plan          Show what changes would be applied (not implemented yet)
-  apply         Apply changes to ad platforms (not implemented yet)
+  import        Import campaigns from Google Ads as TypeScript files
+  plan          Show what changes would be applied
+  apply         Apply changes to ad platforms
   status        Show current platform state (not implemented yet)
   diff          Compare local vs platform state (not implemented yet)
   destroy       Remove all managed resources (not implemented yet)
@@ -63,8 +64,21 @@ async function main() {
       await runAuth(provider, { check })
       break
     }
-    case 'plan':
-    case 'apply':
+    case 'import': {
+      const { runImport } = await import('./import.ts')
+      await runImport(args.slice(1), flags)
+      break
+    }
+    case 'plan': {
+      const { runPlanCommand } = await import('./plan.ts')
+      await runPlanCommand(args.slice(1), flags)
+      break
+    }
+    case 'apply': {
+      const { runApplyCommand } = await import('./apply.ts')
+      await runApplyCommand(args.slice(1), flags)
+      break
+    }
     case 'status':
     case 'diff':
     case 'destroy':
