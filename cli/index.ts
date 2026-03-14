@@ -13,13 +13,20 @@ Commands:
   import        Import campaigns from Google Ads as TypeScript files
   plan          Show what changes would be applied
   apply         Apply changes to ad platforms
-  status        Show current platform state (not implemented yet)
+  pull          Pull live state and detect drift from code
+  status        Show current platform state
+  history       Show operation history
+  doctor        Run diagnostic checks on project setup
+  cache         Manage the local cache (clear, stats)
   diff          Compare local vs platform state (not implemented yet)
   destroy       Remove all managed resources (not implemented yet)
 
 Global Flags:
   --json        Output in JSON format
   --provider    Filter to a specific provider (google, meta)
+  --filter      Filter campaigns by glob pattern (status command)
+  --diff N      Show changeset for operation N (history command)
+  --rollback N  Show snapshot N for revert (history command)
   --help, -h    Show this help message
 `.trim()
 
@@ -79,7 +86,44 @@ async function main() {
       await runApplyCommand(args.slice(1), flags)
       break
     }
-    case 'status':
+    case 'pull': {
+      const { runPull } = await import('./pull.ts')
+      await runPull(process.cwd())
+      break
+    }
+    case 'status': {
+      const { runStatus } = await import('./status.ts')
+      await runStatus(process.cwd(), {
+        json: flags.json,
+        filter: getFlag(args, '--filter'),
+      })
+      break
+    }
+    case 'history': {
+      const { runHistory } = await import('./history.ts')
+      const diffFlag = getFlag(args, '--diff')
+      const rollbackFlag = getFlag(args, '--rollback')
+      await runHistory(process.cwd(), {
+        diff: diffFlag ? Number(diffFlag) : undefined,
+        rollback: rollbackFlag ? Number(rollbackFlag) : undefined,
+      })
+      break
+    }
+    case 'doctor': {
+      const { runDoctor } = await import('./doctor.ts')
+      await runDoctor(process.cwd())
+      break
+    }
+    case 'cache': {
+      const { runCache } = await import('./cache.ts')
+      const action = args[1]
+      if (action !== 'clear' && action !== 'stats') {
+        console.error('Usage: ads cache <clear|stats>')
+        process.exit(1)
+      }
+      await runCache(process.cwd(), action)
+      break
+    }
     case 'diff':
     case 'destroy':
       console.log(`Not implemented yet: ${command}`)
