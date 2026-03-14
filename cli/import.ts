@@ -41,9 +41,7 @@ async function fetchAllCampaigns(
       campaign.advertising_channel_type,
       campaign_budget.amount_micros,
       campaign_budget.period,
-      campaign.bidding_strategy_type,
-      campaign.target_cpa.target_cpa_micros,
-      campaign.maximize_conversions.target_cpa_micros
+      campaign.bidding_strategy_type
     FROM campaign
     WHERE ${statusFilter}
       AND campaign.advertising_channel_type = 'SEARCH'
@@ -53,19 +51,21 @@ async function fetchAllCampaigns(
   const campaignMap = new Map<string, { name: string; resources: Resource[] }>()
 
   for (const row of campaignRows) {
+    // google-ads-api returns snake_case fields
     const c = row.campaign as Record<string, unknown>
-    const budget = row.campaignBudget as Record<string, unknown>
+    const budget = (row.campaign_budget ?? row.campaignBudget) as Record<string, unknown> | undefined
     const campaignId = String(c.id)
     const name = c.name as string
-    const status = (c.status as string).toLowerCase() as 'enabled' | 'paused'
+    const rawStatus = c.status
+    const status = (rawStatus === 2 || rawStatus === 'ENABLED' || rawStatus === 'enabled') ? 'enabled' : 'paused'
 
-    // Parse budget
-    const amountMicros = Number(budget?.amountMicros ?? 0)
+    // Parse budget — snake_case from gRPC
+    const amountMicros = Number(budget?.amount_micros ?? budget?.amountMicros ?? 0)
     const amount = amountMicros / 1_000_000
-    const period = ((budget?.period as string) ?? 'DAILY').toLowerCase()
+    const period = 'daily' as const  // Google Ads budgets are always daily
 
-    // Parse bidding
-    const biddingType = c.biddingStrategyType as string
+    // Parse bidding — enum: 2=MANUAL_CPC, 6=MAXIMIZE_CONVERSIONS, 9=TARGET_CPA, 10=TARGET_SPEND(=max clicks), 11=MAXIMIZE_CLICKS
+    const biddingType = c.bidding_strategy_type ?? c.biddingStrategyType
     const bidding = parseBiddingType(biddingType, c)
 
     // Build campaign resource path
@@ -106,14 +106,15 @@ async function fetchAllCampaigns(
 
   for (const row of adGroupRows) {
     const c = row.campaign as Record<string, unknown>
-    const ag = row.adGroup as Record<string, unknown>
+    const ag = row.ad_group ?? row.adGroup as Record<string, unknown>
     const campaignPath = campaignToFilename(c.name as string)
     const entry = campaignMap.get(campaignPath)
     if (!entry) continue
 
     const groupKey = campaignToFilename(ag.name as string)
     const agPath = `${campaignPath}/${groupKey}`
-    const status = ((ag.status as string) ?? 'ENABLED').toLowerCase() as 'enabled' | 'paused'
+    const rawAgStatus = ag.status
+    const status = (rawAgStatus === 2 || rawAgStatus === 'ENABLED' || rawAgStatus === 'enabled') ? 'enabled' : 'paused'
 
     entry.resources.push({
       kind: 'adGroup',
@@ -142,19 +143,27 @@ async function fetchAllCampaigns(
     ORDER BY ad_group_criterion.keyword.text
   `)
 
+  // match_type enum: 2=EXACT, 3=PHRASE, 4=BROAD (negatives), also seen as strings
+  const MATCH_TYPE_MAP: Record<number | string, string> = {
+    2: 'EXACT', 3: 'PHRASE', 4: 'BROAD', 5: 'BROAD',
+    'EXACT': 'EXACT', 'PHRASE': 'PHRASE', 'BROAD': 'BROAD',
+  }
+
   for (const row of keywordRows) {
     const c = row.campaign as Record<string, unknown>
-    const ag = row.adGroup as Record<string, unknown>
-    const criterion = row.adGroupCriterion as Record<string, unknown>
-    const keyword = criterion.keyword as Record<string, unknown>
+    const ag = (row.ad_group ?? row.adGroup) as Record<string, unknown>
+    const criterion = (row.ad_group_criterion ?? row.adGroupCriterion) as Record<string, unknown>
+    const keyword = (criterion?.keyword) as Record<string, unknown> | undefined
+    if (!keyword) continue
 
     const campaignPath = campaignToFilename(c.name as string)
     const entry = campaignMap.get(campaignPath)
     if (!entry) continue
 
-    const groupKey = campaignToFilename(ag.name as string)
+    const groupKey = campaignToFilename((ag.name as string))
     const text = keyword.text as string
-    const matchType = keyword.matchType as string
+    const rawMatchType = keyword.match_type ?? keyword.matchType
+    const matchType = MATCH_TYPE_MAP[rawMatchType as number | string] ?? 'BROAD'
 
     entry.resources.push({
       kind: 'keyword',
@@ -185,10 +194,10 @@ async function fetchAllCampaigns(
 
   for (const row of adRows) {
     const c = row.campaign as Record<string, unknown>
-    const ag = row.adGroup as Record<string, unknown>
-    const adGroupAd = row.adGroupAd as Record<string, unknown>
+    const ag = row.ad_group ?? row.adGroup as Record<string, unknown>
+    const adGroupAd = (row.ad_group_ad ?? row.adGroupAd) as Record<string, unknown>
     const ad = adGroupAd.ad as Record<string, unknown>
-    const rsa = ad.responsiveSearchAd as Record<string, unknown>
+    const rsa = (ad.responsive_search_ad ?? ad.responsiveSearchAd) as Record<string, unknown>
 
     const campaignPath = campaignToFilename(c.name as string)
     const entry = campaignMap.get(campaignPath)
@@ -200,7 +209,7 @@ async function fetchAllCampaigns(
     const descAssets = (rsa?.descriptions as Array<{ text: string }>) ?? []
     const headlines = headlineAssets.map((h) => h.text).sort()
     const descriptions = descAssets.map((d) => d.text).sort()
-    const finalUrls = (ad.finalUrls as string[]) ?? []
+    const finalUrls = (ad.final_urls ?? ad.finalUrls) as string[] ?? []
     const finalUrl = finalUrls[0] ?? ''
 
     // Generate a stable hash-like id from content
@@ -234,7 +243,7 @@ async function fetchAllCampaigns(
 
   for (const row of negRows) {
     const c = row.campaign as Record<string, unknown>
-    const criterion = row.campaignCriterion as Record<string, unknown>
+    const criterion = row.campaign_criterion ?? row.campaignCriterion as Record<string, unknown>
     const keyword = criterion.keyword as Record<string, unknown>
 
     const campaignPath = campaignToFilename(c.name as string)
@@ -242,7 +251,7 @@ async function fetchAllCampaigns(
     if (!entry) continue
 
     const text = keyword.text as string
-    const matchType = keyword.matchType as string
+    const matchType = keyword.match_type ?? keyword.matchType as string
 
     entry.resources.push({
       kind: 'negative',
@@ -289,7 +298,7 @@ async function fetchAllCampaigns(
 
   for (const row of targetingRows) {
     const c = row.campaign as Record<string, unknown>
-    const criterion = row.campaignCriterion as Record<string, unknown>
+    const criterion = row.campaign_criterion ?? row.campaignCriterion as Record<string, unknown>
     const campaignPath = campaignToFilename(c.name as string)
     const type = criterion.type as string
 
@@ -332,16 +341,25 @@ async function fetchAllCampaigns(
 }
 
 function parseBiddingType(
-  type: string,
+  type: unknown,
   campaign: Record<string, unknown>,
 ): Record<string, unknown> {
-  switch (type) {
+  // google-ads-api returns enums as numbers:
+  // 2=MANUAL_CPC, 3=MANUAL_CPM, 6=MAXIMIZE_CONVERSIONS, 9=TARGET_CPA, 11=MAXIMIZE_CLICKS
+  const t = typeof type === 'number' ? type : String(type)
+  switch (t) {
+    case 6:
     case 'MAXIMIZE_CONVERSIONS':
       return { type: 'maximize-conversions' }
+    case 10:
+    case 'TARGET_SPEND':
+    case 11:
     case 'MAXIMIZE_CLICKS':
       return { type: 'maximize-clicks' }
+    case 2:
     case 'MANUAL_CPC':
       return { type: 'manual-cpc' }
+    case 9:
     case 'TARGET_CPA': {
       const targetCpa = campaign.targetCpa as Record<string, unknown> | undefined
       const micros = Number(targetCpa?.targetCpaMicros ?? 0)

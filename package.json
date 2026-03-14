@@ -24,5 +24,13 @@
   },
   "peerDependencies": {
     "typescript": "^5"
-  }
+  },
+  "dependencies": {
+    "google-ads-api": "^23.0.0",
+    "stream-chain": "^3.4.1",
+    "stream-json": "^1.9.1"
+  },
+  "trustedDependencies": [
+    "protobufjs"
+  ]
 }
