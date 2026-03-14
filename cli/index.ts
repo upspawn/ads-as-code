@@ -9,6 +9,7 @@ Usage:
 Commands:
   init          Scaffold a new ads-as-code project
   validate      Validate campaign files and report errors
+  auth          Authenticate with ad platforms
   plan          Show what changes would be applied (not implemented yet)
   apply         Apply changes to ad platforms (not implemented yet)
   status        Show current platform state (not implemented yet)
@@ -48,6 +49,18 @@ async function main() {
     case 'validate': {
       const { runValidate } = await import('./validate.ts')
       await runValidate(args.slice(1), flags)
+      break
+    }
+    case 'auth': {
+      const { runAuth } = await import('./auth.ts')
+      const provider = args[1]
+      if (!provider) {
+        console.error('Usage: ads auth <provider> [--check]')
+        console.error('Providers: google')
+        process.exit(1)
+      }
+      const check = args.includes('--check')
+      await runAuth(provider, { check })
       break
     }
     case 'plan':
