@@ -1,0 +1,43 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`generateCampaignFile() snapshot PDF campaign matches snapshot 1`] = `
+"// Imported from Google Ads on 2026-03-14
+import { broad, daily, descriptions, exact, geo, google, headlines, languages, rsa, targeting, url } from '@upspawn/ads'
+
+export default google.search('Search - PDF Renaming', {
+  budget: daily(8),
+  bidding: 'maximize-conversions',
+  targeting: targeting(geo('US', 'DE'), languages('en')),
+  negatives: [...broad('free'), ...exact('cheap')],
+})
+  .group('en', {
+    keywords: [...exact('rename pdf files', 'pdf renamer')],
+    ad: rsa(
+      headlines('AI-Powered PDF Renamer', 'Rename PDF Files Instantly', 'Try It Free'),
+      descriptions('Upload PDFs, get smart filenames.', 'No more manual renaming.'),
+      url('https://www.renamed.to/pdf-renamer'),
+    ),
+  })
+"
+`;
+
+exports[`generateCampaignFile() snapshot Drive campaign matches snapshot 1`] = `
+"// Imported from Google Ads on 2026-03-14
+import { broad, daily, descriptions, exact, geo, google, headlines, languages, phrase, rsa, targeting, url } from '@upspawn/ads'
+
+export default google.search('Search - Google Drive', {
+  budget: daily(5),
+  bidding: 'maximize-clicks',
+  targeting: targeting(geo('US', 'DE'), languages('en')),
+  negatives: [...broad('free', 'download'), ...exact('cheap')],
+})
+  .group('drive-core', {
+    keywords: [...phrase('rename google drive files')],
+    ad: rsa(
+      headlines('Google Drive Renamer', 'Organize Drive Files', 'AI File Manager'),
+      descriptions('Rename Google Drive files with AI.', 'Smart file organization.'),
+      url('https://www.renamed.to/google-drive'),
+    ),
+  })
+"
+`;
