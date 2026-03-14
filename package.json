@@ -1,0 +1,28 @@
+{
+  "name": "@upspawn/ads",
+  "version": "0.1.0",
+  "description": "Pulumi-style declarative ad campaign management in TypeScript",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "ads": "./cli/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "keywords": ["google-ads", "facebook-ads", "infrastructure-as-code", "ads", "campaign-management"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/upspawn/ads-as-code.git"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
