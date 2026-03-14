@@ -44,3 +44,17 @@ export type {
   GoogleAdsClient,
   Campaign,
 } from './google/types.ts'
+
+// === Helpers ===
+
+export {
+  exact, phrase, broad, keywords,
+  daily, monthly, eur, usd,
+  geo, languages, weekdays, hours, targeting,
+  headlines, descriptions, rsa,
+  link, sitelinks, callouts,
+  negatives,
+  url,
+} from './helpers/index.ts'
+
+export type { UrlResult } from './helpers/url.ts'
