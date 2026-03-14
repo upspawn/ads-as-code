@@ -1,0 +1,90 @@
+[
+  {
+    "adGroupCriterion": {
+      "resourceName": "customers/7300967494/adGroupCriteria/111111~10001",
+      "criterionId": "10001",
+      "status": "ENABLED",
+      "type": "KEYWORD",
+      "keyword": {
+        "text": "rename pdf",
+        "matchType": "EXACT"
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/111111",
+      "id": "111111",
+      "name": "pdf-core"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroupCriterion": {
+      "resourceName": "customers/7300967494/adGroupCriteria/111111~10002",
+      "criterionId": "10002",
+      "status": "ENABLED",
+      "type": "KEYWORD",
+      "keyword": {
+        "text": "pdf renaming tool",
+        "matchType": "PHRASE"
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/111111",
+      "id": "111111",
+      "name": "pdf-core"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroupCriterion": {
+      "resourceName": "customers/7300967494/adGroupCriteria/222222~10003",
+      "criterionId": "10003",
+      "status": "ENABLED",
+      "type": "KEYWORD",
+      "keyword": {
+        "text": "bulk rename pdf",
+        "matchType": "EXACT"
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/222222",
+      "id": "222222",
+      "name": "pdf-bulk"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroupCriterion": {
+      "resourceName": "customers/7300967494/adGroupCriteria/333333~10004",
+      "criterionId": "10004",
+      "status": "ENABLED",
+      "type": "KEYWORD",
+      "keyword": {
+        "text": "google drive rename",
+        "matchType": "BROAD"
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/333333",
+      "id": "333333",
+      "name": "drive-core"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/234567",
+      "id": "234567",
+      "name": "Search - Google Drive"
+    }
+  }
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "adGroupAd": {
+      "resourceName": "customers/7300967494/adGroupAds/111111~50001",
+      "status": "ENABLED",
+      "ad": {
+        "id": "50001",
+        "type": "RESPONSIVE_SEARCH_AD",
+        "responsiveSearchAd": {
+          "headlines": [
+            { "text": "Rename PDFs Fast", "pinnedField": "UNSPECIFIED" },
+            { "text": "AI-Powered Tool", "pinnedField": "UNSPECIFIED" },
+            { "text": "Try It Free", "pinnedField": "UNSPECIFIED" }
+          ],
+          "descriptions": [
+            { "text": "Rename your PDFs in seconds with AI.", "pinnedField": "UNSPECIFIED" },
+            { "text": "No more manual renaming.", "pinnedField": "UNSPECIFIED" }
+          ]
+        },
+        "finalUrls": ["https://renamed.to/pdf-renamer"]
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/111111",
+      "id": "111111",
+      "name": "pdf-core"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroupAd": {
+      "resourceName": "customers/7300967494/adGroupAds/222222~50002",
+      "status": "ENABLED",
+      "ad": {
+        "id": "50002",
+        "type": "RESPONSIVE_SEARCH_AD",
+        "responsiveSearchAd": {
+          "headlines": [
+            { "text": "Bulk PDF Renaming", "pinnedField": "UNSPECIFIED" },
+            { "text": "Rename 100s of PDFs", "pinnedField": "UNSPECIFIED" },
+            { "text": "AI Batch Rename", "pinnedField": "UNSPECIFIED" }
+          ],
+          "descriptions": [
+            { "text": "Batch rename PDFs with AI-powered rules.", "pinnedField": "UNSPECIFIED" },
+            { "text": "Upload a folder and rename in seconds.", "pinnedField": "UNSPECIFIED" }
+          ]
+        },
+        "finalUrls": ["https://renamed.to/pdf-renamer"]
+      }
+    },
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/222222",
+      "id": "222222",
+      "name": "pdf-bulk"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/111111",
+      "id": "111111",
+      "name": "pdf-core",
+      "campaignId": "123456",
+      "status": "ENABLED",
+      "type": "SEARCH_STANDARD"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/222222",
+      "id": "222222",
+      "name": "pdf-bulk",
+      "campaignId": "123456",
+      "status": "ENABLED",
+      "type": "SEARCH_STANDARD"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/123456",
+      "id": "123456",
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "adGroup": {
+      "resourceName": "customers/7300967494/adGroups/333333",
+      "id": "333333",
+      "name": "drive-core",
+      "campaignId": "234567",
+      "status": "PAUSED",
+      "type": "SEARCH_STANDARD"
+    },
+    "campaign": {
+      "resourceName": "customers/7300967494/campaigns/234567",
+      "id": "234567",
+      "name": "Search - Google Drive"
+    }
+  }
+]
