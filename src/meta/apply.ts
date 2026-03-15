@@ -544,7 +544,7 @@ export async function applyMetaChangeset(
   // Execute updates
   for (const change of orderedUpdates) {
     try {
-      await executeUpdate(change as Change & { op: 'update' }, client)
+      await executeUpdate(change as Change & { op: 'update' }, accountId, config, client, cache, project)
       succeeded.push(change)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
@@ -656,7 +656,11 @@ async function executeCreate(
 
 async function executeUpdate(
   change: Change & { op: 'update' },
+  accountId: string,
+  config: MetaProviderConfig,
   client: MetaClient,
+  cache: Cache,
+  project: string,
 ): Promise<void> {
   const resource = change.resource
   if (!resource.platformId) {
@@ -665,10 +669,67 @@ async function executeUpdate(
     )
   }
 
+  // Creatives are immutable on Meta — create a new one and swap the ad's reference
+  if (resource.kind === 'creative') {
+    await executeCreativeSwap(change, accountId, config, client, cache, project)
+    return
+  }
+
   const params = buildUpdateParams(change)
   if (Object.keys(params).length === 0) return
 
   await client.graphPost(resource.platformId, params)
+}
+
+/**
+ * Meta creatives cannot be updated in place — their object_story_spec is immutable.
+ * Instead: create a new creative with updated properties, find the ad that references
+ * the old creative, and swap the ad's creative_id to the new one.
+ */
+async function executeCreativeSwap(
+  change: Change & { op: 'update' },
+  accountId: string,
+  config: MetaProviderConfig,
+  client: MetaClient,
+  cache: Cache,
+  project: string,
+): Promise<void> {
+  const resource = change.resource
+  const oldCreativeId = resource.platformId!
+
+  // Build a new creative with the DESIRED properties (current + changes applied)
+  const updatedProps = { ...resource.properties }
+  for (const c of change.changes) {
+    if (c.to !== undefined) {
+      updatedProps[c.field] = c.to
+    }
+  }
+  const updatedResource = { ...resource, properties: updatedProps }
+
+  // Create new creative via the same builder as executeCreate
+  const params = buildCreativeCreateParams(updatedResource, config)
+  const result = await client.graphPost<{ id: string }>(
+    `${accountId}/adcreatives`,
+    params,
+  )
+  const newCreativeId = result.id
+  if (!newCreativeId) throw new Error('Creative create returned no ID')
+
+  // Find the ad that references this creative — look up by the creative's path
+  // The ad's creativePath (in meta) points to this creative's path
+  const adPath = resource.path.replace(/\/cr$/, '')
+  const adPlatformId = cache.getResourceMap(project)
+    .find(r => r.path === adPath)?.platformId
+
+  if (adPlatformId) {
+    // Swap the ad's creative reference to the new one
+    await client.graphPost(adPlatformId, {
+      creative: JSON.stringify({ creative_id: newCreativeId }),
+    })
+  }
+
+  // Update cache: the creative path now maps to the new ID
+  cache.setResource(project, resource.path, newCreativeId)
 }
 
 async function executeDelete(
@@ -769,13 +830,31 @@ export function dryRunMetaChangeset(
     if (change.op !== 'update') continue
     const resource = change.resource
     if (!resource.platformId) continue
+    const name = resource.properties.name as string | undefined
+
+    // Creatives use create-and-swap (immutable on Meta)
+    if (resource.kind === 'creative') {
+      const updatedProps = { ...resource.properties }
+      for (const c of change.changes) {
+        if (c.to !== undefined) updatedProps[c.field] = c.to
+      }
+      const updatedResource = { ...resource, properties: updatedProps }
+      const createParams = buildCreativeCreateParams(updatedResource, config)
+      calls.push({ method: 'POST', endpoint: `${accountId}/adcreatives`, params: createParams, resource: { kind: resource.kind, path: resource.path, name }, op: 'update' })
+      // Also swap the ad's creative reference
+      const adPath = resource.path.replace(/\/cr$/, '')
+      const adPlatformId = resourceMap.get(adPath) ?? '<unknown-ad-id>'
+      calls.push({ method: 'POST', endpoint: adPlatformId, params: { creative: '{"creative_id":"<new-creative-id>"}' }, resource: { kind: 'ad', path: adPath, name }, op: 'update' })
+      continue
+    }
+
     const params = buildUpdateParams(change)
     if (Object.keys(params).length === 0) continue
     calls.push({
       method: 'POST',
       endpoint: resource.platformId,
       params,
-      resource: { kind: resource.kind, path: resource.path, name: resource.properties.name as string | undefined },
+      resource: { kind: resource.kind, path: resource.path, name },
       op: 'update',
     })
   }
