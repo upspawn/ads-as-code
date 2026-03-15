@@ -8,7 +8,6 @@ export type {
   Budget,
   DailyBudget,
   MonthlyBudget,
-  LifetimeBudget,
   Keyword,
   ExactKeyword,
   PhraseKeyword,
@@ -62,15 +61,13 @@ export type {
   GoogleConfig,
   GoogleAdsClient,
   Campaign,
-  GoogleAdGroupUnresolved,
-  GoogleSearchCampaignUnresolved,
 } from './google/types.ts'
 
 // === Helpers ===
 
 export {
   exact, phrase, broad, keywords,
-  daily, monthly, lifetime, eur, usd,
+  daily, monthly, eur, usd,
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   headlines, descriptions, rsa,
@@ -85,102 +82,41 @@ export type { UrlResult } from './helpers/url.ts'
 
 export { defineConfig } from './core/config.ts'
 
-// === AI ===
-
-export { ai } from './ai/index.ts'
-export { expand } from './ai/index.ts'
-export type {
-  AiConfig,
-  AiJudgeConfig,
-  AiOptimizeConfig,
-  AiMarker,
-  RsaMarker,
-  KeywordsMarker,
-  ExpandConfig,
-  ExpandEntry,
-  ExpansionTarget,
-  LockFile,
-  LockSlot,
-  GenerateResult,
-  StaleSlot,
-} from './ai/index.ts'
-
-// === Meta Helpers ===
-
-export {
-  metaTargeting,
-  age,
-  audience,
-  interests,
-  excludeAudience,
-  lookalike,
-} from './helpers/meta-targeting.ts'
-
-export type {
-  AudienceMarker,
-  ExcludedAudienceMarker,
-  InterestMarker,
-  LookalikeConfig,
-  LookalikeMarker,
-  MetaTargetingRule,
-} from './helpers/meta-targeting.ts'
-
-export {
-  image as metaImage,
-  video as metaVideo,
-  carousel,
-} from './helpers/meta-creative.ts'
-
-export {
-  lowestCost,
-  costCap,
-  bidCap,
-  minRoas,
-} from './helpers/meta-bidding.ts'
-
-export {
-  automatic,
-  manual,
-} from './helpers/meta-placement.ts'
-
-// === Meta Types ===
-
-export type {
-  Objective,
-  OptimizationGoalMap,
-  BidStrategy,
-  InterestTarget,
-  BehaviorTarget,
-  MetaDemographicTarget,
-  ConnectionTarget,
-  MetaTargeting,
-  MetaPlatform,
-  PlacementPosition,
-  MetaPlacements,
-  ImageAd,
-  VideoAd,
-  CarouselCard,
-  CarouselAd,
-  CollectionAd,
-  MetaCreative,
-  MetaCTA,
-  AdSetSchedule,
-  DayPartRule,
-  ConversionConfig,
-  DSAConfig,
-  SpecialAdCategory,
-  PromotedObject,
-  MetaCampaignConfig,
-  AdSetConfig,
-  AdSetContent,
-} from './meta/types.ts'
-
 // === Providers ===
 
 export { google } from './google/index.ts'
-export { meta, MetaCampaignBuilder } from './meta/index.ts'
 
-export type { MetaCampaign, MetaAdSet } from './meta/index.ts'
+// === AI ===
 
-export type { ProviderModule } from './core/providers.ts'
-export { getProvider, resolveProviders } from './core/providers.ts'
+export { ai } from './ai/index.ts'
+
+export type {
+  AiMarker,
+  RsaMarker,
+  KeywordsMarker,
+  MetaCopyMarker,
+  InterestsMarker,
+  RsaMarkerInput,
+  MetaCopyMarkerInput,
+  RsaOutput,
+  KeywordsOutput,
+  MetaCopyOutput,
+  InterestsOutput,
+  RsaPromptContext,
+  MetaPromptContext,
+} from './ai/index.ts'
+
+export {
+  isRsaMarker,
+  isKeywordsMarker,
+  isMetaCopyMarker,
+  isInterestsMarker,
+  rsaSchema,
+  keywordsSchema,
+  metaCopySchema,
+  interestsSchema,
+  compileRsaPrompt,
+  compileKeywordsPrompt,
+  compileMetaCopyPrompt,
+  compileInterestsPrompt,
+} from './ai/index.ts'

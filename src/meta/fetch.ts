@@ -87,6 +87,25 @@ for (const [sdk, api] of Object.entries(OBJECTIVE_MAP)) {
   }
 }
 
+// Map legacy Meta API objectives to current OUTCOME_* format
+const LEGACY_OBJECTIVE_MAP: Record<string, string> = {
+  'LINK_CLICKS': 'OUTCOME_TRAFFIC',
+  'CONVERSIONS': 'OUTCOME_SALES',
+  'POST_ENGAGEMENT': 'OUTCOME_ENGAGEMENT',
+  'BRAND_AWARENESS': 'OUTCOME_AWARENESS',
+  'REACH': 'OUTCOME_AWARENESS',
+  'VIDEO_VIEWS': 'OUTCOME_AWARENESS',
+  'LEAD_GENERATION': 'OUTCOME_LEADS',
+  'MESSAGES': 'OUTCOME_ENGAGEMENT',
+  'APP_INSTALLS': 'OUTCOME_APP_PROMOTION',
+}
+
+/** Normalize objective to current OUTCOME_* format, handling legacy values. */
+function normalizeObjective(objective: string | undefined): string {
+  if (!objective) return 'OUTCOME_TRAFFIC'
+  return LEGACY_OBJECTIVE_MAP[objective] ?? objective
+}
+
 const BID_STRATEGY_MAP: Record<string, BidStrategy['type']> = {
   'LOWEST_COST_WITHOUT_CAP': 'LOWEST_COST_WITHOUT_CAP',
   'LOWEST_COST_WITH_BID_CAP': 'LOWEST_COST_WITH_BID_CAP',
@@ -147,7 +166,7 @@ function normalizeCampaign(raw: MetaApiCampaign, slugOverride?: string): Resourc
   const properties: Record<string, unknown> = {
     name: raw.name,
     status: mapStatus(raw.status),
-    objective: raw.objective ?? '',
+    objective: normalizeObjective(raw.objective),
   }
 
   if (raw.daily_budget) {
@@ -160,11 +179,85 @@ function normalizeCampaign(raw: MetaApiCampaign, slugOverride?: string): Resourc
     properties.specialAdCategories = raw.special_ad_categories
   }
 
-  if (raw.buying_type) {
+  // AUCTION is the default buying type — only emit non-default values
+  if (raw.buying_type && raw.buying_type !== 'AUCTION') {
     properties.buyingType = raw.buying_type
   }
 
   return resource('campaign', path, properties, raw.id)
+}
+
+// ─── Targeting Normalization ──────────────────────────────
+
+/**
+ * Convert Meta API targeting (raw Graph API format) to SDK MetaTargeting format.
+ * Maps geo_locations, age_min/max, flexible_spec, custom_audiences, etc.
+ */
+function normalizeTargeting(raw: Record<string, unknown>): Record<string, unknown> {
+  const targeting: Record<string, unknown> = {}
+
+  // Geo
+  const geoLocations = raw.geo_locations as Record<string, unknown> | undefined
+  if (geoLocations) {
+    const countries = geoLocations.countries as string[] | undefined
+    if (countries && countries.length > 0) {
+      targeting.geo = [{ type: 'geo', countries }]
+    }
+  }
+
+  // Age
+  const ageMin = raw.age_min as number | undefined
+  const ageMax = raw.age_max as number | undefined
+  if (ageMin !== undefined || ageMax !== undefined) {
+    targeting.age = { min: ageMin ?? 18, max: ageMax ?? 65 }
+  }
+
+  // Custom audiences
+  const customAudiences = raw.custom_audiences as Array<{ id: string; name: string }> | undefined
+  if (customAudiences && customAudiences.length > 0) {
+    targeting.customAudiences = customAudiences.map((a) => a.name)
+  }
+
+  // Excluded custom audiences
+  const excludedAudiences = raw.excluded_custom_audiences as Array<{ id: string; name: string }> | undefined
+  if (excludedAudiences && excludedAudiences.length > 0) {
+    targeting.excludedAudiences = excludedAudiences.map((a) => a.name)
+  }
+
+  // Interests (from flexible_spec)
+  const flexibleSpec = raw.flexible_spec as Array<Record<string, unknown>> | undefined
+  if (flexibleSpec) {
+    const allInterests: Array<{ id: string; name: string }> = []
+    for (const spec of flexibleSpec) {
+      const interests = spec.interests as Array<{ id: string; name: string }> | undefined
+      if (interests) {
+        allInterests.push(...interests)
+      }
+    }
+    if (allInterests.length > 0) {
+      targeting.interests = allInterests
+    }
+  }
+
+  return targeting
+}
+
+/**
+ * Extract placements from raw API targeting.
+ * Returns 'automatic' if no specific platforms are set, or the SDK format.
+ */
+function normalizePlacements(raw: Record<string, unknown>): unknown {
+  const platforms = raw.publisher_platforms as string[] | undefined
+  if (!platforms || platforms.length === 0) return 'automatic'
+
+  const facebookPositions = raw.facebook_positions as string[] | undefined
+  const instagramPositions = raw.instagram_positions as string[] | undefined
+
+  return {
+    platforms,
+    ...(facebookPositions && { facebookPositions }),
+    ...(instagramPositions && { instagramPositions }),
+  }
 }
 
 // ─── Ad Set Normalization ──────────────────────────────────
@@ -183,7 +276,12 @@ function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap): Reso
   }
 
   if (raw.targeting) {
-    properties.targeting = raw.targeting
+    properties.targeting = normalizeTargeting(raw.targeting)
+    // Extract placements from targeting (Meta stores them there)
+    const placements = normalizePlacements(raw.targeting)
+    if (placements !== 'automatic') {
+      properties.placements = placements
+    }
   }
 
   if (raw.optimization_goal) {
@@ -196,13 +294,8 @@ function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap): Reso
     properties.budget = centsToBudget(raw.daily_budget, 'daily')
   }
 
-  if (raw.billing_event) {
-    properties.billingEvent = raw.billing_event
-  }
-
-  if (raw.promoted_object) {
-    properties.promotedObject = raw.promoted_object
-  }
+  // billingEvent and promotedObject are API-only fields that the SDK
+  // doesn't model — omit them for clean roundtripping
 
   return resource('adSet', path, properties, raw.id)
 }
@@ -222,27 +315,31 @@ function extractCreativeProps(creative: MetaApiCreative | undefined): Record<str
   const props: Record<string, unknown> = {}
   const spec = creative.object_story_spec
 
-  if (spec?.link_data) {
+  if (spec?.video_data) {
+    const vd = spec.video_data
+    props.format = 'video'
+    if (vd.video_id) props.videoId = vd.video_id
+    if (vd.title) props.headline = vd.title
+    if (vd.message) props.primaryText = vd.message
+    if (vd.link_description) props.description = vd.link_description
+    if (vd.call_to_action?.type) props.cta = vd.call_to_action.type as MetaCTA
+    if (vd.call_to_action?.value?.link) props.url = vd.call_to_action.value.link
+    // Store imageHash internally for the download module to resolve
+    if (vd.image_hash) props.imageHash = vd.image_hash
+  } else if (spec?.link_data) {
     const ld = spec.link_data
-    if (ld.image_hash) props.imageHash = ld.image_hash
+    props.format = 'image'
     if (ld.name) props.headline = ld.name
     if (ld.message) props.primaryText = ld.message
     if (ld.description) props.description = ld.description
     if (ld.call_to_action?.type) props.cta = ld.call_to_action.type as MetaCTA
     if (ld.link) props.url = ld.link
     if (ld.caption) props.displayLink = ld.caption
-  } else if (spec?.video_data) {
-    const vd = spec.video_data
-    if (vd.video_id) props.videoId = vd.video_id
-    if (vd.image_hash) props.imageHash = vd.image_hash
-    if (vd.title) props.headline = vd.title
-    if (vd.message) props.primaryText = vd.message
-    if (vd.link_description) props.description = vd.link_description
-    if (vd.call_to_action?.type) props.cta = vd.call_to_action.type as MetaCTA
-    if (vd.call_to_action?.value?.link) props.url = vd.call_to_action.value.link
+    // Store imageHash internally for the download module to resolve
+    if (ld.image_hash) props.imageHash = ld.image_hash
   }
 
-  // Fallback image_hash from creative level (if not in object_story_spec)
+  // Fallback image_hash from creative level
   if (!props.imageHash && creative.image_hash) {
     props.imageHash = creative.image_hash
   }

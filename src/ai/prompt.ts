@@ -1,140 +1,149 @@
-import type { RsaMarker, KeywordsMarker } from './types.ts'
-import type { Keyword } from '../core/types.ts'
+// === Prompt Compilation ===
+// Assembles final LLM prompts from markers + runtime context.
+// Pure functions — no side effects, no API calls.
 
-// === Types ===
+import type { InterestsMarker, MetaCopyMarker, RsaMarker, KeywordsMarker } from './types.ts'
 
-export type PromptContext = {
+// ─── Context Types ─────────────────────────────────────────
+
+export type RsaPromptContext = {
   readonly campaignName?: string
-  readonly groupKey?: string
-  readonly keywords?: Keyword[]
+  readonly adGroupKey?: string
   readonly defaultJudge?: string
 }
 
-// === RSA Constraints ===
+export type MetaPromptContext = {
+  readonly campaignName?: string
+  readonly adSetKey?: string
+  readonly defaultJudge?: string
+}
+
+// ─── Constraint Blocks ─────────────────────────────────────
 
 const RSA_CONSTRAINTS = `
-Google Ads RSA constraints:
-- Provide 3 to 15 headlines, each at most 30 characters
-- Provide 2 to 4 descriptions, each at most 90 characters
-- Headlines and descriptions must be unique (no duplicates)
+RSA ad copy constraints:
+- Headlines: at most 30 characters each, 3-15 headlines required
+- Descriptions: at most 90 characters each, 2-4 descriptions required
+- Each headline and description must be unique
+- Avoid excessive punctuation or ALL CAPS
+- Include keywords naturally where possible`.trim()
+
+const KEYWORDS_CONSTRAINTS = `
+Google Ads keyword generation guidance:
+- Include a mix of match types (EXACT, PHRASE, BROAD)
+- Keywords should be relevant to the ad group theme
+- Include both short-tail and long-tail variations
+- Avoid overly generic or broad terms that waste budget`.trim()
+
+const META_AD_CONSTRAINTS = `
+Meta Ads copy constraints:
+- primaryText: main ad body, at most 125 characters (recommended visible length)
+- headline: at most 40 characters
+- description (optional): at most 30 characters
+- Be concise and compelling. Primary text shows first in the feed.
 - Avoid excessive punctuation or ALL CAPS`.trim()
 
-// === Keyword Constraints ===
+const INTERESTS_CONSTRAINTS = `
+Meta Ads interest targeting guidance:
+- Suggest interest names that match Meta's targeting categories
+- Each interest should be a recognizable category (e.g., "Small business", "Cloud computing", "File management")
+- Include a mix of broad and niche interests
+- Return interest names only (IDs are resolved separately)`.trim()
 
-const KEYWORD_CONSTRAINTS = `
-Google Ads keyword guidance:
-- Each keyword has a match type: "exact", "phrase", or "broad"
-- Exact match: triggers only for that precise query (highest precision)
-- Phrase match: triggers when the query contains the phrase (balanced)
-- Broad match: triggers for related queries (widest reach)
-- Return a mix of match types unless instructed otherwise`.trim()
+// ─── Shared Helpers ────────────────────────────────────────
 
-// === Helpers ===
-
-function formatKeywordsContext(keywords: Keyword[]): string {
-  if (keywords.length === 0) return ''
-  const lines = keywords.map((kw) => `  - "${kw.text}" (${kw.matchType.toLowerCase()})`)
-  return `\nExisting keywords in this ad group:\n${lines.join('\n')}`
+/** Build lines describing placement context (campaign name, ad group/set key). */
+function contextLines(campaignName?: string, groupKey?: string, groupLabel = 'Ad group'): string[] {
+  const lines: string[] = []
+  if (campaignName) lines.push(`Campaign: ${campaignName}`)
+  if (groupKey) lines.push(`${groupLabel}: ${groupKey}`)
+  return lines
 }
 
-function formatCampaignContext(ctx: PromptContext): string {
-  const parts: string[] = []
-  if (ctx.campaignName) parts.push(`Campaign: ${ctx.campaignName}`)
-  if (ctx.groupKey) parts.push(`Ad group: ${ctx.groupKey}`)
-  if (parts.length === 0) return ''
-  return '\n' + parts.join('\n')
+/** Build lines for structured product/audience/tone fields. */
+function structuredLines(structured?: { product?: string; audience?: string; tone?: string }): string[] {
+  if (!structured) return []
+  const lines: string[] = []
+  if (structured.product) lines.push(`Product: ${structured.product}`)
+  if (structured.audience) lines.push(`Audience: ${structured.audience}`)
+  if (structured.tone) lines.push(`Tone: ${structured.tone}`)
+  return lines
 }
 
-function formatStructuredFields(structured: RsaMarker['structured']): string {
-  if (!structured) return ''
-  const parts: string[] = []
-  if (structured.product) parts.push(`Product: ${structured.product}`)
-  if (structured.audience) parts.push(`Target audience: ${structured.audience}`)
-  if (structured.tone) parts.push(`Tone: ${structured.tone}`)
-  if (parts.length === 0) return ''
-  return parts.join('\n')
+/** Resolve which judge prompt to use (marker-level overrides context default). */
+function resolveJudge(markerJudge?: string, defaultJudge?: string): string | undefined {
+  return markerJudge ?? defaultJudge
 }
 
-// === Public API ===
+/** Assemble final prompt from sections, filtering out empty ones. */
+function assemble(sections: string[]): string {
+  return sections.filter(Boolean).join('\n\n')
+}
+
+// ─── Google RSA ────────────────────────────────────────────
 
 /**
- * Compile a full prompt for RSA generation from a marker and context.
- *
- * Combines: user prompt + structured fields + campaign context + RSA constraints.
+ * Compile an RSA marker + runtime context into a final LLM prompt string.
  */
-export function compileRsaPrompt(marker: RsaMarker, context: PromptContext): string {
-  const sections: string[] = []
+export function compileRsaPrompt(marker: RsaMarker, context: RsaPromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.adGroupKey)
+  const stLines = structuredLines(marker.structured)
+  const judge = resolveJudge(marker.judge, context.defaultJudge)
 
-  // User-provided prompt (raw string)
-  if (marker.prompt) {
-    sections.push(marker.prompt)
-  }
-
-  // Structured fields (product/audience/tone)
-  const structured = formatStructuredFields(marker.structured)
-  if (structured) {
-    sections.push(structured)
-  }
-
-  // Campaign/group context
-  const campaignCtx = formatCampaignContext(context)
-  if (campaignCtx) {
-    sections.push(campaignCtx.trim())
-  }
-
-  // Keyword context from the ad group
-  if (context.keywords && context.keywords.length > 0) {
-    sections.push(formatKeywordsContext(context.keywords).trim())
-  }
-
-  // RSA constraints are always appended
-  sections.push(RSA_CONSTRAINTS)
-
-  return sections.join('\n\n')
+  return assemble([
+    marker.prompt,
+    RSA_CONSTRAINTS,
+    ctx.length > 0 ? ctx.join('\n') : '',
+    stLines.length > 0 ? stLines.join('\n') : '',
+    judge ? `Judge criteria: ${judge}` : '',
+  ])
 }
 
+// ─── Google Keywords ───────────────────────────────────────
+
 /**
- * Compile a full prompt for keyword generation from a marker and context.
- *
- * Combines: user prompt + campaign context + existing keywords + keyword constraints.
+ * Compile a keywords marker + runtime context into a final LLM prompt string.
  */
-export function compileKeywordsPrompt(marker: KeywordsMarker, context: PromptContext): string {
-  const sections: string[] = []
+export function compileKeywordsPrompt(marker: KeywordsMarker, context: RsaPromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.adGroupKey)
 
-  // User-provided prompt
-  if (marker.prompt) {
-    sections.push(marker.prompt)
-  }
-
-  // Campaign/group context
-  const campaignCtx = formatCampaignContext(context)
-  if (campaignCtx) {
-    sections.push(campaignCtx.trim())
-  }
-
-  // Existing keywords for context
-  if (context.keywords && context.keywords.length > 0) {
-    sections.push(formatKeywordsContext(context.keywords).trim())
-  }
-
-  // Keyword constraints are always appended
-  sections.push(KEYWORD_CONSTRAINTS)
-
-  return sections.join('\n\n')
+  return assemble([
+    marker.prompt,
+    KEYWORDS_CONSTRAINTS,
+    ctx.length > 0 ? ctx.join('\n') : '',
+  ])
 }
 
+// ─── Meta Copy ─────────────────────────────────────────────
+
 /**
- * Merge local judge prompt with global default judge prompt.
- *
- * Global comes first, local is appended. Returns undefined if both are empty.
+ * Compile a Meta copy marker + runtime context into a final LLM prompt string.
  */
-export function compileJudgePrompt(localJudge?: string, defaultJudge?: string): string | undefined {
-  const global = defaultJudge?.trim() || ''
-  const local = localJudge?.trim() || ''
+export function compileMetaCopyPrompt(marker: MetaCopyMarker, context: MetaPromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.adSetKey, 'Ad set')
+  const stLines = structuredLines(marker.structured)
+  const judge = resolveJudge(marker.judge, context.defaultJudge)
 
-  if (!global && !local) return undefined
-  if (!global) return local
-  if (!local) return global
+  return assemble([
+    marker.prompt,
+    META_AD_CONSTRAINTS,
+    ctx.length > 0 ? ctx.join('\n') : '',
+    stLines.length > 0 ? stLines.join('\n') : '',
+    judge ? `Judge criteria: ${judge}` : '',
+  ])
+}
 
-  return `${global}\n\n${local}`
+// ─── Meta Interests ────────────────────────────────────────
+
+/**
+ * Compile an interests marker + runtime context into a final LLM prompt string.
+ */
+export function compileInterestsPrompt(marker: InterestsMarker, context: MetaPromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.adSetKey, 'Ad set')
+
+  return assemble([
+    marker.prompt,
+    INTERESTS_CONSTRAINTS,
+    ctx.length > 0 ? ctx.join('\n') : '',
+  ])
 }

@@ -263,7 +263,7 @@ describe('fetchMetaAll() ad set normalization', () => {
 
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const adSet = resources.find(r => r.kind === 'adSet')!
-    expect(adSet.properties.targeting).toEqual({ geo_locations: { countries: ['US'] } })
+    expect(adSet.properties.targeting).toEqual({ geo: [{ type: 'geo', countries: ['US'] }] })
   })
 
   test('maps bid strategy', async () => {

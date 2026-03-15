@@ -1,71 +1,114 @@
-import type { RsaMarker, KeywordsMarker } from './types.ts'
+// === AI Marker Factories ===
+// Each factory returns a frozen marker object ready to embed in a campaign definition.
 
-// === RSA Marker Factory ===
+import type {
+  InterestsMarker,
+  KeywordsMarker,
+  MetaCopyMarker,
+  RsaMarker,
+} from './types.ts'
 
-type RsaMarkerInput = {
+// ─── Input Types ───────────────────────────────────────────
+
+export type RsaMarkerInput = {
+  readonly prompt: string
   readonly product?: string
   readonly audience?: string
   readonly tone?: string
-  readonly prompt?: string
   readonly judge?: string
 }
 
+export type MetaCopyMarkerInput = {
+  readonly prompt: string
+  readonly product?: string
+  readonly audience?: string
+  readonly tone?: string
+  readonly judge?: string
+}
+
+// ─── Shared Helpers ────────────────────────────────────────
+
+/** Build the optional `structured` bag from product/audience/tone fields. */
+function buildStructured(input: { product?: string; audience?: string; tone?: string }) {
+  const { product, audience, tone } = input
+  if (product === undefined && audience === undefined && tone === undefined) return undefined
+  return {
+    ...(product !== undefined && { product }),
+    ...(audience !== undefined && { audience }),
+    ...(tone !== undefined && { tone }),
+  } as const
+}
+
+// ─── Google RSA ────────────────────────────────────────────
+
+const DEFAULT_RSA_PROMPT = 'Generate RSA ad copy'
+
 /**
- * Create an RSA (Responsive Search Ad) marker for AI generation.
+ * Create an RSA (Responsive Search Ad) AI marker.
  *
- * Accepts either a raw prompt string or a structured input object.
- * The marker is frozen to prevent accidental mutation.
+ * @param input - A prompt string, or a structured input with prompt + optional fields
  */
 export function rsaMarker(input: string | RsaMarkerInput): RsaMarker {
   if (typeof input === 'string') {
-    return Object.freeze({
-      __brand: 'ai-marker' as const,
-      type: 'rsa' as const,
-      prompt: input,
-    })
+    return Object.freeze({ __ai: true as const, type: 'rsa' as const, prompt: input || DEFAULT_RSA_PROMPT })
   }
 
-  const prompt = input.prompt ?? buildRsaPrompt(input)
-
+  const structured = buildStructured(input)
   return Object.freeze({
-    __brand: 'ai-marker' as const,
+    __ai: true as const,
     type: 'rsa' as const,
-    prompt,
-    ...(input.product || input.audience || input.tone
-      ? {
-          structured: {
-            ...(input.product !== undefined && { product: input.product }),
-            ...(input.audience !== undefined && { audience: input.audience }),
-            ...(input.tone !== undefined && { tone: input.tone }),
-          },
-        }
-      : {}),
+    prompt: input.prompt || DEFAULT_RSA_PROMPT,
+    ...(structured !== undefined && { structured }),
     ...(input.judge !== undefined && { judge: input.judge }),
   })
 }
 
-/** Build a default prompt from structured fields when no explicit prompt is given. */
-function buildRsaPrompt(input: RsaMarkerInput): string {
-  const parts: string[] = []
-  if (input.product) parts.push(`Product: ${input.product}`)
-  if (input.audience) parts.push(`Audience: ${input.audience}`)
-  if (input.tone) parts.push(`Tone: ${input.tone}`)
-  return parts.length > 0
-    ? `Generate RSA headlines and descriptions. ${parts.join('. ')}.`
-    : 'Generate RSA headlines and descriptions.'
-}
-
-// === Keywords Marker Factory ===
+// ─── Google Keywords ───────────────────────────────────────
 
 /**
- * Create a Keywords marker for AI generation.
- *
- * The marker is frozen to prevent accidental mutation.
+ * Create a keywords AI marker for Google Ads keyword generation.
  */
 export function keywordsMarker(prompt: string): KeywordsMarker {
   return Object.freeze({
-    __brand: 'ai-marker' as const,
+    __ai: true as const,
     type: 'keywords' as const,
+    prompt,
+  })
+}
+
+// ─── Meta Copy ─────────────────────────────────────────────
+
+const DEFAULT_META_COPY_PROMPT = 'Generate Meta ad copy'
+
+/**
+ * Create a Meta ad copy AI marker.
+ *
+ * @param input - A prompt string, or a structured input with prompt + optional fields
+ */
+export function metaCopyMarker(input: string | MetaCopyMarkerInput): MetaCopyMarker {
+  if (typeof input === 'string') {
+    return Object.freeze({ __ai: true as const, type: 'meta-copy' as const, prompt: input || DEFAULT_META_COPY_PROMPT })
+  }
+
+  const structured = buildStructured(input)
+  return Object.freeze({
+    __ai: true as const,
+    type: 'meta-copy' as const,
+    prompt: input.prompt || DEFAULT_META_COPY_PROMPT,
+    ...(structured !== undefined && { structured }),
+    ...(input.judge !== undefined && { judge: input.judge }),
+  })
+}
+
+// ─── Meta Interests ────────────────────────────────────────
+
+/**
+ * Create an interests AI marker for Meta Ads interest targeting generation.
+ */
+export function interestsMarker(prompt: string): InterestsMarker {
+  return Object.freeze({
+    __ai: true as const,
+    type: 'interests' as const,
     prompt,
   })
 }

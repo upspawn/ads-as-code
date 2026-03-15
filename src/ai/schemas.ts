@@ -1,14 +1,10 @@
+// === AI Output Schemas ===
+// Zod schemas that validate LLM-generated output before it enters the campaign tree.
+
 import { z } from 'zod'
 
-// === RSA Schema ===
+// ─── Google RSA ────────────────────────────────────────────
 
-/**
- * Validates AI-generated RSA (Responsive Search Ad) output.
- *
- * Google Ads constraints:
- * - 3-15 headlines, each max 30 characters
- * - 2-4 descriptions, each max 90 characters
- */
 export const rsaSchema = z.object({
   headlines: z.array(z.string().max(30)).min(3).max(15),
   descriptions: z.array(z.string().max(90)).min(2).max(4),
@@ -16,20 +12,33 @@ export const rsaSchema = z.object({
 
 export type RsaOutput = z.infer<typeof rsaSchema>
 
-// === Keywords Schema ===
+// ─── Google Keywords ───────────────────────────────────────
 
-/**
- * Validates AI-generated keyword output.
- *
- * Each keyword has a text and a match type (exact/phrase/broad).
- */
 export const keywordsSchema = z.object({
-  keywords: z.array(
-    z.object({
-      text: z.string(),
-      match: z.enum(['exact', 'phrase', 'broad']),
-    }),
-  ),
+  keywords: z.array(z.object({
+    text: z.string(),
+    matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
+  })),
 })
 
 export type KeywordsOutput = z.infer<typeof keywordsSchema>
+
+// ─── Meta Copy ─────────────────────────────────────────────
+
+export const metaCopySchema = z.object({
+  primaryText: z.string().max(125),
+  headline: z.string().max(40),
+  description: z.string().max(30).optional(),
+})
+
+export type MetaCopyOutput = z.infer<typeof metaCopySchema>
+
+// ─── Meta Interests ────────────────────────────────────────
+
+export const interestsSchema = z.object({
+  interests: z.array(z.object({
+    name: z.string(),
+  })),
+})
+
+export type InterestsOutput = z.infer<typeof interestsSchema>

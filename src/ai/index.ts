@@ -1,32 +1,71 @@
-// @upspawn/ads/ai — AI generation surface
+// === AI Module Public Surface ===
+// Provides the `ai` namespace for embedding AI generation markers in campaign definitions.
 
-import { rsaMarker } from './markers.ts'
-import { keywordsMarker } from './markers.ts'
+import { rsaMarker, keywordsMarker, metaCopyMarker, interestsMarker } from './markers.ts'
 
 /**
  * AI marker namespace.
  *
- * Use `ai.rsa()` and `ai.keywords()` to create marker placeholders
- * in campaign definitions. These are resolved during AI generation.
+ * Use these to declare AI-generated content in campaign definitions.
+ * Markers are inert tags — the actual LLM call happens during `plan` or `apply`.
+ *
+ * @example
+ * ```ts
+ * import { ai } from '@upspawn/ads'
+ *
+ * // Google RSA
+ * ai.rsa('Write headlines for a file renaming tool')
+ * ai.keywords('Suggest keywords for PDF tools')
+ *
+ * // Meta
+ * ai.metaCopy('Write a Meta ad for cloud storage')
+ * ai.interests('Suggest interests for SaaS targeting')
+ * ```
  */
 export const ai = {
   rsa: rsaMarker,
   keywords: keywordsMarker,
+  metaCopy: metaCopyMarker,
+  interests: interestsMarker,
 } as const
 
-// Campaign multiplication
-export { expand } from './expand.ts'
-export type { ExpandConfig, ExpandEntry, ExpansionTarget } from './expand.ts'
+// Re-export types for consumers
+export type {
+  AiMarker,
+  RsaMarker,
+  KeywordsMarker,
+  MetaCopyMarker,
+  InterestsMarker,
+} from './types.ts'
 
-// Core AI types and type guards
-export type { AiConfig, AiJudgeConfig, AiOptimizeConfig, AiMarker, RsaMarker, KeywordsMarker } from './types.ts'
-export { isAiMarker, isRsaMarker, isKeywordsMarker } from './types.ts'
+export {
+  isRsaMarker,
+  isKeywordsMarker,
+  isMetaCopyMarker,
+  isInterestsMarker,
+} from './types.ts'
 
-// Lock file types (for consumers who inspect .gen.json programmatically)
-export type { LockFile, LockSlot } from './lockfile.ts'
+export type { RsaMarkerInput, MetaCopyMarkerInput } from './markers.ts'
 
-// Generation types
-export type { GenerateResult, GenerateObjectFn } from './generate.ts'
+export {
+  rsaSchema,
+  keywordsSchema,
+  metaCopySchema,
+  interestsSchema,
+} from './schemas.ts'
 
-// Staleness detection
-export type { StaleSlot } from './resolve.ts'
+export type {
+  RsaOutput,
+  KeywordsOutput,
+  MetaCopyOutput,
+  InterestsOutput,
+} from './schemas.ts'
+
+export {
+  compileRsaPrompt,
+  compileKeywordsPrompt,
+  compileMetaCopyPrompt,
+  compileInterestsPrompt,
+} from './prompt.ts'
+
+export type { RsaPromptContext, MetaPromptContext } from './prompt.ts'

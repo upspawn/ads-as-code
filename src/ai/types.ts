@@ -1,10 +1,17 @@
-import type { LanguageModel } from 'ai'
+// === AI Marker Types ===
+// Markers are lightweight tags that declare an AI generation intent.
+// They carry a prompt and optional structured context but don't invoke any LLM themselves.
 
-// === AI Markers ===
-// Branded marker objects that act as placeholders in campaign definitions.
-// During generation, these markers are resolved into concrete ad copy / keywords.
+/**
+ * Base marker shape. Every AI marker carries a discriminated `type` field
+ * and an `__ai` brand so the diff/flatten layers can detect them.
+ */
+export type AiMarker = {
+  readonly __ai: true
+  readonly type: string
+}
 
-export type AiMarker = { readonly __brand: 'ai-marker' }
+// ─── Google RSA Markers ────────────────────────────────────
 
 export type RsaMarker = AiMarker & {
   readonly type: 'rsa'
@@ -22,38 +29,47 @@ export type KeywordsMarker = AiMarker & {
   readonly prompt: string
 }
 
-// === Type Guards ===
+// ─── Meta Ad Markers ───────────────────────────────────────
 
-export function isAiMarker(value: unknown): value is AiMarker {
+export type MetaCopyMarker = AiMarker & {
+  readonly type: 'meta-copy'
+  readonly prompt: string
+  readonly structured?: {
+    readonly product?: string
+    readonly audience?: string
+    readonly tone?: string
+  }
+  readonly judge?: string
+}
+
+export type InterestsMarker = AiMarker & {
+  readonly type: 'interests'
+  readonly prompt: string
+}
+
+// ─── Type Guards ───────────────────────────────────────────
+
+function isAiMarker(value: unknown): value is AiMarker {
   return (
     typeof value === 'object' &&
     value !== null &&
-    '__brand' in value &&
-    (value as AiMarker).__brand === 'ai-marker'
+    '__ai' in value &&
+    (value as AiMarker).__ai === true
   )
 }
 
 export function isRsaMarker(value: unknown): value is RsaMarker {
-  return isAiMarker(value) && 'type' in value && (value as RsaMarker).type === 'rsa'
+  return isAiMarker(value) && value.type === 'rsa'
 }
 
 export function isKeywordsMarker(value: unknown): value is KeywordsMarker {
-  return isAiMarker(value) && 'type' in value && (value as KeywordsMarker).type === 'keywords'
+  return isAiMarker(value) && value.type === 'keywords'
 }
 
-// === AI Configuration ===
-
-export type AiJudgeConfig = {
-  readonly model?: LanguageModel
-  readonly prompt: string
+export function isMetaCopyMarker(value: unknown): value is MetaCopyMarker {
+  return isAiMarker(value) && value.type === 'meta-copy'
 }
 
-export type AiOptimizeConfig = {
-  readonly prompt?: string
-}
-
-export type AiConfig = {
-  readonly model: LanguageModel
-  readonly judge?: AiJudgeConfig
-  readonly optimize?: AiOptimizeConfig
+export function isInterestsMarker(value: unknown): value is InterestsMarker {
+  return isAiMarker(value) && value.type === 'interests'
 }
