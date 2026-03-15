@@ -39,16 +39,16 @@ describe('getProvider()', () => {
     expect(typeof provider.codegen).toBe('function')
   })
 
-  test('meta flatten and codegen are wired, fetch/apply still throw', async () => {
+  test('meta flatten and codegen are wired, fetch/apply require config', async () => {
     const provider = await getProvider('meta')
 
     // flatten and codegen are wired — empty input returns empty output
     expect(provider.flatten([])).toEqual([])
     expect(provider.codegen([], '')).toBe('')
 
-    // fetchAll and applyChangeset are not yet implemented
-    await expect(provider.fetchAll({} as never, {} as never)).rejects.toThrow('not implemented')
-    await expect(provider.applyChangeset({} as never, {} as never, {} as never, '')).rejects.toThrow('not implemented')
+    // fetchAll and applyChangeset require meta config
+    await expect(provider.fetchAll({} as never, {} as never)).rejects.toThrow('Meta provider config missing')
+    await expect(provider.applyChangeset({} as never, {} as never, {} as never, '')).rejects.toThrow('Meta provider config missing')
   })
 
   test('throws for unknown provider', async () => {

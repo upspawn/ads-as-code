@@ -1,30 +1,28 @@
 import type { ProviderModule } from '../core/providers.ts'
-import type { Resource } from '../core/types.ts'
+import type { Resource, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
 import type { MetaCampaign } from './flatten.ts'
 import { flattenMeta } from './flatten.ts'
 import { codegenMeta } from './codegen.ts'
 import { downloadMetaImages } from './download.ts'
+import { fetchMetaAll } from './fetch.ts'
+import { applyMetaChangeset } from './apply.ts'
 
 // ─── Meta Provider Module ──────────────────────────────────
-//
-// flatten, codegen, and postImportFetch are fully implemented.
-// fetchAll and applyChangeset remain stubs until wired to
-// fetchMetaAll and applyMetaChangeset via createMetaClient.
 
 const metaProvider: ProviderModule = {
   flatten(campaigns: unknown[]): Resource[] {
     return (campaigns as MetaCampaign[]).flatMap(flattenMeta)
   },
 
-  async fetchAll() {
-    // TODO: wire to fetchMetaAll from src/meta/fetch.ts
-    throw new Error('Meta fetchAll is not implemented yet')
+  async fetchAll(config: AdsConfig, _cache: Cache): Promise<Resource[]> {
+    if (!config.meta) throw new Error('Meta provider config missing — add meta section to ads.config.ts')
+    return fetchMetaAll(config.meta)
   },
 
-  async applyChangeset() {
-    // TODO: wire to applyMetaChangeset from src/meta/apply.ts
-    throw new Error('Meta applyChangeset is not implemented yet')
+  async applyChangeset(changeset: Changeset, config: AdsConfig, cache: Cache, project: string) {
+    if (!config.meta) throw new Error('Meta provider config missing — add meta section to ads.config.ts')
+    return applyMetaChangeset(changeset, config.meta, cache, project)
   },
 
   codegen(resources: Resource[], _campaignName: string): string {
