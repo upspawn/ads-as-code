@@ -564,6 +564,197 @@ describe('extractSharedConfig()', () => {
   })
 })
 
+// ─── Network Settings ────────────────────────────────────
+
+describe('generateCampaignFile() with networkSettings', () => {
+  test('emits networkSettings block when present', () => {
+    const resources: Resource[] = [
+      {
+        kind: 'campaign',
+        path: 'search-network-test',
+        properties: {
+          name: 'Search - Network Test',
+          status: 'enabled',
+          budget: { amount: 5, currency: 'EUR', period: 'daily' },
+          bidding: { type: 'maximize-conversions' },
+          targeting: { rules: [{ type: 'geo', countries: ['US'] }] },
+          networkSettings: {
+            searchNetwork: true,
+            searchPartners: false,
+            displayNetwork: false,
+          },
+        },
+      },
+      {
+        kind: 'adGroup',
+        path: 'search-network-test/core',
+        properties: { status: 'enabled', targeting: undefined },
+      },
+      {
+        kind: 'keyword',
+        path: 'search-network-test/core/kw:test:EXACT',
+        properties: { text: 'test', matchType: 'EXACT' },
+      },
+      {
+        kind: 'ad',
+        path: 'search-network-test/core/rsa:xyz',
+        properties: {
+          headlines: ['Test', 'Test 2', 'Test 3'],
+          descriptions: ['Desc 1', 'Desc 2'],
+          finalUrl: 'https://www.renamed.to',
+        },
+      },
+    ]
+
+    const output = generateCampaignFile(resources, 'Search - Network Test')
+    expect(output).toContain('networkSettings: {')
+    expect(output).toContain('searchNetwork: true')
+    expect(output).toContain('searchPartners: false')
+    expect(output).toContain('displayNetwork: false')
+  })
+
+  test('omits networkSettings when not present', () => {
+    const resources = makePdfCampaignResources()
+    const output = generateCampaignFile(resources, 'Search - PDF Renaming')
+    expect(output).not.toContain('networkSettings')
+  })
+})
+
+// ─── Device Targeting ────────────────────────────────────
+
+describe('generateCampaignFile() with device targeting', () => {
+  const resources: Resource[] = [
+    {
+      kind: 'campaign',
+      path: 'search-device-test',
+      properties: {
+        name: 'Search - Device Test',
+        status: 'enabled',
+        budget: { amount: 5, currency: 'EUR', period: 'daily' },
+        bidding: { type: 'maximize-conversions' },
+        targeting: {
+          rules: [
+            { type: 'geo', countries: ['US'] },
+            { type: 'language', languages: ['en'] },
+            { type: 'device', device: 'mobile', bidAdjustment: -0.25 },
+          ],
+        },
+      },
+    },
+    {
+      kind: 'adGroup',
+      path: 'search-device-test/core',
+      properties: { status: 'enabled', targeting: undefined },
+    },
+    {
+      kind: 'keyword',
+      path: 'search-device-test/core/kw:test:EXACT',
+      properties: { text: 'test', matchType: 'EXACT' },
+    },
+    {
+      kind: 'ad',
+      path: 'search-device-test/core/rsa:xyz',
+      properties: {
+        headlines: ['Test', 'Test 2', 'Test 3'],
+        descriptions: ['Desc 1', 'Desc 2'],
+        finalUrl: 'https://www.renamed.to',
+      },
+    },
+  ]
+
+  const output = generateCampaignFile(resources, 'Search - Device Test')
+
+  test('emits device() in targeting', () => {
+    expect(output).toContain("device('mobile', -0.25)")
+  })
+
+  test('adds device to imports', () => {
+    expect(output).toContain('device')
+    // Verify it appears in the import statement
+    expect(output).toMatch(/import \{[^}]*device[^}]*\} from '@upspawn\/ads'/)
+  })
+})
+
+// ─── Missing Bidding Strategies ──────────────────────────
+
+describe('generateCampaignFile() bidding strategies', () => {
+  function makeMinimalCampaign(
+    biddingConfig: Record<string, unknown>,
+  ): Resource[] {
+    return [
+      {
+        kind: 'campaign',
+        path: 'search-bidding-test',
+        properties: {
+          name: 'Search - Bidding Test',
+          status: 'enabled',
+          budget: { amount: 10, currency: 'EUR', period: 'daily' },
+          bidding: biddingConfig,
+          targeting: { rules: [] },
+        },
+      },
+      {
+        kind: 'adGroup',
+        path: 'search-bidding-test/core',
+        properties: { status: 'enabled', targeting: undefined },
+      },
+      {
+        kind: 'keyword',
+        path: 'search-bidding-test/core/kw:test:EXACT',
+        properties: { text: 'test', matchType: 'EXACT' },
+      },
+      {
+        kind: 'ad',
+        path: 'search-bidding-test/core/rsa:xyz',
+        properties: {
+          headlines: ['Test', 'Test 2', 'Test 3'],
+          descriptions: ['Desc 1', 'Desc 2'],
+          finalUrl: 'https://www.renamed.to',
+        },
+      },
+    ]
+  }
+
+  test('emits target-roas with targetRoas value', () => {
+    const resources = makeMinimalCampaign({ type: 'target-roas', targetRoas: 3.5 })
+    const output = generateCampaignFile(resources, 'Search - Bidding Test')
+    expect(output).toContain("type: 'target-roas'")
+    expect(output).toContain('targetRoas: 3.5')
+  })
+
+  test('emits target-impression-share with all fields', () => {
+    const resources = makeMinimalCampaign({
+      type: 'target-impression-share',
+      location: 'TOP_OF_PAGE',
+      targetPercent: 0.8,
+      maxCpc: 2.5,
+    })
+    const output = generateCampaignFile(resources, 'Search - Bidding Test')
+    expect(output).toContain("type: 'target-impression-share'")
+    expect(output).toContain("location: 'TOP_OF_PAGE'")
+    expect(output).toContain('targetPercent: 0.8')
+    expect(output).toContain('maxCpc: 2.5')
+  })
+
+  test('emits maximize-conversion-value with targetRoas', () => {
+    const resources = makeMinimalCampaign({
+      type: 'maximize-conversion-value',
+      targetRoas: 4.0,
+    })
+    const output = generateCampaignFile(resources, 'Search - Bidding Test')
+    expect(output).toContain("type: 'maximize-conversion-value'")
+    expect(output).toContain('targetRoas: 4')
+  })
+
+  test('emits maximize-conversion-value shorthand without targetRoas', () => {
+    const resources = makeMinimalCampaign({ type: 'maximize-conversion-value' })
+    const output = generateCampaignFile(resources, 'Search - Bidding Test')
+    expect(output).toContain("'maximize-conversion-value'")
+    // Should NOT contain the object form
+    expect(output).not.toContain("type: 'maximize-conversion-value'")
+  })
+})
+
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {

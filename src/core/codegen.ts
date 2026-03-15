@@ -69,6 +69,24 @@ function formatBidding(bidding: Record<string, unknown>): string {
     }
     case 'target-cpa':
       return `{ type: 'target-cpa', targetCpa: ${bidding.targetCpa} }`
+    case 'target-roas':
+      return `{ type: 'target-roas', targetRoas: ${bidding.targetRoas} }`
+    case 'target-impression-share': {
+      const tisParts = [
+        `type: 'target-impression-share'`,
+        `location: '${bidding.location}'`,
+        `targetPercent: ${bidding.targetPercent}`,
+      ]
+      if (bidding.maxCpc) tisParts.push(`maxCpc: ${bidding.maxCpc}`)
+      return `{ ${tisParts.join(', ')} }`
+    }
+    case 'maximize-conversion-value': {
+      const roas = bidding.targetRoas as number | undefined
+      if (roas) {
+        return `{ type: 'maximize-conversion-value', targetRoas: ${roas} }`
+      }
+      return `'maximize-conversion-value'`
+    }
     default:
       return `'${type}'`
   }
@@ -126,6 +144,10 @@ function formatTargeting(targeting: Record<string, unknown>): string | null {
       if (startHour !== undefined && endHour !== undefined) {
         parts.push(`hours(${startHour}, ${endHour})`)
       }
+    } else if (type === 'device') {
+      const deviceType = rule.device as string
+      const bidAdj = rule.bidAdjustment as number
+      parts.push(`device('${deviceType}', ${bidAdj})`)
     }
   }
 
@@ -181,9 +203,15 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
       if (targetingStr.includes('languages(')) imports.add('languages')
       if (targetingStr.includes('weekdays(')) imports.add('weekdays')
       if (targetingStr.includes('hours(')) imports.add('hours')
+      if (targetingStr.includes('device(')) imports.add('device')
       if (targetingStr.includes('targeting(')) imports.add('targeting')
     }
   }
+
+  // Network settings (optional)
+  const networkSettings = props.networkSettings as
+    | { searchNetwork: boolean; searchPartners: boolean; displayNetwork: boolean }
+    | undefined
 
   // Build config object
   const configParts: string[] = []
@@ -191,6 +219,11 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   configParts.push(`bidding: ${biddingStr},`)
   if (targetingStr) {
     configParts.push(`targeting: ${targetingStr},`)
+  }
+  if (networkSettings) {
+    configParts.push(
+      `networkSettings: {\n    searchNetwork: ${networkSettings.searchNetwork},\n    searchPartners: ${networkSettings.searchPartners},\n    displayNetwork: ${networkSettings.displayNetwork},\n  },`,
+    )
   }
 
   // Build the campaign header
@@ -268,6 +301,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
         if (groupTargetingStr.includes('languages(')) imports.add('languages')
         if (groupTargetingStr.includes('weekdays(')) imports.add('weekdays')
         if (groupTargetingStr.includes('hours(')) imports.add('hours')
+        if (groupTargetingStr.includes('device(')) imports.add('device')
         if (groupTargetingStr.includes('targeting(')) imports.add('targeting')
       }
     }
