@@ -1,6 +1,8 @@
 import type { Resource } from './types.ts'
 import type { GoogleSearchCampaign } from '../google/types.ts'
 import { flattenAll as googleFlattenAll } from '../google/flatten.ts'
+import { flattenMeta } from '../meta/flatten.ts'
+import type { MetaCampaign } from '../meta/index.ts'
 
 // Re-export Google-specific flatten for backward compatibility.
 // Callers that need the Google-specific single-campaign flatten can import it directly,
@@ -32,8 +34,8 @@ export function flattenAll(campaigns: DiscoveredCampaign[]): Resource[] {
     switch (provider) {
       case 'google':
         return googleFlattenAll([campaign as GoogleSearchCampaign])
-      // case 'meta':
-      //   return flattenMeta(campaign)  — will be wired when Meta flatten is implemented
+      case 'meta':
+        return flattenMeta(campaign as MetaCampaign)
       default:
         throw new Error(`Unknown provider: ${provider}`)
     }
