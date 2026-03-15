@@ -26,6 +26,12 @@ const MATCH_TYPE_TO_ENUM: Record<string, number> = {
   'BROAD': 4,
 }
 
+const DEVICE_TYPE_ENUM: Record<string, number> = {
+  'mobile': 2,
+  'desktop': 3,
+  'tablet': 4,
+}
+
 function matchTypeToEnum(matchType: unknown): number {
   if (typeof matchType === 'number') return matchType
   return MATCH_TYPE_TO_ENUM[String(matchType)] ?? 4 // default BROAD
@@ -118,6 +124,37 @@ function buildCampaignCreate(
       case 'target-cpa':
         campaign.target_cpa = { target_cpa_micros: String(toMicros(bidding.targetCpa as number)) }
         break
+      case 'target-roas':
+        campaign.target_roas = {
+          target_roas: bidding.targetRoas as number, // raw double, NOT micros
+        }
+        break
+      case 'target-impression-share': {
+        const locationMap: Record<string, number> = { 'anywhere': 2, 'top': 3, 'absolute-top': 4 }
+        campaign.target_impression_share = {
+          location: locationMap[bidding.location as string] ?? 2,
+          location_fraction_micros: String(Math.round((bidding.targetPercent as number) * 10000)),
+          ...(bidding.maxCpc ? { cpc_bid_ceiling_micros: String(toMicros(bidding.maxCpc as number)) } : {}),
+        }
+        break
+      }
+      case 'maximize-conversion-value': {
+        const roas = bidding.targetRoas as number | undefined
+        campaign.maximize_conversion_value = roas
+          ? { target_roas: roas } // raw double, NOT micros
+          : {}
+        break
+      }
+    }
+  }
+
+  // Network settings
+  const networkSettings = props.networkSettings as { searchNetwork: boolean; searchPartners: boolean; displayNetwork: boolean } | undefined
+  if (networkSettings) {
+    campaign.network_settings = {
+      target_google_search: networkSettings.searchNetwork,
+      target_search_network: networkSettings.searchPartners,
+      target_content_network: networkSettings.displayNetwork,
     }
   }
 
@@ -171,6 +208,22 @@ function buildTargetingOperations(
             },
           })
         }
+      }
+    }
+
+    if (rule.type === 'device') {
+      const deviceType = DEVICE_TYPE_ENUM[rule.device as string]
+      if (deviceType) {
+        const bidAdjustment = rule.bidAdjustment as number
+        ops.push({
+          operation: 'campaign_criterion',
+          op: 'create',
+          resource: {
+            campaign: campaignResourceName,
+            device: { type: deviceType },
+            bid_modifier: 1.0 + bidAdjustment, // SDK format → API format
+          },
+        })
       }
     }
   }
@@ -387,6 +440,79 @@ function buildUpdateOperations(
         if (c.field === 'name') {
           campaignFields.name = c.to
           campaignMask.push('name')
+        }
+        if (c.field === 'networkSettings') {
+          const ns = c.to as { searchNetwork: boolean; searchPartners: boolean; displayNetwork: boolean }
+          campaignFields.network_settings = {
+            target_google_search: ns.searchNetwork,
+            target_search_network: ns.searchPartners,
+            target_content_network: ns.displayNetwork,
+          }
+          campaignMask.push('network_settings')
+        }
+        if (c.field === 'bidding') {
+          const newBidding = c.to as Record<string, unknown>
+          switch (newBidding.type) {
+            case 'maximize-conversions':
+              campaignFields.maximize_conversions = {}
+              campaignMask.push('maximize_conversions')
+              break
+            case 'maximize-clicks':
+              campaignFields.target_spend = newBidding.maxCpc
+                ? { cpc_bid_ceiling_micros: String(toMicros(newBidding.maxCpc as number)) }
+                : {}
+              campaignMask.push('target_spend')
+              break
+            case 'manual-cpc':
+              campaignFields.manual_cpc = { enhanced_cpc_enabled: newBidding.enhancedCpc ?? false }
+              campaignMask.push('manual_cpc')
+              break
+            case 'target-cpa':
+              campaignFields.target_cpa = { target_cpa_micros: String(toMicros(newBidding.targetCpa as number)) }
+              campaignMask.push('target_cpa')
+              break
+            case 'target-roas':
+              campaignFields.target_roas = { target_roas: newBidding.targetRoas as number }
+              campaignMask.push('target_roas')
+              break
+            case 'target-impression-share': {
+              const locationMap: Record<string, number> = { 'anywhere': 2, 'top': 3, 'absolute-top': 4 }
+              campaignFields.target_impression_share = {
+                location: locationMap[newBidding.location as string] ?? 2,
+                location_fraction_micros: String(Math.round((newBidding.targetPercent as number) * 10000)),
+                ...(newBidding.maxCpc ? { cpc_bid_ceiling_micros: String(toMicros(newBidding.maxCpc as number)) } : {}),
+              }
+              campaignMask.push('target_impression_share')
+              break
+            }
+            case 'maximize-conversion-value': {
+              const roas = newBidding.targetRoas as number | undefined
+              campaignFields.maximize_conversion_value = roas ? { target_roas: roas } : {}
+              campaignMask.push('maximize_conversion_value')
+              break
+            }
+          }
+        }
+        if (c.field === 'targeting') {
+          const newTargeting = c.to as { rules: Array<Record<string, unknown>> } | undefined
+          if (newTargeting?.rules) {
+            for (const rule of newTargeting.rules) {
+              if (rule.type === 'device') {
+                const deviceType = DEVICE_TYPE_ENUM[rule.device as string]
+                if (deviceType) {
+                  ops.push({
+                    operation: 'campaign_criterion',
+                    op: 'create',
+                    resource: {
+                      campaign: campaignId,
+                      device: { type: deviceType },
+                      bid_modifier: 1.0 + (rule.bidAdjustment as number),
+                    },
+                  })
+                }
+              }
+            }
+          }
         }
       }
       if (campaignMask.length > 0) {
