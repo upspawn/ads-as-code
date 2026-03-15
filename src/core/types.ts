@@ -164,6 +164,8 @@ export type MetaProviderConfig = {
   readonly pageId: string
   readonly pixelId?: string
   readonly apiVersion?: string
+  /** Account currency code (e.g. 'EUR', 'USD'). If omitted, fetched from the Meta account at runtime. */
+  readonly currency?: string
   readonly dsa?: { readonly beneficiary: string; readonly payor: string }
   readonly credentials?: string
 }

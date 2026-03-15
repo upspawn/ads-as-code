@@ -130,13 +130,14 @@ function mapStatus(apiStatus: string): 'ACTIVE' | 'PAUSED' {
 /**
  * Convert Meta API budget string (cents) to core Budget type.
  * Meta returns budgets as strings in the account currency's smallest unit (cents).
+ * Currency is passed in from the account-level fetch (no longer hardcoded).
  */
-function centsToBudget(cents: string, period: 'daily' | 'lifetime'): Budget {
+function centsToBudget(cents: string, period: 'daily' | 'lifetime', currency: string): Budget {
   const amount = parseInt(cents, 10) / 100
   if (period === 'lifetime') {
-    return { amount, currency: 'EUR', period: 'lifetime', endTime: '' }
+    return { amount, currency: currency as 'EUR' | 'USD', period: 'lifetime', endTime: '' }
   }
-  return { amount, currency: 'EUR', period: 'daily' }
+  return { amount, currency: currency as 'EUR' | 'USD', period: 'daily' }
 }
 
 function mapBidStrategy(apiStrategy: string | undefined, bidAmount: number | undefined): BidStrategy {
@@ -163,7 +164,7 @@ function mapBidStrategy(apiStrategy: string | undefined, bidAmount: number | und
 
 // ─── Campaign Normalization ────────────────────────────────
 
-function normalizeCampaign(raw: MetaApiCampaign, slugOverride?: string): Resource {
+function normalizeCampaign(raw: MetaApiCampaign, currency: string, slugOverride?: string): Resource {
   const path = slugOverride ?? slugify(raw.name)
 
   const properties: Record<string, unknown> = {
@@ -173,9 +174,9 @@ function normalizeCampaign(raw: MetaApiCampaign, slugOverride?: string): Resourc
   }
 
   if (raw.daily_budget) {
-    properties.budget = centsToBudget(raw.daily_budget, 'daily')
+    properties.budget = centsToBudget(raw.daily_budget, 'daily', currency)
   } else if (raw.lifetime_budget) {
-    properties.budget = centsToBudget(raw.lifetime_budget, 'lifetime')
+    properties.budget = centsToBudget(raw.lifetime_budget, 'lifetime', currency)
   }
 
   if (raw.special_ad_categories && raw.special_ad_categories.length > 0) {
@@ -272,7 +273,7 @@ function normalizePlacements(raw: Record<string, unknown>): unknown {
 /** Build a map of campaign ID -> slugified campaign name for path construction */
 type CampaignSlugMap = Map<string, string>
 
-function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap): Resource {
+function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap, currency: string): Resource {
   const campaignSlug = campaignSlugs.get(raw.campaign_id) ?? slugify(raw.campaign?.name ?? raw.campaign_id)
   const adSetSlug = slugify(raw.name)
   const path = `${campaignSlug}/${adSetSlug}`
@@ -298,7 +299,7 @@ function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap): Reso
   properties.bidding = mapBidStrategy(raw.bid_strategy, raw.bid_amount)
 
   if (raw.daily_budget) {
-    properties.budget = centsToBudget(raw.daily_budget, 'daily')
+    properties.budget = centsToBudget(raw.daily_budget, 'daily', currency)
   }
 
   // billingEvent and promotedObject are API-only fields that the SDK
@@ -423,6 +424,13 @@ export async function fetchMetaAll(config: MetaProviderConfig, client?: MetaClie
   const metaClient = client ?? createMetaClient(config)
   const accountId = config.accountId
 
+  // Resolve account currency: use config override, or fetch from account
+  let currency = config.currency
+  if (!currency) {
+    const account = await metaClient.graphGet<{ currency?: string }>(accountId, { fields: 'currency' })
+    currency = account.currency ?? 'EUR'
+  }
+
   // Fetch all three entity types
   const [rawCampaigns, rawAdSets, rawAds] = await Promise.all([
     metaClient.graphGetAll<MetaApiCampaign>(`${accountId}/campaigns`, { fields: CAMPAIGN_FIELDS }),
@@ -452,11 +460,11 @@ export async function fetchMetaAll(config: MetaProviderConfig, client?: MetaClie
 
   const campaigns = rawCampaigns.map((raw) => {
     const slug = campaignSlugs.get(raw.id)!
-    return normalizeCampaign(raw, slug)
+    return normalizeCampaign(raw, currency!, slug)
   })
 
   // Normalize ad sets and build ID -> path map
-  const adSets = rawAdSets.map(raw => normalizeAdSet(raw, campaignSlugs))
+  const adSets = rawAdSets.map(raw => normalizeAdSet(raw, campaignSlugs, currency!))
   const adSetPaths: AdSetPathMap = new Map(
     adSets.map(r => [r.platformId!, r.path]),
   )
