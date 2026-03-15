@@ -171,6 +171,8 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   const ads = resources.filter((r) => r.kind === 'ad')
   const sitelinkResources = resources.filter((r) => r.kind === 'sitelink')
   const calloutResources = resources.filter((r) => r.kind === 'callout')
+  const snippetResources = resources.filter((r) => r.kind === 'structuredSnippet')
+  const callExtResources = resources.filter((r) => r.kind === 'callExtension')
   const negativeResources = resources.filter((r) => r.kind === 'negative')
 
   if (!campaign) {
@@ -426,6 +428,32 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     calloutLine = `  .callouts(${texts.map(quote).join(', ')})`
   }
 
+  // Structured Snippets
+  let snippetLine = ''
+  if (snippetResources.length > 0) {
+    imports.add('snippet')
+    const ssParts: string[] = []
+    for (const ss of snippetResources) {
+      const header = ss.properties.header as string
+      const values = ss.properties.values as string[]
+      ssParts.push(`snippet(${quote(header)}, ${values.map(quote).join(', ')})`)
+    }
+    snippetLine = `  .snippets(\n    ${ssParts.join(',\n    ')},\n  )`
+  }
+
+  // Call Extensions
+  let callExtLine = ''
+  if (callExtResources.length > 0) {
+    imports.add('call')
+    const ceParts: string[] = []
+    for (const ce of callExtResources) {
+      const phone = ce.properties.phoneNumber as string
+      const country = ce.properties.countryCode as string
+      ceParts.push(`call(${quote(phone)}, ${quote(country)})`)
+    }
+    callExtLine = `  .calls(\n    ${ceParts.join(',\n    ')},\n  )`
+  }
+
   // Negatives — campaign-level only (ad-group negatives are emitted inside each group)
   if (campaignLevelNegatives.length > 0) {
     const negParts: string[] = []
@@ -461,6 +489,12 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
 
   // Chain callouts
   if (calloutLine) lines.push(calloutLine)
+
+  // Chain structured snippets
+  if (snippetLine) lines.push(snippetLine)
+
+  // Chain call extensions
+  if (callExtLine) lines.push(callExtLine)
 
   lines.push('')
 

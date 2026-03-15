@@ -1192,3 +1192,105 @@ describe('device bid adjustments', () => {
     expect((tabletOp!.resource as Record<string, unknown>).bid_modifier).toBe(0.5)
   })
 })
+
+// ─── Structured Snippet Create ──────────────────────────────
+
+describe('structured snippet create', () => {
+  test('produces asset + campaign_asset operations', () => {
+    const resource = makeResource('structuredSnippet', 'test/ss:types', {
+      header: 'Types',
+      values: ['Files', 'Folders', 'Documents'],
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+
+    // Should have 2 ops: asset create + campaign_asset link
+    expect(mutations).toHaveLength(2)
+
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.op).toBe('create')
+    expect(assetOp.updateMask).toBeUndefined()
+    expect((assetOp.resource as any).structured_snippet_asset.header).toBe('Types')
+    expect((assetOp.resource as any).structured_snippet_asset.values).toEqual(['Files', 'Folders', 'Documents'])
+
+    const linkOp = mutations.find(m => m.operation === 'campaign_asset')!
+    expect(linkOp.op).toBe('create')
+    expect((linkOp.resource as any).campaign).toBe('customers/123/campaigns/789')
+    expect((linkOp.resource as any).field_type).toBe('STRUCTURED_SNIPPET')
+  })
+})
+
+// ─── Call Extension Create ──────────────────────────────────
+
+describe('call extension create', () => {
+  test('produces asset + campaign_asset operations', () => {
+    const resource = makeResource('callExtension', 'test/call:+1-800-555-0123', {
+      phoneNumber: '+1-800-555-0123',
+      countryCode: 'US',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+
+    // Should have 2 ops: asset create + campaign_asset link
+    expect(mutations).toHaveLength(2)
+
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.op).toBe('create')
+    expect(assetOp.updateMask).toBeUndefined()
+    expect((assetOp.resource as any).call_asset.phone_number).toBe('+1-800-555-0123')
+    expect((assetOp.resource as any).call_asset.country_code).toBe('US')
+
+    const linkOp = mutations.find(m => m.operation === 'campaign_asset')!
+    expect(linkOp.op).toBe('create')
+    expect((linkOp.resource as any).campaign).toBe('customers/123/campaigns/789')
+    expect((linkOp.resource as any).field_type).toBe('CALL')
+  })
+})
+
+// ─── Campaign Asset Linking for Sitelinks + Callouts ────────
+
+describe('sitelink create — campaign asset linking', () => {
+  test('produces asset + campaign_asset operations (two mutations)', () => {
+    const resource = makeResource('sitelink', 'test/sl:pricing', {
+      text: 'Pricing', url: 'https://renamed.to/pricing',
+      description1: 'See plans', description2: 'From $5/mo',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+
+    // Should have 2 ops: asset create + campaign_asset link
+    expect(mutations).toHaveLength(2)
+
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.op).toBe('create')
+    expect((assetOp.resource as any).sitelink_asset.link_text).toBe('Pricing')
+    expect((assetOp.resource as any).final_urls).toEqual(['https://renamed.to/pricing'])
+    // Asset has a temp resource_name for linking
+    expect((assetOp.resource as any).resource_name).toMatch(/^customers\/123\/assets\//)
+
+    const linkOp = mutations.find(m => m.operation === 'campaign_asset')!
+    expect(linkOp.op).toBe('create')
+    expect((linkOp.resource as any).campaign).toBe('customers/123/campaigns/789')
+    expect((linkOp.resource as any).field_type).toBe('SITELINK')
+    // Asset reference uses the same temp resource name
+    expect((linkOp.resource as any).asset).toBe((assetOp.resource as any).resource_name)
+  })
+})
+
+describe('callout create — campaign asset linking', () => {
+  test('produces asset + campaign_asset operations (two mutations)', () => {
+    const resource = makeResource('callout', 'test/co:ai powered', { text: 'AI Powered' })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+
+    // Should have 2 ops: asset create + campaign_asset link
+    expect(mutations).toHaveLength(2)
+
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.op).toBe('create')
+    expect((assetOp.resource as any).callout_asset.callout_text).toBe('AI Powered')
+    expect((assetOp.resource as any).resource_name).toMatch(/^customers\/123\/assets\//)
+
+    const linkOp = mutations.find(m => m.operation === 'campaign_asset')!
+    expect(linkOp.op).toBe('create')
+    expect((linkOp.resource as any).campaign).toBe('customers/123/campaigns/789')
+    expect((linkOp.resource as any).field_type).toBe('CALLOUT')
+    expect((linkOp.resource as any).asset).toBe((assetOp.resource as any).resource_name)
+  })
+})

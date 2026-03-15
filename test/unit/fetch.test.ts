@@ -33,6 +33,8 @@ function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsC
     if (gaql.includes('FROM campaign_criterion')) return Promise.resolve(responses.negatives ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('SITELINK')) return Promise.resolve(responses.sitelinks ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('CALLOUT')) return Promise.resolve(responses.callouts ?? [])
+    if (gaql.includes('FROM campaign_asset') && gaql.includes('STRUCTURED_SNIPPET')) return Promise.resolve(responses.structuredSnippets ?? [])
+    if (gaql.includes('FROM campaign_asset') && gaql.includes("field_type = 'CALL'")) return Promise.resolve(responses.callExtensions ?? [])
     if (gaql.includes('FROM ad_group_criterion')) return Promise.resolve(responses.keywords ?? [])
     if (gaql.includes('FROM ad_group_ad')) return Promise.resolve(responses.ads ?? [])
     if (gaql.includes('FROM ad_group')) return Promise.resolve(responses.adGroups ?? [])
@@ -1100,5 +1102,169 @@ describe('fetchAllState — device bid adjustments', () => {
     expect(deviceRule).toBeDefined()
     expect(deviceRule!.device).toBe('mobile')
     expect(deviceRule!.bidAdjustment).toBeCloseTo(-0.2)
+  })
+})
+
+// ─── fetchExtensions — structured snippets ─────────────────
+
+describe('fetchExtensions — structured snippets', () => {
+  test('normalizes structured snippet rows with snake_case fields', async () => {
+    const snippetRows: GoogleAdsRow[] = [
+      {
+        campaign_asset: { resource_name: 'customers/123/campaignAssets/456~789', asset: 'customers/123/assets/789' },
+        asset: {
+          id: '80001',
+          structured_snippet_asset: {
+            header: 'Types',
+            values: ['Files', 'Folders', 'Documents'],
+          },
+        },
+        campaign: { id: '123456', name: 'Search - PDF Renaming' },
+      },
+    ]
+
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: snippetRows,
+      callExtensions: [],
+    })
+    const resources = await fetchExtensions(client)
+
+    const snippets = resources.filter(r => r.kind === 'structuredSnippet')
+    expect(snippets).toHaveLength(1)
+
+    const first = snippets[0]!
+    expect(first.kind).toBe('structuredSnippet')
+    expect(first.path).toBe('search-pdf-renaming/ss:types')
+    expect(first.platformId).toBe('80001')
+    expect(first.properties.header).toBe('Types')
+    expect(first.properties.values).toEqual(['Files', 'Folders', 'Documents'])
+  })
+
+  test('handles camelCase fields from REST API', async () => {
+    const snippetRows: GoogleAdsRow[] = [
+      {
+        campaignAsset: { resourceName: 'customers/123/campaignAssets/456~789' },
+        asset: {
+          id: '80002',
+          structuredSnippetAsset: {
+            header: 'Brands',
+            values: ['Google Drive', 'Dropbox', 'OneDrive'],
+          },
+        },
+        campaign: { id: '999', name: 'Test Campaign' },
+      },
+    ]
+
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: snippetRows,
+      callExtensions: [],
+    })
+    const resources = await fetchExtensions(client)
+
+    const snippets = resources.filter(r => r.kind === 'structuredSnippet')
+    expect(snippets).toHaveLength(1)
+    expect(snippets[0]!.properties.header).toBe('Brands')
+    expect(snippets[0]!.properties.values).toEqual(['Google Drive', 'Dropbox', 'OneDrive'])
+  })
+
+  test('scopes query by campaignIds', async () => {
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: [],
+      callExtensions: [],
+    })
+    await fetchExtensions(client, ['123456'])
+
+    const calls = (client.query as ReturnType<typeof mock>).mock.calls
+    const ssQuery = calls.find(c => (c[0] as string).includes('STRUCTURED_SNIPPET'))
+    expect(ssQuery).toBeDefined()
+    expect(ssQuery![0] as string).toContain('campaign.id IN (123456)')
+  })
+})
+
+// ─── fetchExtensions — call extensions ─────────────────────
+
+describe('fetchExtensions — call extensions', () => {
+  test('normalizes call extension rows with snake_case fields', async () => {
+    const callRows: GoogleAdsRow[] = [
+      {
+        campaign_asset: { resource_name: 'customers/123/campaignAssets/456~790' },
+        asset: {
+          id: '90001',
+          call_asset: {
+            country_code: 'US',
+            phone_number: '+1-800-555-0123',
+          },
+        },
+        campaign: { id: '123456', name: 'Search - PDF Renaming' },
+      },
+    ]
+
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: [],
+      callExtensions: callRows,
+    })
+    const resources = await fetchExtensions(client)
+
+    const calls = resources.filter(r => r.kind === 'callExtension')
+    expect(calls).toHaveLength(1)
+
+    const first = calls[0]!
+    expect(first.kind).toBe('callExtension')
+    expect(first.path).toBe('search-pdf-renaming/call:+1-800-555-0123')
+    expect(first.platformId).toBe('90001')
+    expect(first.properties.phoneNumber).toBe('+1-800-555-0123')
+    expect(first.properties.countryCode).toBe('US')
+  })
+
+  test('handles camelCase fields from REST API', async () => {
+    const callRows: GoogleAdsRow[] = [
+      {
+        campaignAsset: { resourceName: 'customers/123/campaignAssets/456~791' },
+        asset: {
+          id: '90002',
+          callAsset: {
+            countryCode: 'DE',
+            phoneNumber: '+49-30-1234567',
+          },
+        },
+        campaign: { id: '999', name: 'Test Campaign' },
+      },
+    ]
+
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: [],
+      callExtensions: callRows,
+    })
+    const resources = await fetchExtensions(client)
+
+    const calls = resources.filter(r => r.kind === 'callExtension')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.properties.phoneNumber).toBe('+49-30-1234567')
+    expect(calls[0]!.properties.countryCode).toBe('DE')
+  })
+
+  test('scopes query by campaignIds', async () => {
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: [],
+      structuredSnippets: [],
+      callExtensions: [],
+    })
+    await fetchExtensions(client, ['123456'])
+
+    const queryCalls = (client.query as ReturnType<typeof mock>).mock.calls
+    const callQuery = queryCalls.find(c => (c[0] as string).includes("field_type = 'CALL'"))
+    expect(callQuery).toBeDefined()
+    expect(callQuery![0] as string).toContain('campaign.id IN (123456)')
   })
 })

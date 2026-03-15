@@ -15,6 +15,8 @@ const CREATION_ORDER: ResourceKind[] = [
   'ad',
   'sitelink',
   'callout',
+  'structuredSnippet',
+  'callExtension',
   'negative',
 ]
 
@@ -359,40 +361,128 @@ function buildAdCreate(
 }
 
 function buildSitelinkCreate(
-  _customerId: string,
-  _campaignResourceName: string,
+  customerId: string,
+  campaignResourceName: string,
   resource: Resource,
-): MutateOperation {
+): MutateOperation[] {
   const props = resource.properties
-  return {
-    operation: 'asset',
-    op: 'create',
-    resource: {
-      sitelink_asset: {
-        link_text: props.text,
-        description1: props.description1,
-        description2: props.description2,
+  const tempAssetId = `-${Date.now()}`
+  return [
+    {
+      operation: 'asset',
+      op: 'create',
+      resource: {
+        resource_name: `customers/${customerId}/assets/${tempAssetId}`,
+        sitelink_asset: {
+          link_text: props.text,
+          description1: props.description1,
+          description2: props.description2,
+        },
+        final_urls: [props.url],
       },
-      final_urls: [props.url],
     },
-  }
+    {
+      operation: 'campaign_asset',
+      op: 'create',
+      resource: {
+        campaign: campaignResourceName,
+        asset: `customers/${customerId}/assets/${tempAssetId}`,
+        field_type: 'SITELINK',
+      },
+    },
+  ]
 }
 
 function buildCalloutCreate(
-  _customerId: string,
-  _campaignResourceName: string,
+  customerId: string,
+  campaignResourceName: string,
   resource: Resource,
-): MutateOperation {
+): MutateOperation[] {
   const props = resource.properties
-  return {
-    operation: 'asset',
-    op: 'create',
-    resource: {
-      callout_asset: {
-        callout_text: props.text,
+  const tempAssetId = `-${Date.now() + 1}`
+  return [
+    {
+      operation: 'asset',
+      op: 'create',
+      resource: {
+        resource_name: `customers/${customerId}/assets/${tempAssetId}`,
+        callout_asset: {
+          callout_text: props.text,
+        },
       },
     },
-  }
+    {
+      operation: 'campaign_asset',
+      op: 'create',
+      resource: {
+        campaign: campaignResourceName,
+        asset: `customers/${customerId}/assets/${tempAssetId}`,
+        field_type: 'CALLOUT',
+      },
+    },
+  ]
+}
+
+function buildStructuredSnippetCreate(
+  customerId: string,
+  campaignResourceName: string,
+  resource: Resource,
+): MutateOperation[] {
+  const props = resource.properties
+  const tempAssetId = `-${Date.now() + 2}`
+  return [
+    {
+      operation: 'asset',
+      op: 'create',
+      resource: {
+        resource_name: `customers/${customerId}/assets/${tempAssetId}`,
+        structured_snippet_asset: {
+          header: props.header,
+          values: props.values,
+        },
+      },
+    },
+    {
+      operation: 'campaign_asset',
+      op: 'create',
+      resource: {
+        campaign: campaignResourceName,
+        asset: `customers/${customerId}/assets/${tempAssetId}`,
+        field_type: 'STRUCTURED_SNIPPET',
+      },
+    },
+  ]
+}
+
+function buildCallExtensionCreate(
+  customerId: string,
+  campaignResourceName: string,
+  resource: Resource,
+): MutateOperation[] {
+  const props = resource.properties
+  const tempAssetId = `-${Date.now() + 3}`
+  return [
+    {
+      operation: 'asset',
+      op: 'create',
+      resource: {
+        resource_name: `customers/${customerId}/assets/${tempAssetId}`,
+        call_asset: {
+          country_code: props.countryCode,
+          phone_number: props.phoneNumber,
+        },
+      },
+    },
+    {
+      operation: 'campaign_asset',
+      op: 'create',
+      resource: {
+        campaign: campaignResourceName,
+        asset: `customers/${customerId}/assets/${tempAssetId}`,
+        field_type: 'CALL',
+      },
+    },
+  ]
 }
 
 // ─── Delete Builders ────────────────────────────────────────
@@ -801,7 +891,7 @@ function buildCreateMutations(
       const campaignResourceName = campaignPlatformId
         ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
-      ops.push(buildSitelinkCreate(customerId, campaignResourceName, resource))
+      ops.push(...buildSitelinkCreate(customerId, campaignResourceName, resource))
       break
     }
 
@@ -811,7 +901,27 @@ function buildCreateMutations(
       const campaignResourceName = campaignPlatformId
         ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
-      ops.push(buildCalloutCreate(customerId, campaignResourceName, resource))
+      ops.push(...buildCalloutCreate(customerId, campaignResourceName, resource))
+      break
+    }
+
+    case 'structuredSnippet': {
+      const campaignPath = extractCampaignPath(resource.path)
+      const campaignPlatformId = resourceMap.get(campaignPath)
+      const campaignResourceName = campaignPlatformId
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
+        : `customers/${customerId}/campaigns/-1`
+      ops.push(...buildStructuredSnippetCreate(customerId, campaignResourceName, resource))
+      break
+    }
+
+    case 'callExtension': {
+      const campaignPath = extractCampaignPath(resource.path)
+      const campaignPlatformId = resourceMap.get(campaignPath)
+      const campaignResourceName = campaignPlatformId
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
+        : `customers/${customerId}/campaigns/-1`
+      ops.push(...buildCallExtensionCreate(customerId, campaignResourceName, resource))
       break
     }
 

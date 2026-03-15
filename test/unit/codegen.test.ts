@@ -955,6 +955,121 @@ describe('generateCampaignFile — ad group negatives', () => {
   })
 })
 
+// ─── Structured Snippets ─────────────────────────────────
+
+describe('generateCampaignFile() with structured snippets', () => {
+  const resources: Resource[] = [
+    {
+      kind: 'campaign',
+      path: 'search-snippet-test',
+      properties: {
+        name: 'Search - Snippet Test',
+        status: 'enabled',
+        budget: { amount: 10, currency: 'EUR', period: 'daily' },
+        bidding: { type: 'maximize-conversions' },
+        targeting: { rules: [] },
+      },
+    },
+    {
+      kind: 'adGroup',
+      path: 'search-snippet-test/core',
+      properties: { status: 'enabled', targeting: undefined },
+    },
+    {
+      kind: 'keyword',
+      path: 'search-snippet-test/core/kw:test:EXACT',
+      properties: { text: 'test', matchType: 'EXACT' },
+    },
+    {
+      kind: 'ad',
+      path: 'search-snippet-test/core/rsa:xyz',
+      properties: {
+        headlines: ['Test', 'Test 2', 'Test 3'],
+        descriptions: ['Desc 1', 'Desc 2'],
+        finalUrl: 'https://www.renamed.to',
+      },
+    },
+    {
+      kind: 'structuredSnippet',
+      path: 'search-snippet-test/ss:types',
+      properties: {
+        header: 'Types',
+        values: ['Files', 'Folders', 'Documents'],
+      },
+    },
+  ]
+
+  const output = generateCampaignFile(resources, 'Search - Snippet Test')
+
+  test('generates .snippets() chain', () => {
+    expect(output).toContain('.snippets(')
+    expect(output).toContain("snippet('Types'")
+    expect(output).toContain("'Files'")
+    expect(output).toContain("'Folders'")
+    expect(output).toContain("'Documents'")
+  })
+
+  test('imports snippet helper', () => {
+    expect(output).toMatch(/import \{[^}]*snippet[^}]*\} from '@upspawn\/ads'/)
+  })
+})
+
+// ─── Call Extensions ─────────────────────────────────────
+
+describe('generateCampaignFile() with call extensions', () => {
+  const resources: Resource[] = [
+    {
+      kind: 'campaign',
+      path: 'search-call-test',
+      properties: {
+        name: 'Search - Call Test',
+        status: 'enabled',
+        budget: { amount: 10, currency: 'EUR', period: 'daily' },
+        bidding: { type: 'maximize-conversions' },
+        targeting: { rules: [] },
+      },
+    },
+    {
+      kind: 'adGroup',
+      path: 'search-call-test/core',
+      properties: { status: 'enabled', targeting: undefined },
+    },
+    {
+      kind: 'keyword',
+      path: 'search-call-test/core/kw:test:EXACT',
+      properties: { text: 'test', matchType: 'EXACT' },
+    },
+    {
+      kind: 'ad',
+      path: 'search-call-test/core/rsa:xyz',
+      properties: {
+        headlines: ['Test', 'Test 2', 'Test 3'],
+        descriptions: ['Desc 1', 'Desc 2'],
+        finalUrl: 'https://www.renamed.to',
+      },
+    },
+    {
+      kind: 'callExtension',
+      path: 'search-call-test/call:+1-800-555-0123',
+      properties: {
+        phoneNumber: '+1-800-555-0123',
+        countryCode: 'US',
+      },
+    },
+  ]
+
+  const output = generateCampaignFile(resources, 'Search - Call Test')
+
+  test('generates .calls() chain', () => {
+    expect(output).toContain('.calls(')
+    expect(output).toContain("call('+1-800-555-0123', 'US')")
+  })
+
+  test('imports call helper', () => {
+    expect(output).toMatch(/import \{[^}]*call[^}]*\} from '@upspawn\/ads'/)
+  })
+})
+
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {

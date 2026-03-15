@@ -487,6 +487,34 @@ WHERE campaign_asset.field_type = 'CALLOUT'
   AND campaign_asset.status != 'REMOVED'
 `.trim()
 
+const STRUCTURED_SNIPPET_QUERY = `
+SELECT
+  campaign_asset.resource_name,
+  campaign_asset.asset,
+  asset.id,
+  asset.structured_snippet_asset.header,
+  asset.structured_snippet_asset.values,
+  campaign.id,
+  campaign.name
+FROM campaign_asset
+WHERE campaign_asset.field_type = 'STRUCTURED_SNIPPET'
+  AND campaign_asset.status != 'REMOVED'
+`.trim()
+
+const CALL_QUERY = `
+SELECT
+  campaign_asset.resource_name,
+  campaign_asset.asset,
+  asset.id,
+  asset.call_asset.country_code,
+  asset.call_asset.phone_number,
+  campaign.id,
+  campaign.name
+FROM campaign_asset
+WHERE campaign_asset.field_type = 'CALL'
+  AND campaign_asset.status != 'REMOVED'
+`.trim()
+
 export async function fetchExtensions(
   client: GoogleAdsClient,
   campaignIds?: string[],
@@ -543,6 +571,54 @@ export async function fetchExtensions(
 
     resources.push(resource('callout', path, {
       text: calloutText,
+    }, assetId))
+  }
+
+  // Structured Snippets
+  let ssQuery = STRUCTURED_SNIPPET_QUERY
+  if (campaignIds?.length) {
+    ssQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+  const ssRows = await client.query(ssQuery)
+  for (const row of ssRows) {
+    const asset = row.asset as Record<string, unknown> | undefined
+    const snippetAsset = (asset?.structured_snippet_asset ?? asset?.structuredSnippetAsset) as Record<string, unknown> | undefined
+    const campaign = row.campaign as Record<string, unknown> | undefined
+
+    const assetId = str(asset?.id)
+    const header = str(snippetAsset?.header)
+    const values = (snippetAsset?.values ?? []) as string[]
+    const campaignName = str(campaign?.name)
+    const campaignPath = slugify(campaignName)
+    const path = `${campaignPath}/ss:${header.toLowerCase()}`
+
+    resources.push(resource('structuredSnippet', path, {
+      header,
+      values,
+    }, assetId))
+  }
+
+  // Call Extensions
+  let callQuery = CALL_QUERY
+  if (campaignIds?.length) {
+    callQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+  const callRows = await client.query(callQuery)
+  for (const row of callRows) {
+    const asset = row.asset as Record<string, unknown> | undefined
+    const callAsset = (asset?.call_asset ?? asset?.callAsset) as Record<string, unknown> | undefined
+    const campaign = row.campaign as Record<string, unknown> | undefined
+
+    const assetId = str(asset?.id)
+    const phoneNumber = str(callAsset?.phone_number ?? callAsset?.phoneNumber)
+    const countryCode = str(callAsset?.country_code ?? callAsset?.countryCode)
+    const campaignName = str(campaign?.name)
+    const campaignPath = slugify(campaignName)
+    const path = `${campaignPath}/call:${phoneNumber}`
+
+    resources.push(resource('callExtension', path, {
+      phoneNumber,
+      countryCode,
     }, assetId))
   }
 

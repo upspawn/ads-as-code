@@ -122,6 +122,28 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     }
   }
 
+  // 4b. Extensions — structured snippets
+  if (campaign.extensions?.structuredSnippets) {
+    for (const ss of campaign.extensions.structuredSnippets) {
+      const ssPath = `${campaignPath}/ss:${ss.header.toLowerCase()}`
+      resources.push(resource('structuredSnippet', ssPath, {
+        header: ss.header,
+        values: ss.values,
+      }))
+    }
+  }
+
+  // 4c. Extensions — call extensions
+  if (campaign.extensions?.calls) {
+    for (const ce of campaign.extensions.calls) {
+      const cePath = `${campaignPath}/call:${ce.phoneNumber}`
+      resources.push(resource('callExtension', cePath, {
+        phoneNumber: ce.phoneNumber,
+        countryCode: ce.countryCode,
+      }))
+    }
+  }
+
   // 5. Campaign-level negatives
   for (const neg of campaign.negatives) {
     const negPath = `${campaignPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`

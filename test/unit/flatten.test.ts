@@ -703,3 +703,47 @@ describe('flattenAll()', () => {
     expect(flattenAll([])).toEqual([])
   })
 })
+
+// ─── Structured Snippets ─────────────────────────────────
+
+describe('flatten — structured snippets', () => {
+  test('flattens campaign with structured snippets', () => {
+    const campaign = makeCampaign({
+      extensions: {
+        structuredSnippets: [
+          { header: 'Types', values: ['Files', 'Folders', 'Documents'] },
+          { header: 'Brands', values: ['Google Drive', 'Dropbox', 'OneDrive'] },
+        ],
+      },
+    })
+    const resources = flatten(campaign)
+    const snippets = resources.filter(r => r.kind === 'structuredSnippet')
+
+    expect(snippets).toHaveLength(2)
+    expect(snippets[0]!.path).toBe('search-pdf-renaming/ss:types')
+    expect(snippets[0]!.properties.header).toBe('Types')
+    expect(snippets[0]!.properties.values).toEqual(['Files', 'Folders', 'Documents'])
+    expect(snippets[1]!.path).toBe('search-pdf-renaming/ss:brands')
+  })
+})
+
+// ─── Call Extensions ─────────────────────────────────────
+
+describe('flatten — call extensions', () => {
+  test('flattens campaign with call extensions', () => {
+    const campaign = makeCampaign({
+      extensions: {
+        calls: [
+          { phoneNumber: '+1-800-555-0123', countryCode: 'US' },
+        ],
+      },
+    })
+    const resources = flatten(campaign)
+    const calls = resources.filter(r => r.kind === 'callExtension')
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.path).toBe('search-pdf-renaming/call:+1-800-555-0123')
+    expect(calls[0]!.properties.phoneNumber).toBe('+1-800-555-0123')
+    expect(calls[0]!.properties.countryCode).toBe('US')
+  })
+})
