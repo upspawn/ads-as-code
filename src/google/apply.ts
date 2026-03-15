@@ -142,10 +142,11 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
-  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 9=SMART, 10=PERFORMANCE_MAX, 14=DEMAND_GEN
+  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 7=MULTI_CHANNEL (App), 9=SMART, 10=PERFORMANCE_MAX, 14=DEMAND_GEN
   const channelTypeStr = props.channelType as string | undefined
   const channelType = channelTypeStr === 'display' ? 3
     : channelTypeStr === 'shopping' ? 4
+    : channelTypeStr === 'app' ? 7
     : channelTypeStr === 'smart' ? 9
     : channelTypeStr === 'performance-max' ? 10
     : channelTypeStr === 'demand-gen' ? 14
@@ -236,6 +237,24 @@ function buildCampaignCreate(
     if (props.finalUrl) smartSetting.final_url = props.finalUrl
     if (props.language) smartSetting.advertising_language_code = props.language
     campaign.smart_campaign_setting = smartSetting
+  }
+
+  // App campaign settings
+  if (channelTypeStr === 'app') {
+    const appStoreEnum = (props.appStore as string) === 'apple' ? 3 : 2 // 2=GOOGLE_APP_STORE, 3=APPLE_APP_STORE
+    campaign.app_campaign_setting = {
+      app_id: props.appId,
+      app_store: appStoreEnum,
+    }
+    // Sub type based on goal
+    const goal = props.goal as string | undefined
+    if (goal === 'in-app-actions') {
+      campaign.advertising_channel_sub_type = 3 // APP_CAMPAIGN_FOR_ENGAGEMENT
+    } else if (goal === 'pre-registration') {
+      campaign.advertising_channel_sub_type = 5 // APP_CAMPAIGN_FOR_PRE_REGISTRATION
+    } else {
+      campaign.advertising_channel_sub_type = 2 // APP_CAMPAIGN
+    }
   }
 
   // Dates

@@ -89,6 +89,9 @@ export type {
   GoogleSmartCampaign,
   SmartCampaignAd,
   SmartCampaignInput,
+  GoogleAppCampaign,
+  AppAdInfo,
+  AppCampaignInput,
 } from './google/types.ts'
 
 export type {
@@ -128,7 +131,7 @@ export {
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   placements, topics, contentKeywords,
-  headlines, descriptions, rsa, smartAd,
+  headlines, descriptions, rsa, smartAd, appAd,
   responsiveDisplay,
   demandGenMultiAsset, demandGenCarousel, carouselCard,
   link, sitelinks, callouts, snippet, call, price, promotion, image,

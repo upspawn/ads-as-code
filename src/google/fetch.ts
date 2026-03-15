@@ -196,6 +196,7 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     : channelTypeStr === 'SHOPPING' ? 'shopping'
     : channelTypeStr === 'DEMAND_GEN' ? 'demand-gen'
     : channelTypeStr === 'SMART' ? 'smart'
+    : channelTypeStr === 'MULTI_CHANNEL' ? 'app'
     : undefined // Search and other types don't set channelType (preserves existing behavior)
 
   // Network settings: support both snake_case (gRPC) and camelCase (REST)

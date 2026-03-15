@@ -1,7 +1,7 @@
 export { exact, phrase, broad, keywords } from './keywords.ts'
 export { daily, monthly, lifetime, eur, usd } from './budget.ts'
 export { geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting, audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch, placements, topics, contentKeywords } from './targeting.ts'
-export { headlines, descriptions, rsa, smartAd } from './ads.ts'
+export { headlines, descriptions, rsa, smartAd, appAd } from './ads.ts'
 export type { RSAOptions } from './ads.ts'
 export { responsiveDisplay } from './display-ads.ts'
 export { demandGenMultiAsset, demandGenCarousel, carouselCard } from './demand-gen-ads.ts'

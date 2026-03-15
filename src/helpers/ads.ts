@@ -1,5 +1,5 @@
 import type { Headline, Description } from '../core/types.ts'
-import type { RSAd, PinnedHeadline, PinnedDescription, SmartCampaignAd } from '../google/types.ts'
+import type { RSAd, PinnedHeadline, PinnedDescription, SmartCampaignAd, AppAdInfo } from '../google/types.ts'
 
 const HEADLINE_MAX = 30
 const DESCRIPTION_MAX = 90
@@ -144,4 +144,16 @@ export function rsa(
  */
 export function smartAd(config: { headlines: [string, string, string]; descriptions: [string, string] }): SmartCampaignAd {
   return { type: 'smart' as const, ...config }
+}
+
+/**
+ * Build an App Campaign ad from headlines, descriptions, and optional media.
+ *
+ * App campaigns allow up to 5 headlines (max 30 chars) and 5 descriptions (max 90 chars).
+ *
+ * @param config - Headlines, descriptions, and optional images/videos
+ * @returns An AppAdInfo definition
+ */
+export function appAd(config: Omit<AppAdInfo, 'type'>): AppAdInfo {
+  return { type: 'app' as const, ...config }
 }

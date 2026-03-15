@@ -534,7 +534,46 @@ export type SmartCampaignInput = {
   readonly ad: SmartCampaignAd
 }
 
+// === App Campaign ===
+
+export type AppAdInfo = {
+  readonly type: 'app'
+  readonly headlines: string[]    // max 5, each max 30 chars
+  readonly descriptions: string[] // max 5, each max 90 chars
+  readonly images?: ImageRef[]
+  readonly videos?: string[]      // YouTube URLs
+}
+
+export type GoogleAppCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'app'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy
+  readonly targeting: Targeting
+  readonly appId: string
+  readonly appStore: 'google' | 'apple'
+  readonly goal: 'installs' | 'in-app-actions' | 'pre-registration'
+  readonly ad: AppAdInfo
+  readonly startDate?: string
+  readonly endDate?: string
+}
+
+export type AppCampaignInput = {
+  readonly budget: Budget
+  readonly bidding: BiddingInput
+  readonly targeting?: Targeting
+  readonly status?: 'enabled' | 'paused'
+  readonly appId: string
+  readonly appStore: 'google' | 'apple'
+  readonly goal?: 'installs' | 'in-app-actions' | 'pre-registration'
+  readonly ad: AppAdInfo
+  readonly startDate?: string
+  readonly endDate?: string
+}
+
 // === Campaign union (extensible for Meta) ===
 
-export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign
-export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign

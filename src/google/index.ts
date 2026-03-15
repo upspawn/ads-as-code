@@ -23,6 +23,8 @@ import type {
   GoogleSearchCampaignUnresolved,
   GoogleShoppingCampaign,
   GoogleSmartCampaign,
+  GoogleAppCampaign,
+  AppCampaignInput,
   ImageExtension,
   PMaxCampaignBuilder,
   PMaxCampaignInput,
@@ -686,6 +688,38 @@ export const google = {
       language: input.language ?? 'en',
       keywordThemes: input.keywordThemes,
       ad: input.ad,
+    }
+  },
+
+  /**
+   * Create a Google App campaign.
+   *
+   * App campaigns drive app installs/engagement across Search, Display,
+   * YouTube, and Play Store. Google's AI assembles ads from the provided
+   * headlines, descriptions, images, and videos.
+   *
+   * App campaigns are flat — no `.group()` chaining. The campaign
+   * object is returned directly.
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration
+   * @returns A GoogleAppCampaign object (not a builder)
+   */
+  app(name: string, input: AppCampaignInput): GoogleAppCampaign {
+    return {
+      provider: 'google',
+      kind: 'app',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      bidding: normalizeBidding(input.bidding),
+      targeting: input.targeting ?? { rules: [] },
+      appId: input.appId,
+      appStore: input.appStore,
+      goal: input.goal ?? 'installs',
+      ad: input.ad,
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
     }
   },
 }
