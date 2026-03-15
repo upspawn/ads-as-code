@@ -16,6 +16,7 @@ Commands:
   pull          Pull live state and detect drift from code
   status        Show current platform state
   history       Show operation history
+  optimize      AI-powered campaign optimization analysis
   doctor        Run diagnostic checks on project setup
   cache         Manage the local cache (clear, stats)
   diff          Compare local vs platform state (not implemented yet)
@@ -84,6 +85,11 @@ async function main() {
     case 'apply': {
       const { runApplyCommand } = await import('./apply.ts')
       await runApplyCommand(args.slice(1), flags)
+      break
+    }
+    case 'optimize': {
+      const { runOptimize } = await import('./optimize.ts')
+      await runOptimize(args.slice(1), flags)
       break
     }
     case 'pull': {
