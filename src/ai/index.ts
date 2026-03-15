@@ -66,6 +66,7 @@ export {
   compileKeywordsPrompt,
   compileMetaCopyPrompt,
   compileInterestsPrompt,
+  compileJudgePrompt,
 } from './prompt.ts'
 
-export type { RsaPromptContext, MetaPromptContext } from './prompt.ts'
+export type { PromptContext, RsaPromptContext, MetaPromptContext } from './prompt.ts'

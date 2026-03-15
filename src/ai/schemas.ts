@@ -17,7 +17,7 @@ export type RsaOutput = z.infer<typeof rsaSchema>
 export const keywordsSchema = z.object({
   keywords: z.array(z.object({
     text: z.string(),
-    matchType: z.enum(['EXACT', 'PHRASE', 'BROAD']),
+    match: z.enum(['exact', 'phrase', 'broad']),
   })),
 })
 

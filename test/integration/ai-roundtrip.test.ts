@@ -40,13 +40,13 @@ const keywordsResponse = {
 /**
  * Mock generateObject that returns RSA or keyword results based on schema shape.
  *
- * Differentiates by checking for "Google Ads RSA constraints" in the prompt
- * (appended by compileRsaPrompt) vs "Google Ads keyword guidance"
+ * Differentiates by checking for "RSA ad copy constraints" in the prompt
+ * (appended by compileRsaPrompt) vs "Google Ads keyword generation guidance"
  * (appended by compileKeywordsPrompt). These are always present because
  * the prompt compiler appends constraint blocks.
  */
 const mockGenerateObject: GenerateObjectFn = async (opts) => {
-  const isRsa = opts.prompt.includes('Google Ads RSA constraints')
+  const isRsa = opts.prompt.includes('RSA ad copy constraints')
   return {
     object: isRsa ? rsaResponse : keywordsResponse,
     usage: { promptTokens: 100, completionTokens: 50 },

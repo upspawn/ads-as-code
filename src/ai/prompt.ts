@@ -3,14 +3,25 @@
 // Pure functions — no side effects, no API calls.
 
 import type { InterestsMarker, MetaCopyMarker, RsaMarker, KeywordsMarker } from './types.ts'
+import type { Keyword } from '../core/types.ts'
 
 // ─── Context Types ─────────────────────────────────────────
 
-export type RsaPromptContext = {
+/**
+ * Context for Google Ads prompt compilation.
+ *
+ * Used by both RSA and keywords prompt compilers to inject campaign/group
+ * context and existing keywords into the LLM prompt.
+ */
+export type PromptContext = {
   readonly campaignName?: string
-  readonly adGroupKey?: string
+  readonly groupKey?: string
+  readonly keywords?: readonly Keyword[]
   readonly defaultJudge?: string
 }
+
+/** Alias for backward compatibility with code that uses the RSA-specific name. */
+export type RsaPromptContext = PromptContext
 
 export type MetaPromptContext = {
   readonly campaignName?: string
@@ -75,6 +86,13 @@ function resolveJudge(markerJudge?: string, defaultJudge?: string): string | und
   return markerJudge ?? defaultJudge
 }
 
+/** Build a block listing existing keywords for context injection. */
+function keywordLines(keywords?: readonly Keyword[]): string {
+  if (!keywords || keywords.length === 0) return ''
+  const items = keywords.map((kw) => `- ${kw.text} (${kw.matchType})`).join('\n')
+  return `Existing keywords:\n${items}`
+}
+
 /** Assemble final prompt from sections, filtering out empty ones. */
 function assemble(sections: string[]): string {
   return sections.filter(Boolean).join('\n\n')
@@ -85,16 +103,18 @@ function assemble(sections: string[]): string {
 /**
  * Compile an RSA marker + runtime context into a final LLM prompt string.
  */
-export function compileRsaPrompt(marker: RsaMarker, context: RsaPromptContext = {}): string {
-  const ctx = contextLines(context.campaignName, context.adGroupKey)
+export function compileRsaPrompt(marker: RsaMarker, context: PromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.groupKey)
   const stLines = structuredLines(marker.structured)
   const judge = resolveJudge(marker.judge, context.defaultJudge)
+  const kwLines = keywordLines(context.keywords)
 
   return assemble([
     marker.prompt,
     RSA_CONSTRAINTS,
     ctx.length > 0 ? ctx.join('\n') : '',
     stLines.length > 0 ? stLines.join('\n') : '',
+    kwLines,
     judge ? `Judge criteria: ${judge}` : '',
   ])
 }
@@ -104,13 +124,15 @@ export function compileRsaPrompt(marker: RsaMarker, context: RsaPromptContext = 
 /**
  * Compile a keywords marker + runtime context into a final LLM prompt string.
  */
-export function compileKeywordsPrompt(marker: KeywordsMarker, context: RsaPromptContext = {}): string {
-  const ctx = contextLines(context.campaignName, context.adGroupKey)
+export function compileKeywordsPrompt(marker: KeywordsMarker, context: PromptContext = {}): string {
+  const ctx = contextLines(context.campaignName, context.groupKey)
+  const kwLines = keywordLines(context.keywords)
 
   return assemble([
     marker.prompt,
     KEYWORDS_CONSTRAINTS,
     ctx.length > 0 ? ctx.join('\n') : '',
+    kwLines,
   ])
 }
 
@@ -146,4 +168,22 @@ export function compileInterestsPrompt(marker: InterestsMarker, context: MetaPro
     INTERESTS_CONSTRAINTS,
     ctx.length > 0 ? ctx.join('\n') : '',
   ])
+}
+
+// ─── Judge Prompt ─────────────────────────────────────────
+
+/**
+ * Merge local judge prompt with global default judge prompt.
+ *
+ * Global comes first, local is appended. Returns undefined if both are empty.
+ */
+export function compileJudgePrompt(localJudge?: string, defaultJudge?: string): string | undefined {
+  const global = defaultJudge?.trim() || ''
+  const local = localJudge?.trim() || ''
+
+  if (!global && !local) return undefined
+  if (!global) return local
+  if (!local) return global
+
+  return `${global}\n\n${local}`
 }

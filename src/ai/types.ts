@@ -4,11 +4,19 @@
 
 /**
  * Base marker shape. Every AI marker carries a discriminated `type` field
- * and an `__ai` brand so the diff/flatten layers can detect them.
+ * and a `__brand` tag so the diff/flatten layers can detect them.
  */
 export type AiMarker = {
-  readonly __ai: true
+  readonly __brand: 'ai-marker'
   readonly type: string
+}
+
+/**
+ * AI configuration passed to generation functions.
+ */
+export type AiConfig = {
+  readonly model: unknown
+  readonly judge?: { prompt: string }
 }
 
 // ─── Google RSA Markers ────────────────────────────────────
@@ -49,12 +57,12 @@ export type InterestsMarker = AiMarker & {
 
 // ─── Type Guards ───────────────────────────────────────────
 
-function isAiMarker(value: unknown): value is AiMarker {
+export function isAiMarker(value: unknown): value is AiMarker {
   return (
     typeof value === 'object' &&
     value !== null &&
-    '__ai' in value &&
-    (value as AiMarker).__ai === true
+    '__brand' in value &&
+    (value as AiMarker).__brand === 'ai-marker'
   )
 }
 

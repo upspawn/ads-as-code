@@ -25,7 +25,7 @@ import {
 describe('metaCopyMarker()', () => {
   test('creates marker from string input', () => {
     const marker = metaCopyMarker('Write a Meta ad for Acme')
-    expect(marker.__ai).toBe(true)
+    expect(marker.__brand).toBe('ai-marker')
     expect(marker.type).toBe('meta-copy')
     expect(marker.prompt).toBe('Write a Meta ad for Acme')
     expect(marker.structured).toBeUndefined()
@@ -77,7 +77,7 @@ describe('metaCopyMarker()', () => {
 describe('interestsMarker()', () => {
   test('creates marker from prompt', () => {
     const marker = interestsMarker('Interests for SaaS targeting')
-    expect(marker.__ai).toBe(true)
+    expect(marker.__brand).toBe('ai-marker')
     expect(marker.type).toBe('interests')
     expect(marker.prompt).toBe('Interests for SaaS targeting')
   })
@@ -110,8 +110,8 @@ describe('type guards', () => {
     expect(isMetaCopyMarker(null)).toBe(false)
     expect(isMetaCopyMarker(undefined)).toBe(false)
     expect(isMetaCopyMarker('string')).toBe(false)
-    expect(isMetaCopyMarker({ type: 'meta-copy' })).toBe(false) // missing __ai
-    expect(isMetaCopyMarker({ __ai: false, type: 'meta-copy' })).toBe(false) // __ai not true
+    expect(isMetaCopyMarker({ type: 'meta-copy' })).toBe(false) // missing __brand
+    expect(isMetaCopyMarker({ __brand: 'other', type: 'meta-copy' })).toBe(false) // __brand not 'ai-marker'
   })
 
   test('isInterestsMarker identifies interests markers', () => {
@@ -127,7 +127,7 @@ describe('type guards', () => {
   test('isInterestsMarker rejects non-marker values', () => {
     expect(isInterestsMarker(null)).toBe(false)
     expect(isInterestsMarker(42)).toBe(false)
-    expect(isInterestsMarker({ __ai: true, type: 'keywords' })).toBe(false)
+    expect(isInterestsMarker({ __brand: 'ai-marker', type: 'keywords' })).toBe(false)
   })
 
   test('isRsaMarker does not false-positive on meta markers', () => {

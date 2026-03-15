@@ -11,7 +11,7 @@ import type {
 // ─── Input Types ───────────────────────────────────────────
 
 export type RsaMarkerInput = {
-  readonly prompt: string
+  readonly prompt?: string
   readonly product?: string
   readonly audience?: string
   readonly tone?: string
@@ -19,7 +19,7 @@ export type RsaMarkerInput = {
 }
 
 export type MetaCopyMarkerInput = {
-  readonly prompt: string
+  readonly prompt?: string
   readonly product?: string
   readonly audience?: string
   readonly tone?: string
@@ -39,6 +39,18 @@ function buildStructured(input: { product?: string; audience?: string; tone?: st
   } as const
 }
 
+/** Compose a prompt from structured fields when no explicit prompt is given. */
+function composeStructuredPrompt(
+  input: { product?: string; audience?: string; tone?: string },
+  defaultPrompt: string,
+): string {
+  const parts: string[] = []
+  if (input.product) parts.push(`Product: ${input.product}`)
+  if (input.audience) parts.push(`Audience: ${input.audience}`)
+  if (input.tone) parts.push(`Tone: ${input.tone}`)
+  return parts.length > 0 ? `${defaultPrompt} — ${parts.join(', ')}` : defaultPrompt
+}
+
 // ─── Google RSA ────────────────────────────────────────────
 
 const DEFAULT_RSA_PROMPT = 'Generate RSA ad copy'
@@ -50,14 +62,15 @@ const DEFAULT_RSA_PROMPT = 'Generate RSA ad copy'
  */
 export function rsaMarker(input: string | RsaMarkerInput): RsaMarker {
   if (typeof input === 'string') {
-    return Object.freeze({ __ai: true as const, type: 'rsa' as const, prompt: input || DEFAULT_RSA_PROMPT })
+    return Object.freeze({ __brand: 'ai-marker' as const, type: 'rsa' as const, prompt: input || DEFAULT_RSA_PROMPT })
   }
 
   const structured = buildStructured(input)
+  const prompt = input.prompt || composeStructuredPrompt(input, DEFAULT_RSA_PROMPT)
   return Object.freeze({
-    __ai: true as const,
+    __brand: 'ai-marker' as const,
     type: 'rsa' as const,
-    prompt: input.prompt || DEFAULT_RSA_PROMPT,
+    prompt,
     ...(structured !== undefined && { structured }),
     ...(input.judge !== undefined && { judge: input.judge }),
   })
@@ -70,7 +83,7 @@ export function rsaMarker(input: string | RsaMarkerInput): RsaMarker {
  */
 export function keywordsMarker(prompt: string): KeywordsMarker {
   return Object.freeze({
-    __ai: true as const,
+    __brand: 'ai-marker' as const,
     type: 'keywords' as const,
     prompt,
   })
@@ -87,14 +100,15 @@ const DEFAULT_META_COPY_PROMPT = 'Generate Meta ad copy'
  */
 export function metaCopyMarker(input: string | MetaCopyMarkerInput): MetaCopyMarker {
   if (typeof input === 'string') {
-    return Object.freeze({ __ai: true as const, type: 'meta-copy' as const, prompt: input || DEFAULT_META_COPY_PROMPT })
+    return Object.freeze({ __brand: 'ai-marker' as const, type: 'meta-copy' as const, prompt: input || DEFAULT_META_COPY_PROMPT })
   }
 
   const structured = buildStructured(input)
+  const prompt = input.prompt || composeStructuredPrompt(input, DEFAULT_META_COPY_PROMPT)
   return Object.freeze({
-    __ai: true as const,
+    __brand: 'ai-marker' as const,
     type: 'meta-copy' as const,
-    prompt: input.prompt || DEFAULT_META_COPY_PROMPT,
+    prompt,
     ...(structured !== undefined && { structured }),
     ...(input.judge !== undefined && { judge: input.judge }),
   })
@@ -107,7 +121,7 @@ export function metaCopyMarker(input: string | MetaCopyMarkerInput): MetaCopyMar
  */
 export function interestsMarker(prompt: string): InterestsMarker {
   return Object.freeze({
-    __ai: true as const,
+    __brand: 'ai-marker' as const,
     type: 'interests' as const,
     prompt,
   })

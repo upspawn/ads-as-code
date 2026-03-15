@@ -533,7 +533,7 @@ describe('Meta default resolution (minimal campaign)', () => {
 // ─── Task 29, Step 4: Validation Test ────────────────────
 
 describe('Meta validation errors', () => {
-  test('missing url on both ad and ad set content throws', () => {
+  test('missing url on both ad and ad set content defaults to empty string', () => {
     const campaign = meta.traffic('Validation Test')
     .adSet('No URL', {
       targeting: metaTargeting(geo('US')),
@@ -550,10 +550,13 @@ describe('Meta validation errors', () => {
     })
     .build()
 
-    expect(() => flattenMeta(campaign)).toThrow(/has no url/)
+    // Missing url/cta now defaults instead of throwing (for boosted posts / post-engagement ads)
+    const resources = flattenMeta(campaign)
+    const creative = resources.find(r => r.kind === 'creative')!
+    expect(creative.properties.url).toBe('')
   })
 
-  test('missing cta on both ad and ad set content throws', () => {
+  test('missing cta on both ad and ad set content defaults to NO_BUTTON', () => {
     const campaign = meta.traffic('Validation Test')
     .adSet('No CTA', {
       targeting: metaTargeting(geo('US')),
@@ -570,10 +573,12 @@ describe('Meta validation errors', () => {
     })
     .build()
 
-    expect(() => flattenMeta(campaign)).toThrow(/has no cta/)
+    const resources = flattenMeta(campaign)
+    const creative = resources.find(r => r.kind === 'creative')!
+    expect(creative.properties.cta).toBe('NO_BUTTON')
   })
 
-  test('missing both url and cta on both levels throws for url first', () => {
+  test('missing both url and cta on both levels defaults both', () => {
     const campaign = meta.traffic('Validation Test')
     .adSet('No Defaults', {
       targeting: metaTargeting(geo('US')),
@@ -589,8 +594,10 @@ describe('Meta validation errors', () => {
     })
     .build()
 
-    // Should throw for url (it's checked first during creative flattening)
-    expect(() => flattenMeta(campaign)).toThrow(/has no url/)
+    const resources = flattenMeta(campaign)
+    const creative = resources.find(r => r.kind === 'creative')!
+    expect(creative.properties.url).toBe('')
+    expect(creative.properties.cta).toBe('NO_BUTTON')
   })
 
   test('url/cta set on ad level overrides missing ad set defaults', () => {
