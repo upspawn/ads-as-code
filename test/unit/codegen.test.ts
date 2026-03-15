@@ -441,6 +441,62 @@ describe('generateCampaignFile() with empty campaign', () => {
   })
 })
 
+describe('generateCampaignFile() with schedule targeting', () => {
+  const resources: Resource[] = [
+    {
+      kind: 'campaign',
+      path: 'search-scheduled',
+      properties: {
+        name: 'Search - Scheduled',
+        status: 'enabled',
+        budget: { amount: 10, currency: 'EUR', period: 'daily' },
+        bidding: { type: 'maximize-conversions' },
+        targeting: {
+          rules: [
+            { type: 'geo', countries: ['US', 'DE'] },
+            { type: 'language', languages: ['en'] },
+            { type: 'schedule', days: ['mon', 'tue', 'wed', 'thu', 'fri'], startHour: 8, endHour: 20 },
+          ],
+        },
+      },
+    },
+    {
+      kind: 'adGroup',
+      path: 'search-scheduled/core',
+      properties: { status: 'enabled', targeting: undefined },
+    },
+    {
+      kind: 'keyword',
+      path: 'search-scheduled/core/kw:test:EXACT',
+      properties: { text: 'test', matchType: 'EXACT' },
+    },
+    {
+      kind: 'ad',
+      path: 'search-scheduled/core/rsa:xyz',
+      properties: {
+        headlines: ['Test Ad', 'Test Ad 2', 'Test Ad 3'],
+        descriptions: ['Desc 1', 'Desc 2'],
+        finalUrl: 'https://www.renamed.to',
+      },
+    },
+  ]
+
+  const output = generateCampaignFile(resources, 'Search - Scheduled')
+
+  test('generates weekdays() for M-F schedule', () => {
+    expect(output).toContain('weekdays()')
+  })
+
+  test('generates hours() for start/end times', () => {
+    expect(output).toContain('hours(8, 20)')
+  })
+
+  test('imports weekdays and hours helpers', () => {
+    expect(output).toContain('weekdays')
+    expect(output).toContain('hours')
+  })
+})
+
 // ─── extractSharedConfig ─────────────────────────────────
 
 describe('extractSharedConfig()', () => {

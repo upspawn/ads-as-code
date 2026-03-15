@@ -2,6 +2,7 @@ import type { Resource, ResourceKind } from '../core/types.ts'
 import type { GoogleAdsClient, GoogleAdsRow, BiddingStrategy } from './types.ts'
 import type { Cache } from '../core/cache.ts'
 import { slugify } from '../core/flatten.ts'
+import { GEO_TARGETS_REVERSE, LANGUAGE_CRITERIA_REVERSE } from './constants.ts'
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -442,6 +443,200 @@ export async function fetchExtensions(
   return resources
 }
 
+// ─── Campaign Targeting Fetcher ──────────────────────────────
+
+type CampaignTargeting = {
+  geo: string[]
+  languages: string[]
+  schedule: { days: string[]; startHour?: number; endHour?: number } | null
+}
+
+// Day of week from gRPC is numeric: 2=MON, 3=TUE, 4=WED, 5=THU, 6=FRI, 7=SAT, 8=SUN
+const DAY_OF_WEEK_MAP: Record<number | string, string> = {
+  2: 'mon', 3: 'tue', 4: 'wed', 5: 'thu', 6: 'fri', 7: 'sat', 8: 'sun',
+  'MONDAY': 'mon', 'TUESDAY': 'tue', 'WEDNESDAY': 'wed', 'THURSDAY': 'thu',
+  'FRIDAY': 'fri', 'SATURDAY': 'sat', 'SUNDAY': 'sun',
+}
+
+// Criterion type enum: gRPC returns numeric values
+const CRITERION_TYPE_MAP: Record<number | string, string> = {
+  6: 'LOCATION', 7: 'AD_SCHEDULE', 16: 'LANGUAGE',
+  'LOCATION': 'LOCATION', 'AD_SCHEDULE': 'AD_SCHEDULE', 'LANGUAGE': 'LANGUAGE',
+}
+
+// Sort days in weekday order
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+function sortDays(days: string[]): string[] {
+  return [...days].sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
+}
+
+/**
+ * Fetch geo, language, and ad schedule targeting for campaigns.
+ * Returns a map from campaign platformId to targeting data.
+ */
+export async function fetchCampaignTargeting(
+  client: GoogleAdsClient,
+  campaignIds?: string[],
+): Promise<Map<string, CampaignTargeting>> {
+  // Build full-path reverse maps
+  const geoReverse: Record<string, string> = {}
+  const langReverse: Record<string, string> = {}
+  for (const [id, code] of Object.entries(GEO_TARGETS_REVERSE)) {
+    geoReverse[`geoTargetConstants/${id}`] = code
+  }
+  for (const [id, code] of Object.entries(LANGUAGE_CRITERIA_REVERSE)) {
+    langReverse[`languageConstants/${id}`] = code
+  }
+
+  // Fetch geo + language criteria
+  let geoLangQuery = `
+SELECT
+  campaign.id,
+  campaign_criterion.type,
+  campaign_criterion.location.geo_target_constant,
+  campaign_criterion.language.language_constant
+FROM campaign_criterion
+WHERE campaign_criterion.type IN ('LOCATION', 'LANGUAGE')
+  AND campaign_criterion.negative = FALSE
+  AND campaign.status != 'REMOVED'`.trim()
+
+  if (campaignIds?.length) {
+    geoLangQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+
+  // Fetch ad schedule criteria
+  let scheduleQuery = `
+SELECT
+  campaign.id,
+  campaign_criterion.ad_schedule.day_of_week,
+  campaign_criterion.ad_schedule.start_hour,
+  campaign_criterion.ad_schedule.end_hour
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'AD_SCHEDULE'
+  AND campaign.status != 'REMOVED'`.trim()
+
+  if (campaignIds?.length) {
+    scheduleQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+
+  const [geoLangRows, scheduleRows] = await Promise.all([
+    client.query(geoLangQuery),
+    client.query(scheduleQuery),
+  ])
+
+  // Group by campaign ID
+  const result = new Map<string, CampaignTargeting>()
+
+  function ensure(campaignId: string): CampaignTargeting {
+    if (!result.has(campaignId)) {
+      result.set(campaignId, { geo: [], languages: [], schedule: null })
+    }
+    return result.get(campaignId)!
+  }
+
+  for (const row of geoLangRows) {
+    const campaign = row.campaign as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
+    const campaignId = str(campaign?.id)
+    const rawType = criterion.type as number | string
+    const type = CRITERION_TYPE_MAP[rawType] ?? String(rawType)
+
+    if (type === 'LOCATION') {
+      const location = criterion.location as Record<string, unknown>
+      const geoConstant = (location?.geoTargetConstant ?? location?.geo_target_constant) as string
+      const code = geoReverse[geoConstant] ?? geoConstant
+      ensure(campaignId).geo.push(code)
+    } else if (type === 'LANGUAGE') {
+      const language = criterion.language as Record<string, unknown>
+      const langConstant = (language?.languageConstant ?? language?.language_constant) as string
+      const code = langReverse[langConstant] ?? langConstant
+      ensure(campaignId).languages.push(code)
+    }
+  }
+
+  for (const row of scheduleRows) {
+    const campaign = row.campaign as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
+    const adSchedule = (criterion.ad_schedule ?? criterion.adSchedule) as Record<string, unknown>
+    if (!adSchedule) continue
+
+    const campaignId = str(campaign?.id)
+    const rawDay = (adSchedule.day_of_week ?? adSchedule.dayOfWeek) as number | string
+    const day = DAY_OF_WEEK_MAP[rawDay]
+    const startHour = Number(adSchedule.start_hour ?? adSchedule.startHour ?? 0)
+    const endHour = Number(adSchedule.end_hour ?? adSchedule.endHour ?? 24)
+
+    const t = ensure(campaignId)
+    if (!t.schedule) {
+      t.schedule = { days: [] }
+    }
+    if (day) {
+      t.schedule.days.push(day)
+    }
+    if (startHour !== 0 || endHour !== 24) {
+      t.schedule.startHour = startHour
+      t.schedule.endHour = endHour
+    }
+  }
+
+  // Sort geo, language, and days for deterministic output
+  for (const targeting of result.values()) {
+    targeting.geo.sort()
+    targeting.languages.sort()
+    if (targeting.schedule) {
+      targeting.schedule.days = sortDays(targeting.schedule.days)
+    }
+  }
+
+  return result
+}
+
+/**
+ * Merge targeting data into campaign Resources, adding `targeting: { rules: [...] }` property.
+ */
+function mergeTargetingIntoCampaigns(
+  campaigns: Resource[],
+  targetingMap: Map<string, CampaignTargeting>,
+): Resource[] {
+  return campaigns.map(c => {
+    if (c.kind !== 'campaign' || !c.platformId) return c
+
+    const targeting = targetingMap.get(c.platformId)
+    if (!targeting) return c
+
+    const rules: Array<Record<string, unknown>> = []
+    if (targeting.geo.length > 0) {
+      rules.push({ type: 'geo', countries: targeting.geo })
+    }
+    if (targeting.languages.length > 0) {
+      rules.push({ type: 'language', languages: targeting.languages })
+    }
+    if (targeting.schedule && (targeting.schedule.days.length > 0 || targeting.schedule.startHour !== undefined)) {
+      const scheduleRule: Record<string, unknown> = { type: 'schedule' }
+      if (targeting.schedule.days.length > 0) {
+        scheduleRule.days = targeting.schedule.days
+      }
+      if (targeting.schedule.startHour !== undefined) {
+        scheduleRule.startHour = targeting.schedule.startHour
+      }
+      if (targeting.schedule.endHour !== undefined) {
+        scheduleRule.endHour = targeting.schedule.endHour
+      }
+      rules.push(scheduleRule)
+    }
+
+    if (rules.length === 0) return c
+
+    return {
+      ...c,
+      properties: {
+        ...c.properties,
+        targeting: { rules },
+      },
+    }
+  })
+}
+
 // ─── Orchestrators ──────────────────────────────────────────
 
 export async function fetchAllState(
@@ -464,13 +659,17 @@ export async function fetchAllState(
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
   ])
 
-  // Step 4: Extensions + negative keywords (scoped to campaigns) — can run in parallel
-  const [extensions, negatives] = await Promise.all([
+  // Step 4: Extensions + negative keywords + targeting (scoped to campaigns) — can run in parallel
+  const [extensions, negatives, targetingMap] = await Promise.all([
     fetchExtensions(client, campaignIds),
     fetchNegativeKeywords(client, campaignIds),
+    fetchCampaignTargeting(client, campaignIds),
   ])
 
-  return [...campaigns, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+  // Merge targeting into campaign resources
+  const campaignsWithTargeting = mergeTargetingIntoCampaigns(campaigns, targetingMap)
+
+  return [...campaignsWithTargeting, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -503,12 +702,15 @@ export async function fetchKnownState(
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     ])
-    const [extensions, negatives] = await Promise.all([
+    const [extensions, negatives, targetingMap] = await Promise.all([
       fetchExtensions(client, knownCampaignIds),
       fetchNegativeKeywords(client, knownCampaignIds),
+      fetchCampaignTargeting(client, knownCampaignIds),
     ])
 
-    return [...knownCampaigns, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+    const campaignsWithTargeting = mergeTargetingIntoCampaigns(knownCampaigns, targetingMap)
+
+    return [...campaignsWithTargeting, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything

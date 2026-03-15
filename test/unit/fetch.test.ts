@@ -6,6 +6,7 @@ import {
   fetchAds,
   fetchNegativeKeywords,
   fetchExtensions,
+  fetchCampaignTargeting,
   fetchAllState,
 } from '../../src/google/fetch.ts'
 import type { GoogleAdsClient, GoogleAdsRow } from '../../src/google/types.ts'
@@ -24,6 +25,9 @@ function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsC
   const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
     // Match on the FROM clause to determine which fixture to return
     // More specific patterns must be checked before general ones
+    if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'KEYWORD'")) return Promise.resolve(responses.negatives ?? [])
+    if (gaql.includes('FROM campaign_criterion') && gaql.includes("('LOCATION', 'LANGUAGE')")) return Promise.resolve(responses.targeting ?? [])
+    if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'AD_SCHEDULE'")) return Promise.resolve(responses.schedule ?? [])
     if (gaql.includes('FROM campaign_criterion')) return Promise.resolve(responses.negatives ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('SITELINK')) return Promise.resolve(responses.sitelinks ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('CALLOUT')) return Promise.resolve(responses.callouts ?? [])
@@ -356,6 +360,129 @@ describe('fetchExtensions', () => {
   })
 })
 
+// ─── fetchCampaignTargeting ──────────────────────────────────
+
+describe('fetchCampaignTargeting', () => {
+  test('normalizes geo + language targeting with numeric enums', async () => {
+    const targetingRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          type: 6, // LOCATION
+          location: { geo_target_constant: 'geoTargetConstants/2840' },
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          type: 6,
+          location: { geo_target_constant: 'geoTargetConstants/2276' },
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          type: 16, // LANGUAGE
+          language: { language_constant: 'languageConstants/1000' },
+        },
+      },
+    ]
+
+    const client = createMockClient({ targeting: targetingRows, schedule: [] })
+    const result = await fetchCampaignTargeting(client)
+
+    const targeting = result.get('123456')
+    expect(targeting).toBeDefined()
+    expect(targeting!.geo).toEqual(['DE', 'US'])
+    expect(targeting!.languages).toEqual(['en'])
+    expect(targeting!.schedule).toBeNull()
+  })
+
+  test('normalizes ad schedule with numeric day_of_week', async () => {
+    const scheduleRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          ad_schedule: { day_of_week: 2, start_hour: 8, end_hour: 20 }, // MON
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          ad_schedule: { day_of_week: 3, start_hour: 8, end_hour: 20 }, // TUE
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          ad_schedule: { day_of_week: 6, start_hour: 8, end_hour: 20 }, // FRI
+        },
+      },
+    ]
+
+    const client = createMockClient({ targeting: [], schedule: scheduleRows })
+    const result = await fetchCampaignTargeting(client)
+
+    const targeting = result.get('123456')
+    expect(targeting).toBeDefined()
+    expect(targeting!.schedule).toBeDefined()
+    expect(targeting!.schedule!.days).toEqual(['mon', 'tue', 'fri'])
+    expect(targeting!.schedule!.startHour).toBe(8)
+    expect(targeting!.schedule!.endHour).toBe(20)
+  })
+
+  test('handles string enum values from REST', async () => {
+    const targetingRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '999' },
+        campaign_criterion: {
+          type: 'LOCATION',
+          location: { geoTargetConstant: 'geoTargetConstants/2840' },
+        },
+      },
+      {
+        campaign: { id: '999' },
+        campaign_criterion: {
+          type: 'LANGUAGE',
+          language: { languageConstant: 'languageConstants/1001' },
+        },
+      },
+    ]
+
+    const scheduleRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '999' },
+        campaign_criterion: {
+          adSchedule: { dayOfWeek: 'MONDAY', startHour: 0, endHour: 24 },
+        },
+      },
+    ]
+
+    const client = createMockClient({ targeting: targetingRows, schedule: scheduleRows })
+    const result = await fetchCampaignTargeting(client)
+
+    const targeting = result.get('999')
+    expect(targeting).toBeDefined()
+    expect(targeting!.geo).toEqual(['US'])
+    expect(targeting!.languages).toEqual(['de'])
+    // startHour=0, endHour=24 means no restriction — schedule tracks only days
+    expect(targeting!.schedule!.days).toEqual(['mon'])
+  })
+
+  test('scopes query by campaignIds when provided', async () => {
+    const client = createMockClient({ targeting: [], schedule: [] })
+    await fetchCampaignTargeting(client, ['123456', '789'])
+
+    const calls = (client.query as ReturnType<typeof mock>).mock.calls
+    for (const call of calls) {
+      const queryStr = call[0] as string
+      if (queryStr.includes('FROM campaign_criterion')) {
+        expect(queryStr).toContain('campaign.id IN (123456, 789)')
+      }
+    }
+  })
+})
+
 // ─── fetchAllState ──────────────────────────────────────────
 
 describe('fetchAllState', () => {
@@ -363,6 +490,18 @@ describe('fetchAllState', () => {
     const callOrder: string[] = []
 
     const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'KEYWORD'")) {
+        callOrder.push('negatives')
+        return Promise.resolve([])
+      }
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("('LOCATION', 'LANGUAGE')")) {
+        callOrder.push('targeting')
+        return Promise.resolve([])
+      }
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'AD_SCHEDULE'")) {
+        callOrder.push('schedule')
+        return Promise.resolve([])
+      }
       if (gaql.includes('FROM campaign_criterion')) {
         callOrder.push('negatives')
         return Promise.resolve([])
@@ -401,7 +540,7 @@ describe('fetchAllState', () => {
     // Should have campaigns + ad groups + keywords + ads
     expect(resources.length).toBeGreaterThan(0)
 
-    // Campaigns first, then ad groups, then keywords+ads (parallel), then extensions+negatives (parallel)
+    // Campaigns first, then ad groups, then keywords+ads (parallel), then extensions+negatives+targeting (parallel)
     expect(callOrder[0]).toBe('campaigns')
     expect(callOrder[1]).toBe('adGroups')
     // keywords and ads run in parallel — order may vary
@@ -409,6 +548,8 @@ describe('fetchAllState', () => {
     expect(callOrder).toContain('ads')
     expect(callOrder).toContain('negatives')
     expect(callOrder).toContain('extensions')
+    expect(callOrder).toContain('targeting')
+    expect(callOrder).toContain('schedule')
   })
 
   test('returns empty when no campaigns', async () => {
