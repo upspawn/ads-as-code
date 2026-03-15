@@ -322,9 +322,11 @@ function buildDeleteOperation(
   customerId: string,
   resource: Resource,
 ): MutateOperation | null {
-  if (!resource.platformId) return null
+  if (!resource.platformId || typeof resource.platformId !== 'string') {
+    if (process.env['ADS_DEBUG']) console.log('[DEBUG delete skip]', resource.kind, resource.path, 'platformId:', resource.platformId, typeof resource.platformId)
+    return null
+  }
 
-  // platformId may already be a full resource name (e.g., "customers/123/adGroupCriteria/456~789")
   const id = resource.platformId
 
   switch (resource.kind) {
@@ -663,7 +665,7 @@ export async function applyChangeset(
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       failed.push({ change, error })
-      return { succeeded, failed, skipped: [...skipped, ...remainingChanges(orderedDeletes, change)] }
+      // Continue deleting remaining resources (don't stop on delete failures)
     }
   }
 

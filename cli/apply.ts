@@ -366,9 +366,14 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     const applyModulePath = ['..', 'src', 'google', 'apply.ts'].join('/')
     const applyModule = await import(applyModulePath) as Record<string, unknown>
     if (typeof applyModule['applyChangeset'] === 'function') {
-      const applyFn = applyModule['applyChangeset'] as (client: unknown, changeset: Changeset) => Promise<ApplyResult[]>
-      const applyResults = await applyFn(client, changeset)
-      results.push(...applyResults)
+      const applyFn = applyModule['applyChangeset'] as (client: unknown, changeset: Changeset, cache: unknown, project: string) => Promise<{ succeeded: Change[]; failed: { change: Change; error: Error }[]; skipped: Change[] }>
+      const applyResult = await applyFn(client, changeset, cache, 'default')
+      for (const change of applyResult.succeeded) {
+        results.push({ path: change.resource.path, op: change.op, success: true, platformId: change.resource.platformId })
+      }
+      for (const { change, error } of applyResult.failed) {
+        results.push({ path: change.resource.path, op: change.op, success: false, error: error.message })
+      }
     } else {
       throw new Error('applyChangeset not found in module')
     }

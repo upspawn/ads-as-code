@@ -190,6 +190,7 @@ function normalizeAdGroupRow(row: GoogleAdsRow): Resource {
 
 const KEYWORD_QUERY = `
 SELECT
+  ad_group_criterion.resource_name,
   ad_group_criterion.criterion_id,
   ad_group_criterion.status,
   ad_group_criterion.keyword.text,
@@ -221,7 +222,7 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
   const campaign = row.campaign as Record<string, unknown> | undefined
 
-  const criterionId = str(criterion?.criterion_id ?? criterion?.criterionId)
+  const resourceName = str(criterion?.resource_name ?? criterion?.resourceName)
   const keyword = criterion?.keyword as Record<string, unknown> | undefined
   const text = str(keyword?.text)
   const matchType = mapMatchType(keyword?.match_type ?? keyword?.matchType)
@@ -235,7 +236,7 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   return resource('keyword', path, {
     text,
     matchType,
-  }, criterionId)
+  }, resourceName || undefined)
 }
 
 // ─── Ad Fetcher ─────────────────────────────────────────────

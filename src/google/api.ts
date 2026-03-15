@@ -202,17 +202,40 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
 
   async function mutate(operations: MutateOperation[]): Promise<MutateResult[]> {
     try {
-      const mutateOps = operations.map(op => ({
-        entity: op.operation,
-        operation: (op.op ?? 'create') as 'create' | 'update' | 'remove',
-        resource: op.resource,
-        ...(op.updateMask ? { update_mask: { paths: op.updateMask.split(',') } } : {}),
-      }))
+      // google-ads-api MutateOperation format:
+      // { entity: "snake_case_resource", operation: "create"|"update"|"remove", resource: {...} }
+      const mutateOps = operations.map(op => {
+        const operation = (op.op ?? 'create') as 'create' | 'update' | 'remove'
+        if (operation === 'remove') {
+          // For remove, pass resource_name as the resource string
+          const rn = (op.resource as Record<string, unknown>).resource_name as string
+          return {
+            entity: op.operation,
+            operation,
+            resource: rn,
+          }
+        }
+        return {
+          entity: op.operation,
+          operation,
+          resource: op.resource,
+          ...(op.updateMask ? { update_mask: { paths: op.updateMask.split(',') } } : {}),
+        }
+      })
 
-      const results = await customer.mutateResources(mutateOps as Parameters<typeof customer.mutateResources>[0])
-      return (results as unknown as Array<{ resource_name?: string }>).map(r => ({
-        resourceName: r.resource_name ?? '',
-      }))
+      if (process.env['ADS_DEBUG']) {
+        console.log('[DEBUG mutate]', JSON.stringify(mutateOps, null, 2))
+      }
+
+      const response = await customer.mutateResources(mutateOps as Parameters<typeof customer.mutateResources>[0])
+      // Response shape: { mutate_operation_responses: [{ campaign_result: { resource_name }, ... }] }
+      const responses = (response as unknown as { mutate_operation_responses?: Array<Record<string, unknown>> }).mutate_operation_responses ?? []
+      return responses.map(r => {
+        // Find the *_result key and extract resource_name
+        const resultKey = Object.keys(r).find(k => k.endsWith('_result') && r[k] != null)
+        const result = resultKey ? r[resultKey] as Record<string, unknown> : null
+        return { resourceName: (result?.resource_name as string) ?? '' }
+      })
     } catch (err: unknown) {
       const message = extractGrpcErrorMessage(err)
       throw adsError({ type: 'api', code: 0, message })
