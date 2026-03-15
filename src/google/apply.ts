@@ -34,6 +34,43 @@ const DEVICE_TYPE_ENUM: Record<string, number> = {
   'tablet': 4,
 }
 
+// SDK demographic values → Google Ads API enum strings
+const AGE_RANGE_TO_ENUM: Record<string, string> = {
+  '18-24': 'AGE_RANGE_18_24',
+  '25-34': 'AGE_RANGE_25_34',
+  '35-44': 'AGE_RANGE_35_44',
+  '45-54': 'AGE_RANGE_45_54',
+  '55-64': 'AGE_RANGE_55_64',
+  '65+': 'AGE_RANGE_65_UP',
+  'undetermined': 'AGE_RANGE_UNDETERMINED',
+}
+
+const GENDER_TO_ENUM: Record<string, string> = {
+  'male': 'MALE',
+  'female': 'FEMALE',
+  'undetermined': 'UNDETERMINED',
+}
+
+const INCOME_TO_ENUM: Record<string, string> = {
+  'lower-50%': 'INCOME_RANGE_0_50',
+  '41-50%': 'INCOME_RANGE_50_60',
+  '31-40%': 'INCOME_RANGE_60_70',
+  '21-30%': 'INCOME_RANGE_70_80',
+  '11-20%': 'INCOME_RANGE_80_90',
+  'top-10%': 'INCOME_RANGE_90_100',
+  'undetermined': 'INCOME_RANGE_UNDETERMINED',
+}
+
+const PARENTAL_TO_ENUM: Record<string, string> = {
+  'parent': 'PARENT',
+  'not-parent': 'NOT_A_PARENT',
+  'undetermined': 'UNDETERMINED',
+}
+
+const SCHEDULE_DAY_TO_ENUM: Record<string, number> = {
+  'mon': 2, 'tue': 3, 'wed': 4, 'thu': 5, 'fri': 6, 'sat': 7, 'sun': 8,
+}
+
 function matchTypeToEnum(matchType: unknown): number {
   if (typeof matchType === 'number') return matchType
   return MATCH_TYPE_TO_ENUM[String(matchType)] ?? 4 // default BROAD
@@ -207,9 +244,11 @@ function buildTargetingOperations(
 
     if (rule.type === 'geo') {
       const countries = rule.countries as string[]
+      const bidAdjustments = rule.bidAdjustments as Record<string, number> | undefined
       for (const country of countries) {
         const geoTargetId = GEO_TARGETS[country]
         if (geoTargetId) {
+          const bidAdj = bidAdjustments?.[country]
           ops.push({
             operation: 'campaign_criterion',
             op: 'create',
@@ -218,6 +257,7 @@ function buildTargetingOperations(
               location: {
                 geo_target_constant: `geoTargetConstants/${geoTargetId}`,
               },
+              ...(bidAdj !== undefined ? { bid_modifier: 1.0 + bidAdj } : {}),
             },
           })
         }
@@ -235,6 +275,83 @@ function buildTargetingOperations(
             campaign: campaignResourceName,
             device: { type: deviceType },
             bid_modifier: 1.0 + bidAdjustment, // SDK format → API format
+          },
+        })
+      }
+    }
+
+    if (rule.type === 'demographic') {
+      const ageRanges = rule.ageRanges as string[] | undefined
+      const genders = rule.genders as string[] | undefined
+      const incomes = rule.incomes as string[] | undefined
+      const parentalStatuses = rule.parentalStatuses as string[] | undefined
+
+      if (ageRanges) {
+        for (const age of ageRanges) {
+          ops.push({
+            operation: 'campaign_criterion',
+            op: 'create',
+            resource: {
+              campaign: campaignResourceName,
+              age_range: { type: AGE_RANGE_TO_ENUM[age] ?? age },
+            },
+          })
+        }
+      }
+      if (genders) {
+        for (const gender of genders) {
+          ops.push({
+            operation: 'campaign_criterion',
+            op: 'create',
+            resource: {
+              campaign: campaignResourceName,
+              gender: { type: GENDER_TO_ENUM[gender] ?? gender },
+            },
+          })
+        }
+      }
+      if (incomes) {
+        for (const income of incomes) {
+          ops.push({
+            operation: 'campaign_criterion',
+            op: 'create',
+            resource: {
+              campaign: campaignResourceName,
+              income_range: { type: INCOME_TO_ENUM[income] ?? income },
+            },
+          })
+        }
+      }
+      if (parentalStatuses) {
+        for (const status of parentalStatuses) {
+          ops.push({
+            operation: 'campaign_criterion',
+            op: 'create',
+            resource: {
+              campaign: campaignResourceName,
+              parental_status: { type: PARENTAL_TO_ENUM[status] ?? status },
+            },
+          })
+        }
+      }
+    }
+
+    if (rule.type === 'schedule-bid') {
+      const dayEnum = SCHEDULE_DAY_TO_ENUM[rule.day as string]
+      if (dayEnum !== undefined) {
+        ops.push({
+          operation: 'campaign_criterion',
+          op: 'create',
+          resource: {
+            campaign: campaignResourceName,
+            ad_schedule: {
+              day_of_week: dayEnum,
+              start_hour: rule.startHour as number,
+              start_minute: 'ZERO',
+              end_hour: rule.endHour as number,
+              end_minute: 'ZERO',
+            },
+            bid_modifier: 1.0 + (rule.bidAdjustment as number),
           },
         })
       }

@@ -35,9 +35,15 @@ import type {
  * // { type: 'geo', countries: ['US', 'CA'] }
  * ```
  */
-export function geo(...countries: CountryCode[]): GeoTarget {
+export function geo(...args: [...CountryCode[]] | [...CountryCode[], { bidAdjustments: Record<string, number> }]): GeoTarget {
+  // Last argument may be an options object with bidAdjustments
+  const lastArg = args[args.length - 1]
+  const hasOptions = typeof lastArg === 'object' && lastArg !== null && 'bidAdjustments' in lastArg
+  const countries = (hasOptions ? args.slice(0, -1) : args) as CountryCode[]
+  const options = hasOptions ? lastArg as { bidAdjustments: Record<string, number> } : undefined
+
   if (countries.length === 0) throw new Error('geo() requires at least one country code')
-  return { type: 'geo' as const, countries }
+  return { type: 'geo' as const, countries, ...(options ? { bidAdjustments: options.bidAdjustments } : {}) }
 }
 
 /**

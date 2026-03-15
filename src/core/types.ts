@@ -32,7 +32,7 @@ export type CountryCode = 'US' | 'DE' | 'CA' | 'GB' | 'AU' | 'AT' | 'CH' | 'FR' 
 export type LanguageCode = 'en' | 'de' | 'fr' | 'it' | 'es' | 'pt' | 'pl' | 'ja' | 'ko' | 'nl' | 'sv' | 'no' | 'da' | 'fi' | (string & {})
 export type Day = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
-export type GeoTarget = { readonly type: 'geo'; readonly countries: CountryCode[] }
+export type GeoTarget = { readonly type: 'geo'; readonly countries: CountryCode[]; readonly bidAdjustments?: Record<string, number> }
 export type LanguageTarget = { readonly type: 'language'; readonly languages: LanguageCode[] }
 export type ScheduleTarget = { readonly type: 'schedule'; readonly days?: Day[]; readonly startHour?: number; readonly endHour?: number }
 
