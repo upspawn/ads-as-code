@@ -134,10 +134,13 @@ export type Changeset = {
 
 // === Config ===
 
+import type { AiConfig } from '../ai/types.ts'
+
 export type AdsConfig = {
   readonly google?: GoogleProviderConfig
   readonly meta?: MetaProviderConfig
   readonly cache?: string
+  readonly ai?: AiConfig
 }
 
 export type GoogleProviderConfig = {
