@@ -1,4 +1,4 @@
-import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
+import { loadConfig, discoverCampaigns, sortCampaignsByFile } from '../src/core/discovery.ts'
 import { getProvider, resolveProviders } from '../src/core/providers.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
@@ -249,8 +249,12 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
 
     const provider = await getProvider(providerName)
 
+    // Sort campaigns so base files come before dedup variants (-2, -3, etc.)
+    // This ensures flatten assigns the same suffixes as fetch (which sorts by platform ID).
+    const sortedCampaigns = sortCampaignsByFile(campaigns)
+
     // Flatten desired state
-    const desired = provider.flatten(campaigns.map(c => c.campaign))
+    const desired = provider.flatten(sortedCampaigns.map(c => c.campaign))
     allDesired.push(...desired)
 
     // Build campaign name map for display

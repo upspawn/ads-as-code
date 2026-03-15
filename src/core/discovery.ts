@@ -175,3 +175,30 @@ export async function loadConfig(rootDir: string): Promise<AdsConfig | undefined
   const mod = await import(configPath)
   return mod.default as AdsConfig
 }
+
+/**
+ * Sort campaigns so that base files come before their dedup variants.
+ * ASCII sorts "foo-2.ts" before "foo.ts" because '-' < '.', but the
+ * dedup logic needs "foo.ts" (no suffix) first to assign the plain slug.
+ *
+ * Extracts the filename stem, separates the dedup suffix (e.g., "-2"),
+ * and sorts: first by stem, then by suffix number (0 for no suffix).
+ */
+export function sortCampaignsByFile(campaigns: DiscoveredCampaign[]): DiscoveredCampaign[] {
+  return [...campaigns].sort((a, b) => {
+    const nameA = a.file.split('/').pop()?.replace(/\.ts$/, '') ?? ''
+    const nameB = b.file.split('/').pop()?.replace(/\.ts$/, '') ?? ''
+
+    // Only match small dedup suffixes (-2 through -99), not years (-2026) or IDs
+    const matchA = nameA.match(/^(.+)-(\d{1,2})$/)
+    const matchB = nameB.match(/^(.+)-(\d{1,2})$/)
+
+    const stemA = matchA ? matchA[1]! : nameA
+    const stemB = matchB ? matchB[1]! : nameB
+    const numA = matchA ? parseInt(matchA[2]!, 10) : 0
+    const numB = matchB ? parseInt(matchB[2]!, 10) : 0
+
+    const stemCmp = stemA.localeCompare(stemB)
+    return stemCmp !== 0 ? stemCmp : numA - numB
+  })
+}
