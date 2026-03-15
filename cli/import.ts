@@ -253,7 +253,8 @@ async function fetchAllCampaigns(
     if (!entry) continue
 
     const text = keyword.text as string
-    const matchType = keyword.match_type ?? keyword.matchType as string
+    const rawMatchType = keyword.match_type ?? keyword.matchType
+    const matchType = MATCH_TYPE_MAP[rawMatchType as number | string] ?? 'BROAD'
 
     entry.resources.push({
       kind: 'negative',
