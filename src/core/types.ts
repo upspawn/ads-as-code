@@ -112,7 +112,7 @@ export type UTMParams = {
 
 // === Diff Engine: Resource Model ===
 
-export type ResourceKind = 'campaign' | 'adGroup' | 'adSet' | 'assetGroup' | 'keyword' | 'ad' | 'creative' | 'sitelink' | 'callout' | 'structuredSnippet' | 'callExtension' | 'negative'
+export type ResourceKind = 'campaign' | 'adGroup' | 'adSet' | 'assetGroup' | 'keyword' | 'ad' | 'creative' | 'sitelink' | 'callout' | 'structuredSnippet' | 'callExtension' | 'negative' | 'sharedSet' | 'sharedCriterion' | 'conversionAction' | 'sharedBudget'
 
 export type Resource = {
   readonly kind: ResourceKind
