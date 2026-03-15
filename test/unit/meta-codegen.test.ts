@@ -503,6 +503,35 @@ describe('codegenMeta', () => {
     expect(code).not.toMatch(/export const [a-zA-Z0-9]*-/)
   })
 
+  test('export name prefixed with underscore when starting with digit', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign({ name: '[09/01/2025] Promoting https://renamed.to' }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Slugify produces "09-01-2025-promoting-https-renamed-to"
+    // CamelCase produces "09012025PromotingHttpsRenamedTo" — starts with digit
+    // Must be prefixed with _ to be valid JS
+    expect(code).toContain('export const _09012025PromotingHttpsRenamedTo')
+  })
+
+  test('multiline primaryText uses template literal (backticks)', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        primaryText: 'Line one.\n\nLine two.\n\nLine three.',
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Should use backticks for multiline, not single quotes
+    expect(code).toContain('`Line one.')
+    expect(code).not.toContain("'Line one.")
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),

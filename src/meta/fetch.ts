@@ -141,8 +141,8 @@ function mapBidStrategy(apiStrategy: string | undefined, bidAmount: number | und
 
 // ─── Campaign Normalization ────────────────────────────────
 
-function normalizeCampaign(raw: MetaApiCampaign): Resource {
-  const path = slugify(raw.name)
+function normalizeCampaign(raw: MetaApiCampaign, slugOverride?: string): Resource {
+  const path = slugOverride ?? slugify(raw.name)
 
   const properties: Record<string, unknown> = {
     name: raw.name,
@@ -308,11 +308,23 @@ export async function fetchMetaAll(config: MetaProviderConfig, client?: MetaClie
     metaClient.graphGetAll<MetaApiAd>(`${accountId}/ads`, { fields: AD_FIELDS }),
   ])
 
-  // Normalize campaigns and build ID -> slug map
-  const campaigns = rawCampaigns.map(normalizeCampaign)
-  const campaignSlugs: CampaignSlugMap = new Map(
-    rawCampaigns.map(c => [c.id, slugify(c.name)]),
-  )
+  // Normalize campaigns and build ID -> slug map, deduplicating collisions
+  const slugCounts = new Map<string, number>()
+  const campaignSlugs: CampaignSlugMap = new Map()
+  for (const c of rawCampaigns) {
+    let slug = slugify(c.name)
+    const count = slugCounts.get(slug) ?? 0
+    slugCounts.set(slug, count + 1)
+    if (count > 0) {
+      slug = `${slug}-${count + 1}`
+    }
+    campaignSlugs.set(c.id, slug)
+  }
+
+  const campaigns = rawCampaigns.map((raw) => {
+    const slug = campaignSlugs.get(raw.id)!
+    return normalizeCampaign(raw, slug)
+  })
 
   // Normalize ad sets and build ID -> path map
   const adSets = rawAdSets.map(raw => normalizeAdSet(raw, campaignSlugs))

@@ -40,6 +40,10 @@ export function codegenMeta(resources: Resource[]): string {
 // ─── Helpers ─────────────────────────────────────────────
 
 function quote(s: string): string {
+  // Multiline strings must use backtick template literals
+  if (s.includes('\n')) {
+    return '`' + s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${') + '`'
+  }
   return `'${s.replace(/'/g, "\\'")}'`
 }
 
@@ -427,8 +431,12 @@ function generateMetaCampaignFile(
   lines.push(importLine)
   lines.push('')
 
-  // Campaign declaration
-  const exportName = slugify(name).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
+  // Campaign declaration — camelCase the slug and ensure valid JS identifier
+  let exportName = slugify(name).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
+  // JS identifiers cannot start with a digit — prefix with underscore
+  if (/^[0-9]/.test(exportName)) {
+    exportName = `_${exportName}`
+  }
 
   if (configParts.length > 0) {
     lines.push(`export const ${exportName} = meta.${methodName}(${quote(name)}, {`)
