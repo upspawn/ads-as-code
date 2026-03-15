@@ -3,6 +3,7 @@ import { flattenAll } from '../src/core/flatten.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
 import { createGoogleClient } from '../src/google/api.ts'
+import { resolveAllMarkers } from '../src/ai/resolve.ts'
 import type { GoogleSearchCampaign } from '../src/google/types.ts'
 import type { Changeset, Change, Resource } from '../src/core/types.ts'
 import type { GlobalFlags } from './init.ts'
@@ -181,11 +182,15 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
     return { creates: [], updates: [], deletes: [], drift: [] }
   }
 
-  // 3. Flatten desired state
-  const googleCampaigns = discovery.campaigns
+  // 3. Resolve AI markers (substitute lock file values for marker placeholders)
+  const googleDiscovered = discovery.campaigns
     .filter(c => c.provider === 'google')
-    .map(c => c.campaign as GoogleSearchCampaign)
 
+  const googleCampaigns = await resolveAllMarkers(
+    googleDiscovered.map(c => ({ file: c.file, campaign: c.campaign })),
+  )
+
+  // 4. Flatten desired state
   const desired = flattenAll(googleCampaigns)
 
   // Build campaign slug -> name map for display
@@ -197,20 +202,20 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
     }
   }
 
-  // 4. Create Google client
+  // 5. Create Google client
   // The client factory resolves credentials via config, credentials file, or env vars.
   // We always pass { type: 'env' } and let it resolve — the ads.config.ts customerId/managerId
   // are picked up through env vars or ~/.ads/credentials.json.
   const client = await createGoogleClient({ type: 'env' })
 
-  // 5. Open cache
+  // 6. Open cache
   const cachePath = config.cache ?? `${rootDir}/.ads/cache.db`
   // Ensure .ads directory exists
   const cacheDir = cachePath.substring(0, cachePath.lastIndexOf('/'))
   await Bun.write(`${cacheDir}/.keep`, '')
   const cache = new Cache(cachePath)
 
-  // 6. Fetch live state
+  // 7. Fetch live state
   let actual: Resource[] = []
   try {
     const { fetchAllState } = await import('../src/google/fetch.ts')
@@ -226,7 +231,7 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
     }
   }
 
-  // 7. Get managed paths and platformId mapping from cache
+  // 8. Get managed paths and platformId mapping from cache
   const resourceMap = cache.getResourceMap('default')
   const managedPaths = new Set(resourceMap.map(r => r.path))
   const pathToPlatformId = new Map<string, string>()
@@ -236,10 +241,10 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
     }
   }
 
-  // 8. Run diff
+  // 9. Run diff
   const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
 
-  // 9. Save snapshot to cache
+  // 10. Save snapshot to cache
   cache.saveSnapshot({
     project: 'default',
     source: 'plan',
@@ -259,7 +264,7 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
 
   cache.close()
 
-  // 10. Print output
+  // 11. Print output
   if (options.json) {
     console.log(JSON.stringify(changeset, null, 2))
   } else {

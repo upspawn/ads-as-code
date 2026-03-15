@@ -20,7 +20,7 @@ export type GenerateResult = {
 }
 
 /** Signature matching Vercel AI SDK's generateObject */
-type GenerateObjectFn = (opts: {
+export type GenerateObjectFn = (opts: {
   model: LanguageModel
   prompt: string
   schema: z.ZodType
@@ -51,12 +51,12 @@ export type GenerateForCampaignInput = {
 }
 
 // Minimal campaign shape — avoids coupling to the full GoogleSearchCampaign type
-type CampaignLike = {
+export type CampaignLike = {
   readonly name: string
   readonly groups: Record<string, GroupLike>
 }
 
-type GroupLike = {
+export type GroupLike = {
   readonly keywords: readonly (Keyword | KeywordsMarker | unknown)[]
   readonly ads: readonly (unknown)[]
   readonly negatives?: readonly Keyword[]
