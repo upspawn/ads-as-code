@@ -8,7 +8,16 @@ import type {
 } from '../google/types.ts'
 import { isRsaMarker, isKeywordsMarker } from './types.ts'
 import type { LockFile } from './lockfile.ts'
-import { readLockFile, getSlot } from './lockfile.ts'
+import { readLockFile, getSlot, isSlotStale } from './lockfile.ts'
+import { compileRsaPrompt, compileKeywordsPrompt } from './prompt.ts'
+
+// === Staleness Types ===
+
+export type StaleSlot = {
+  readonly campaign: string
+  readonly slot: string
+  readonly message: string
+}
 
 // === Match Type Mapping ===
 
@@ -146,6 +155,75 @@ export function resolveMarkers(
     ...campaign,
     groups: resolvedGroups,
   } as GoogleSearchCampaign
+}
+
+// === Staleness Check ===
+
+/**
+ * Check whether any AI-generated slots in a campaign are stale.
+ *
+ * For each marker in the campaign, compiles the current prompt and compares
+ * it against the prompt snapshot stored in the lock file slot. Returns a list
+ * of stale slots (empty if everything is fresh or there is no lock file).
+ *
+ * Slots that have no lock entry (unresolved) are NOT reported as stale —
+ * they are "unresolved", which is a separate concern.
+ */
+export function checkStaleness(
+  campaign: GoogleSearchCampaignUnresolved,
+  lockFile: LockFile | null,
+): StaleSlot[] {
+  if (!lockFile) return []
+
+  const stale: StaleSlot[] = []
+
+  for (const [groupKey, group] of Object.entries(campaign.groups)) {
+    // Check RSA markers
+    for (const ad of group.ads) {
+      if (!isRsaMarker(ad)) continue
+
+      const slotKey = `${groupKey}.ad`
+      const slot = getSlot(lockFile, slotKey)
+      if (!slot) continue // Unresolved, not stale
+
+      const currentPrompt = compileRsaPrompt(ad, {
+        campaignName: campaign.name,
+        groupKey,
+      })
+
+      if (isSlotStale(slot, currentPrompt)) {
+        stale.push({
+          campaign: campaign.name,
+          slot: slotKey,
+          message: `Prompt changed since last generate for ${campaign.name}/${slotKey}`,
+        })
+      }
+    }
+
+    // Check keyword markers
+    for (const kw of group.keywords) {
+      if (!isKeywordsMarker(kw)) continue
+
+      const slotKey = `${groupKey}.keywords`
+      const slot = getSlot(lockFile, slotKey)
+      if (!slot) continue
+
+      const currentPrompt = compileKeywordsPrompt(kw, {
+        campaignName: campaign.name,
+        groupKey,
+      })
+
+      if (isSlotStale(slot, currentPrompt)) {
+        stale.push({
+          campaign: campaign.name,
+          slot: slotKey,
+          message: `Prompt changed since last generate for ${campaign.name}/${slotKey}`,
+        })
+      }
+    }
+  }
+
+  return stale
 }
 
 // === Resolve All Campaigns ===

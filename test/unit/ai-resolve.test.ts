@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Headline, Description, Keyword } from '../../src/core/types.ts'
 import type { GoogleSearchCampaign, GoogleSearchCampaignUnresolved, RSAd } from '../../src/google/types.ts'
 import type { LockFile } from '../../src/ai/lockfile.ts'
-import { resolveMarkers } from '../../src/ai/resolve.ts'
+import { resolveMarkers, checkStaleness } from '../../src/ai/resolve.ts'
 import { flatten } from '../../src/core/flatten.ts'
 
 // === Test Helpers ===
@@ -288,5 +288,119 @@ describe('resolveMarkers', () => {
 
     const adResources = resources.filter((r) => r.kind === 'ad')
     expect(adResources).toHaveLength(1)
+  })
+})
+
+// === checkStaleness ===
+
+describe('checkStaleness', () => {
+  test('returns empty when no lock file exists', () => {
+    const campaign = makeUnresolvedCampaign({
+      'ad-group-1': {
+        keywords: [kwMarker('Generate keywords')],
+        ads: [rsaMarker('Generate ads')],
+      },
+    })
+
+    const result = checkStaleness(campaign, null)
+    expect(result).toEqual([])
+  })
+
+  test('returns empty when prompts match (not stale)', () => {
+    // The prompt stored in the lock file must match what compileRsaPrompt produces.
+    // compileRsaPrompt appends campaign context + RSA constraints to the raw prompt.
+    // We need to import compileRsaPrompt to build the expected stored prompt.
+    const campaign = makeUnresolvedCampaign({
+      'ad-group-1': {
+        keywords: [{ text: 'test', matchType: 'EXACT' } as Keyword],
+        ads: [rsaMarker('Generate ads for product')],
+      },
+    })
+
+    // Build the prompt as checkStaleness would — using compileRsaPrompt with campaign context
+    // Since checkStaleness passes { campaignName, groupKey }, we simulate what that produces
+    const { compileRsaPrompt } = require('../../src/ai/prompt.ts')
+    const expectedPrompt = compileRsaPrompt(
+      rsaMarker('Generate ads for product'),
+      { campaignName: 'AI Campaign', groupKey: 'ad-group-1' },
+    )
+
+    const lockFile = makeLockFile({
+      'ad-group-1.ad': {
+        prompt: expectedPrompt,
+        result: { headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'] },
+        pinned: [],
+        round: 1,
+      },
+    })
+
+    const result = checkStaleness(campaign, lockFile)
+    expect(result).toEqual([])
+  })
+
+  test('returns stale slot when prompt has changed', () => {
+    const campaign = makeUnresolvedCampaign({
+      'ad-group-1': {
+        keywords: [{ text: 'test', matchType: 'EXACT' } as Keyword],
+        ads: [rsaMarker('Updated prompt for new product')],
+      },
+    })
+
+    const lockFile = makeLockFile({
+      'ad-group-1.ad': {
+        prompt: 'Old prompt that no longer matches',
+        result: { headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'] },
+        pinned: [],
+        round: 1,
+      },
+    })
+
+    const result = checkStaleness(campaign, lockFile)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.campaign).toBe('AI Campaign')
+    expect(result[0]!.slot).toBe('ad-group-1.ad')
+    expect(result[0]!.message).toContain('Prompt changed')
+  })
+
+  test('detects stale keywords marker', () => {
+    const campaign = makeUnresolvedCampaign({
+      'ad-group-1': {
+        keywords: [kwMarker('New keywords prompt')],
+        ads: [{
+          type: 'rsa' as const,
+          headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+          descriptions: ['D1' as Description, 'D2' as Description],
+          finalUrl: 'https://example.com',
+        }],
+      },
+    })
+
+    const lockFile = makeLockFile({
+      'ad-group-1.keywords': {
+        prompt: 'Old keywords prompt that does not match',
+        result: { keywords: [{ text: 'kw1', match: 'exact' }] },
+        pinned: [],
+        round: 1,
+      },
+    })
+
+    const result = checkStaleness(campaign, lockFile)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.slot).toBe('ad-group-1.keywords')
+  })
+
+  test('unresolved slot (no lock entry) is not reported as stale', () => {
+    const campaign = makeUnresolvedCampaign({
+      'ad-group-1': {
+        keywords: [{ text: 'test', matchType: 'EXACT' } as Keyword],
+        ads: [rsaMarker('Generate ads')],
+      },
+    })
+
+    // Lock file exists but has no matching slot
+    const lockFile = makeLockFile({})
+
+    const result = checkStaleness(campaign, lockFile)
+    expect(result).toEqual([])
   })
 })

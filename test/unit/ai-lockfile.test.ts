@@ -9,6 +9,7 @@ import {
   setSlot,
   pinValue,
   unpinValue,
+  isSlotStale,
 } from '../../src/ai/lockfile.ts'
 import type { LockFile, LockSlot } from '../../src/ai/lockfile.ts'
 
@@ -183,5 +184,24 @@ describe('pinValue / unpinValue', () => {
     const lockFile = makeLockFile()
     const updated = unpinValue(lockFile, 'nonexistent', 0)
     expect(updated).toEqual(lockFile)
+  })
+})
+
+// ─── Staleness Detection Tests ──────────────────────────────────────
+
+describe('isSlotStale', () => {
+  test('returns false when prompt matches', () => {
+    const slot = makeSlot({ prompt: 'generate headlines for product' })
+    expect(isSlotStale(slot, 'generate headlines for product')).toBe(false)
+  })
+
+  test('returns true when prompt differs', () => {
+    const slot = makeSlot({ prompt: 'generate headlines for product' })
+    expect(isSlotStale(slot, 'generate headlines for NEW product')).toBe(true)
+  })
+
+  test('treats whitespace differences as stale', () => {
+    const slot = makeSlot({ prompt: 'generate headlines' })
+    expect(isSlotStale(slot, 'generate  headlines')).toBe(true)
   })
 })

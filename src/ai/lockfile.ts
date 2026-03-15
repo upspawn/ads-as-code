@@ -78,3 +78,17 @@ export function unpinValue(lockFile: LockFile, slotKey: string, index: number): 
   const pinned = slot.pinned.filter((i) => i !== index)
   return setSlot(lockFile, slotKey, { ...slot, pinned })
 }
+
+// === Staleness Detection ===
+
+/**
+ * Check whether a lock slot is stale by comparing the compiled prompt
+ * snapshot stored in the slot against the current compiled prompt.
+ *
+ * A slot is stale when the prompt used to generate it no longer matches
+ * the prompt that would be produced today (e.g. the user edited a marker's
+ * prompt text or structured fields changed).
+ */
+export function isSlotStale(slot: LockSlot, currentPrompt: string): boolean {
+  return slot.prompt !== currentPrompt
+}
