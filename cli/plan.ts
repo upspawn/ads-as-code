@@ -1,12 +1,24 @@
 import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
-import { flattenAll } from '../src/google/flatten.ts'
+import { resolveProviders, getProvider } from '../src/core/providers.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
-import { createGoogleClient } from '../src/google/api.ts'
 import { resolveAllMarkers } from '../src/ai/resolve.ts'
-import type { GoogleSearchCampaign } from '../src/google/types.ts'
-import type { Changeset, Change, Resource } from '../src/core/types.ts'
+import type { Changeset, Resource, AdsConfig } from '../src/core/types.ts'
+import type { DiscoveredCampaign } from '../src/core/discovery.ts'
+import type { ProviderModule } from '../src/core/providers.ts'
 import type { GlobalFlags } from './init.ts'
+
+// ─── Currency Formatting ────────────────────────────────────────
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  EUR: '\u20ac',
+  USD: '$',
+  GBP: '\u00a3',
+}
+
+function currencySymbol(code: string): string {
+  return CURRENCY_SYMBOLS[code] ?? code + ' '
+}
 
 // ─── Plan Output Formatting ─────────────────────────────────────
 
@@ -15,58 +27,173 @@ function campaignFromPath(path: string): string {
   return path.split('/')[0] ?? path
 }
 
+/** Format a budget value with resolved currency symbol. */
+function formatBudget(value: unknown): string {
+  if (typeof value !== 'object' || value === null) return String(value)
+  const b = value as Record<string, unknown>
+  if ('amount' in b && 'currency' in b && 'period' in b) {
+    const sym = currencySymbol(String(b.currency))
+    const amount = Number(b.amount).toFixed(2)
+    return `${b.period} ${sym}${amount}`
+  }
+  return JSON.stringify(value)
+}
+
 /** Format a property value for human-readable display. */
 function formatValue(value: unknown): string {
   if (value === undefined) return '(none)'
   if (value === null) return '(null)'
   if (typeof value === 'object' && value !== null && 'amount' in value && 'currency' in value && 'period' in value) {
-    const b = value as { amount: number; currency: string; period: string }
-    return `${b.currency} ${b.amount}/${b.period}`
+    return formatBudget(value)
   }
   if (typeof value === 'string') return `"${value}"`
   if (Array.isArray(value)) return `[${value.map(v => typeof v === 'string' ? `"${v}"` : String(v)).join(', ')}]`
   return JSON.stringify(value)
 }
 
+/** Human-readable label for a resource kind. */
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case 'campaign': return 'campaign'
+    case 'adGroup': return 'ad group'
+    case 'adSet': return 'ad set'
+    case 'keyword': return 'keyword'
+    case 'ad': return 'ad'
+    case 'creative': return 'creative'
+    case 'sitelink': return 'sitelink'
+    case 'callout': return 'callout'
+    case 'negative': return 'negative'
+    default: return kind
+  }
+}
+
+/**
+ * Build a human-readable hierarchy string for a resource.
+ * Uses `name` properties from parent resources resolved via `allResources`,
+ * joined with the arrow separator.
+ */
+function buildHierarchy(resource: Resource, allResources: Resource[]): string {
+  const segments = resource.path.split('/')
+  const parts: string[] = []
+
+  for (let i = 0; i < segments.length; i++) {
+    const partialPath = segments.slice(0, i + 1).join('/')
+    const parent = allResources.find(r => r.path === partialPath)
+    if (parent) {
+      const name = parent.properties['name'] as string | undefined
+      parts.push(name ?? segments[i]!)
+    } else {
+      parts.push(segments[i]!)
+    }
+  }
+
+  return parts.join(' \u2192 ')
+}
+
 /** Format a resource kind + key info for display. */
-function describeResource(resource: Resource): string {
+function describeResource(resource: Resource, allResources: Resource[]): string {
   const props = resource.properties
+  const kind = kindLabel(resource.kind)
+  const padded = kind.padEnd(12)
+
   switch (resource.kind) {
-    case 'campaign':
-      return `campaign "${props['name'] ?? resource.path}"`
+    case 'campaign': {
+      const name = props['name'] as string ?? resource.path
+      const budgetStr = props['budget'] ? ` (${formatBudget(props['budget'])})` : ''
+      return `${padded} ${name}${budgetStr}`
+    }
     case 'adGroup':
-      return `ad group "${resource.path.split('/').pop()}"`
+    case 'adSet':
+      return `${padded} ${buildHierarchy(resource, allResources)}`
     case 'keyword': {
       const text = props['text'] as string | undefined
       const matchType = props['matchType'] as string | undefined
-      return `keyword: "${text}" (${matchType?.toLowerCase() ?? 'unknown'})`
+      return `${padded} ${buildHierarchy(resource, allResources)}: "${text}" (${matchType?.toLowerCase() ?? 'unknown'})`
     }
     case 'ad':
-      return `ad (RSA)`
+      return `${padded} ${buildHierarchy(resource, allResources)}`
+    case 'creative': {
+      const headline = props['headline'] as string | undefined
+      const format = props['format'] as string | undefined
+      const suffix = headline ? ` (${format ?? 'creative'}, "${headline}")` : ''
+      return `${padded} ${buildHierarchy(resource, allResources)}${suffix}`
+    }
     case 'sitelink': {
       const text = props['text'] as string | undefined
-      return `sitelink: "${text}"`
+      return `${padded} "${text}"`
     }
     case 'callout': {
       const text = props['text'] as string | undefined
-      return `callout: "${text}"`
+      return `${padded} "${text}"`
     }
     case 'negative': {
       const text = props['text'] as string | undefined
       const matchType = props['matchType'] as string | undefined
-      return `negative: "${text}" (${matchType?.toLowerCase() ?? 'unknown'})`
+      return `${padded} "${text}" (${matchType?.toLowerCase() ?? 'unknown'})`
     }
     default:
-      return `${resource.kind}: ${resource.path}`
+      return `${padded} ${resource.path}`
+  }
+}
+
+/**
+ * Format default annotations for a create operation.
+ * Reads `_defaults` from resource properties -- an array of objects
+ * describing which fields were resolved from defaults and their source.
+ */
+function formatDefaultAnnotations(resource: Resource): string[] {
+  const defaults = resource.properties['_defaults'] as
+    | Array<{ field: string; value: unknown; source?: string }>
+    | undefined
+  if (!defaults || defaults.length === 0) return []
+
+  const lines: string[] = []
+  for (const d of defaults) {
+    const source = d.source
+      ? ` (default${d.source !== 'default' ? ' from ' + d.source : ''})`
+      : ' (default)'
+    lines.push(`                  ${String(d.field).padEnd(16)}${formatValue(d.value)}${source}`)
+  }
+  return lines
+}
+
+/** Provider display header. */
+function providerHeader(provider: string, config: AdsConfig): string {
+  switch (provider) {
+    case 'google': {
+      const customerId = config.google?.customerId ?? ''
+      return `Google Ads \u2014 ${customerId}`
+    }
+    case 'meta': {
+      const accountId = config.meta?.accountId ?? ''
+      return `Meta Ads \u2014 ${accountId}`
+    }
+    default:
+      return provider
   }
 }
 
 /** Group changes by campaign slug and produce human-readable plan output. */
-function formatChangeset(changeset: Changeset, campaignNames: Map<string, string>): string {
+function formatChangeset(
+  changeset: Changeset,
+  campaignNames: Map<string, string>,
+  allDesired: Resource[],
+  provider: string,
+  config: AdsConfig,
+): string {
   const lines: string[] = []
 
+  // Provider header
+  lines.push(providerHeader(provider, config))
+  lines.push('')
+
   // Collect all campaign slugs involved
-  const allChanges = [...changeset.creates, ...changeset.updates, ...changeset.deletes, ...changeset.drift]
+  const allChanges = [
+    ...changeset.creates,
+    ...changeset.updates,
+    ...changeset.deletes,
+    ...changeset.drift,
+  ]
   const campaignSlugs = new Set<string>()
 
   for (const change of allChanges) {
@@ -84,12 +211,24 @@ function formatChangeset(changeset: Changeset, campaignNames: Map<string, string
     const displayName = campaignNames.get(slug) ?? slug
     lines.push(`Campaign "${displayName}"`)
 
-    const campaignCreates = changeset.creates.filter(c => campaignFromPath(c.resource.path) === slug)
-    const campaignUpdates = changeset.updates.filter(c => campaignFromPath(c.resource.path) === slug)
-    const campaignDeletes = changeset.deletes.filter(c => campaignFromPath(c.resource.path) === slug)
-    const campaignDrift = changeset.drift.filter(c => campaignFromPath(c.resource.path) === slug)
+    const campaignCreates = changeset.creates.filter(
+      c => campaignFromPath(c.resource.path) === slug,
+    )
+    const campaignUpdates = changeset.updates.filter(
+      c => campaignFromPath(c.resource.path) === slug,
+    )
+    const campaignDeletes = changeset.deletes.filter(
+      c => campaignFromPath(c.resource.path) === slug,
+    )
+    const campaignDrift = changeset.drift.filter(
+      c => campaignFromPath(c.resource.path) === slug,
+    )
 
-    const hasChanges = campaignCreates.length + campaignUpdates.length + campaignDeletes.length + campaignDrift.length > 0
+    const hasChanges =
+      campaignCreates.length +
+      campaignUpdates.length +
+      campaignDeletes.length +
+      campaignDrift.length > 0
 
     if (!hasChanges) {
       lines.push('  (no changes)')
@@ -97,32 +236,50 @@ function formatChangeset(changeset: Changeset, campaignNames: Map<string, string
       continue
     }
 
-    // Creates
+    // Creates with default annotations on subsequent lines
     for (const change of campaignCreates) {
-      lines.push(`  + ${describeResource(change.resource)}`)
+      lines.push(`  + ${describeResource(change.resource, allDesired)}`)
+      const annotations = formatDefaultAnnotations(change.resource)
+      for (const annotation of annotations) {
+        lines.push(annotation)
+      }
     }
 
-    // Updates
+    // Updates with property-level diffs on subsequent lines
     for (const change of campaignUpdates) {
       if (change.op !== 'update') continue
+      lines.push(`  ~ ${describeResource(change.resource, allDesired)}`)
       for (const pc of change.changes) {
-        lines.push(`  ~ ${describeResource(change.resource)}: ${pc.field}: ${formatValue(pc.from)} -> ${formatValue(pc.to)}`)
+        if (pc.field === 'budgetResourceName') continue // internal metadata
+        lines.push(
+          `                  ${pc.field.padEnd(16)}${formatValue(pc.from)}  \u2192  ${formatValue(pc.to)}`,
+        )
       }
     }
 
     // Deletes
     for (const change of campaignDeletes) {
-      lines.push(`  - ${describeResource(change.resource)}`)
+      lines.push(`  - ${describeResource(change.resource, allDesired)}`)
     }
 
     // Drift
     if (campaignDrift.length > 0) {
+      const uiLabel =
+        provider === 'google'
+          ? 'Google Ads'
+          : provider === 'meta'
+            ? 'Meta Ads'
+            : provider
+
       lines.push('')
-      lines.push('  Drift (changed in Google Ads UI):')
+      lines.push(`  Drift (changed in ${uiLabel} UI):`)
       for (const change of campaignDrift) {
         if (change.op !== 'drift') continue
+        lines.push(`    ~ ${describeResource(change.resource, allDesired)}`)
         for (const pc of change.changes) {
-          lines.push(`    ~ ${describeResource(change.resource)}: ${pc.field}: ${formatValue(pc.from)} -> ${formatValue(pc.to)}`)
+          lines.push(
+            `                    ${pc.field.padEnd(16)}${formatValue(pc.from)}  \u2192  ${formatValue(pc.to)}`,
+          )
         }
       }
     }
@@ -136,7 +293,9 @@ function formatChangeset(changeset: Changeset, campaignNames: Map<string, string
   const totalDeletes = changeset.deletes.length
   const totalDrift = changeset.drift.length
   const totalChanges = totalCreates + totalUpdates + totalDeletes + totalDrift
-  const changedCampaigns = new Set([...allChanges.map(c => campaignFromPath(c.resource.path))]).size
+  const changedCampaigns = new Set(
+    allChanges.map(c => campaignFromPath(c.resource.path)),
+  ).size
 
   const parts: string[] = []
   if (totalCreates > 0) parts.push(`${totalCreates} create`)
@@ -147,7 +306,9 @@ function formatChangeset(changeset: Changeset, campaignNames: Map<string, string
   if (totalChanges === 0) {
     lines.push('All campaigns in sync. 0 changes.')
   } else {
-    lines.push(`Summary: ${changedCampaigns} campaign${changedCampaigns !== 1 ? 's' : ''} changed | ${parts.join(' | ')}`)
+    lines.push(
+      `Summary: ${changedCampaigns} campaign${changedCampaigns !== 1 ? 's' : ''} changed | ${parts.join(' | ')}`,
+    )
     lines.push('Run "ads apply" to push code changes')
     if (totalDrift > 0) {
       lines.push('Run "ads pull" to update code with UI changes')
@@ -157,14 +318,107 @@ function formatChangeset(changeset: Changeset, campaignNames: Map<string, string
   return lines.join('\n')
 }
 
+// ─── Google-Specific Pre-Processing ─────────────────────────────
+
+/**
+ * Google campaigns may contain AI markers that need resolution before
+ * flattening. Reads companion .gen.json lock files and substitutes
+ * marker placeholders with generated values.
+ */
+async function preprocessGoogle(
+  campaigns: DiscoveredCampaign[],
+): Promise<unknown[]> {
+  return resolveAllMarkers(
+    campaigns.map(c => ({ file: c.file, campaign: c.campaign })),
+  )
+}
+
+// ─── Per-Provider Plan Pipeline ─────────────────────────────────
+
+type ProviderPlanResult = {
+  provider: string
+  changeset: Changeset
+  desired: Resource[]
+  campaignNames: Map<string, string>
+}
+
+async function planForProvider(
+  provider: string,
+  campaigns: DiscoveredCampaign[],
+  providerModule: ProviderModule,
+  config: AdsConfig,
+  _rootDir: string,
+  cache: Cache,
+): Promise<ProviderPlanResult> {
+  // 1. Pre-process campaigns (provider-specific marker resolution)
+  let campaignObjects: unknown[]
+  if (provider === 'google') {
+    campaignObjects = await preprocessGoogle(campaigns)
+  } else {
+    campaignObjects = campaigns.map(c => c.campaign)
+  }
+
+  // 2. Flatten desired state
+  const desired = providerModule.flatten(campaignObjects)
+
+  // 3. Build campaign slug -> name map for display
+  const campaignNames = new Map<string, string>()
+  for (const r of desired) {
+    if (r.kind === 'campaign') {
+      const name = r.properties['name'] as string | undefined
+      if (name) {
+        campaignNames.set(r.path, name)
+      }
+    }
+  }
+
+  // 4. Fetch live state from the ad platform
+  let actual: Resource[] = []
+  try {
+    actual = await providerModule.fetchAll(config, cache)
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    if (
+      errMsg.includes('Cannot find module') ||
+      errMsg.includes('Module not found') ||
+      errMsg.includes('not implemented')
+    ) {
+      console.warn(
+        `Warning: ${provider} fetch not available \u2014 comparing against empty state.`,
+      )
+    } else {
+      throw err
+    }
+  }
+
+  // 5. Get managed paths and platformId mapping from cache
+  const resourceMap = cache.getResourceMap('default')
+  const managedPaths = new Set(resourceMap.map(r => r.path))
+  const pathToPlatformId = new Map<string, string>()
+  for (const row of resourceMap) {
+    if (row.platformId) {
+      pathToPlatformId.set(row.path, row.platformId)
+    }
+  }
+
+  // 6. Run diff
+  const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
+
+  return { provider, changeset, desired, campaignNames }
+}
+
 // ─── Plan Command ────────────────────────────────────────────────
 
-export async function runPlan(rootDir: string, options: { json?: boolean } = {}): Promise<Changeset> {
+export async function runPlan(
+  rootDir: string,
+  options: { json?: boolean; provider?: string } = {},
+): Promise<Changeset> {
   // 1. Load config
   const config = await loadConfig(rootDir)
   if (!config) {
     console.error('No ads.config.ts found. Run "ads init" first.')
     process.exit(1)
+    return { creates: [], updates: [], deletes: [], drift: [] } // unreachable, satisfies TS
   }
 
   // 2. Discover campaigns
@@ -182,100 +436,94 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
     return { creates: [], updates: [], deletes: [], drift: [] }
   }
 
-  // 3. Resolve AI markers (substitute lock file values for marker placeholders)
-  const googleDiscovered = discovery.campaigns
-    .filter(c => c.provider === 'google')
+  // 3. Group campaigns by provider, optionally filtering
+  const grouped = resolveProviders(discovery.campaigns, options.provider)
 
-  const googleCampaigns = await resolveAllMarkers(
-    googleDiscovered.map(c => ({ file: c.file, campaign: c.campaign })),
-  )
-
-  // 4. Flatten desired state
-  const desired = flattenAll(googleCampaigns)
-
-  // Build campaign slug -> name map for display
-  const campaignNames = new Map<string, string>()
-  for (const c of googleCampaigns) {
-    const slug = desired.find(r => r.kind === 'campaign' && r.properties['name'] === c.name)?.path
-    if (slug) {
-      campaignNames.set(slug, c.name)
-    }
-  }
-
-  // 5. Create Google client
-  // The client factory resolves credentials via config, credentials file, or env vars.
-  // We always pass { type: 'env' } and let it resolve — the ads.config.ts customerId/managerId
-  // are picked up through env vars or ~/.ads/credentials.json.
-  const client = await createGoogleClient({ type: 'env' })
-
-  // 6. Open cache
+  // 4. Open cache
   const cachePath = config.cache ?? `${rootDir}/.ads/cache.db`
-  // Ensure .ads directory exists
   const cacheDir = cachePath.substring(0, cachePath.lastIndexOf('/'))
   await Bun.write(`${cacheDir}/.keep`, '')
   const cache = new Cache(cachePath)
 
-  // 7. Fetch live state
-  let actual: Resource[] = []
-  try {
-    const { fetchAllState } = await import('../src/google/fetch.ts')
-    actual = await fetchAllState(client)
-  } catch (err) {
-    // fetch module may not exist yet (being built by another agent)
-    const errMsg = err instanceof Error ? err.message : String(err)
-    if (errMsg.includes('Cannot find module') || errMsg.includes('Module not found')) {
-      console.warn('Warning: src/google/fetch.ts not available — comparing against empty state.')
-      console.warn('The fetch module is being built by another agent. Proceeding with local-only plan.')
-    } else {
-      throw err
-    }
+  // 5. Run plan for each provider
+  const results: ProviderPlanResult[] = []
+  const sortedProviders = [...grouped.keys()].sort()
+
+  for (const providerName of sortedProviders) {
+    const providerCampaigns = grouped.get(providerName)!
+    const providerModule = await getProvider(providerName)
+
+    const result = await planForProvider(
+      providerName,
+      providerCampaigns,
+      providerModule,
+      config,
+      rootDir,
+      cache,
+    )
+    results.push(result)
   }
 
-  // 8. Get managed paths and platformId mapping from cache
-  const resourceMap = cache.getResourceMap('default')
-  const managedPaths = new Set(resourceMap.map(r => r.path))
-  const pathToPlatformId = new Map<string, string>()
-  for (const row of resourceMap) {
-    if (row.platformId) {
-      pathToPlatformId.set(row.path, row.platformId)
-    }
+  // 6. Merge all changesets for the combined return value
+  const mergedChangeset: Changeset = {
+    creates: results.flatMap(r => r.changeset.creates),
+    updates: results.flatMap(r => r.changeset.updates),
+    deletes: results.flatMap(r => r.changeset.deletes),
+    drift: results.flatMap(r => r.changeset.drift),
   }
 
-  // 9. Run diff
-  const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
-
-  // 10. Save snapshot to cache
+  // 7. Save snapshot and update resource map
   cache.saveSnapshot({
     project: 'default',
     source: 'plan',
-    state: { desired, actual, changeset },
+    state: {
+      desired: results.flatMap(r => r.desired),
+      actual: [],
+      changeset: mergedChangeset,
+    },
   })
 
-  // Update resource map with desired resources
-  for (const r of desired) {
-    cache.setResource({
-      project: 'default',
-      path: r.path,
-      platformId: r.platformId ?? undefined,
-      kind: r.kind,
-      managedBy: 'ads-as-code',
-    })
+  for (const result of results) {
+    for (const r of result.desired) {
+      cache.setResource({
+        project: 'default',
+        path: r.path,
+        platformId: r.platformId ?? undefined,
+        kind: r.kind,
+        managedBy: 'ads-as-code',
+      })
+    }
   }
 
   cache.close()
 
-  // 11. Print output
+  // 8. Print output
   if (options.json) {
-    console.log(JSON.stringify(changeset, null, 2))
+    console.log(JSON.stringify(mergedChangeset, null, 2))
   } else {
-    console.log(formatChangeset(changeset, campaignNames))
+    const outputParts: string[] = []
+    for (const result of results) {
+      outputParts.push(
+        formatChangeset(
+          result.changeset,
+          result.campaignNames,
+          result.desired,
+          result.provider,
+          config,
+        ),
+      )
+    }
+    console.log(outputParts.join('\n\n'))
   }
 
-  return changeset
+  return mergedChangeset
 }
 
-/** CLI entry point — called from cli/index.ts */
-export async function runPlanCommand(args: string[], flags: GlobalFlags): Promise<void> {
+/** CLI entry point -- called from cli/index.ts */
+export async function runPlanCommand(
+  args: string[],
+  flags: GlobalFlags,
+): Promise<void> {
   const rootDir = process.cwd()
-  await runPlan(rootDir, { json: flags.json })
+  await runPlan(rootDir, { json: flags.json, provider: flags.provider })
 }
