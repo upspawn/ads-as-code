@@ -551,6 +551,17 @@ function generateMetaCampaignFile(
       adSetConfigParts.push(`budget: ${budgetStr},`)
     }
 
+    // Conversion config (for OUTCOME_SALES campaigns)
+    const conversion = adSet.properties.conversion as Record<string, unknown> | undefined
+    if (conversion) {
+      const convParts: string[] = []
+      if (conversion.pixelId) convParts.push(`pixelId: ${quote(String(conversion.pixelId))}`)
+      if (conversion.customEventType) convParts.push(`customEventType: ${quote(String(conversion.customEventType))}`)
+      if (convParts.length > 0) {
+        adSetConfigParts.push(`conversion: {\n    ${convParts.join(',\n    ')},\n  },`)
+      }
+    }
+
     // Placements (omit if automatic)
     const placements = adSet.properties.placements as unknown
     if (placements && !isDefaultPlacements(placements)) {
