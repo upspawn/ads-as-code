@@ -648,6 +648,67 @@ function buildUpdateOperations(
         updateMask: kwMask.join(','),
       }]
     }
+    case 'ad': {
+      // Ad resource name format: adGroupAds/{adGroupId}~{adId}
+      const adResourceName = resolveResourceName(customerId, 'adGroupAds', resource.platformId)
+
+      const adGroupAdFields: Record<string, unknown> = { resource_name: adResourceName }
+      const adContentFields: Record<string, unknown> = {}
+      const mask: string[] = []
+
+      for (const c of change.changes) {
+        if (c.field === 'status') {
+          adGroupAdFields.status = (c.to as string) === 'paused' ? 3 : 2
+          mask.push('status')
+        }
+        if (c.field === 'headlines') {
+          adContentFields.responsive_search_ad = {
+            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
+            headlines: (c.to as string[]).map(text => ({ text, pinned_field: 0 })),
+          }
+          mask.push('ad.responsive_search_ad.headlines')
+        }
+        if (c.field === 'descriptions') {
+          adContentFields.responsive_search_ad = {
+            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
+            descriptions: (c.to as string[]).map(text => ({ text, pinned_field: 0 })),
+          }
+          mask.push('ad.responsive_search_ad.descriptions')
+        }
+        if (c.field === 'finalUrl') {
+          adContentFields.final_urls = [c.to as string]
+          mask.push('ad.final_urls')
+        }
+        if (c.field === 'path1') {
+          adContentFields.responsive_search_ad = {
+            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
+            path1: c.to as string,
+          }
+          mask.push('ad.responsive_search_ad.path1')
+        }
+        if (c.field === 'path2') {
+          adContentFields.responsive_search_ad = {
+            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
+            path2: c.to as string,
+          }
+          mask.push('ad.responsive_search_ad.path2')
+        }
+      }
+
+      if (mask.length === 0) return []
+
+      // Nest ad content fields under `ad` if any were changed
+      if (Object.keys(adContentFields).length > 0) {
+        adGroupAdFields.ad = adContentFields
+      }
+
+      return [{
+        operation: 'ad_group_ad',
+        op: 'update',
+        resource: adGroupAdFields,
+        updateMask: mask.join(','),
+      }]
+    }
     default:
       return []
   }
