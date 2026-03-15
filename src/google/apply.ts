@@ -163,6 +163,12 @@ function buildCampaignCreate(
       case 'manual-cpc':
         campaign.manual_cpc = { enhanced_cpc_enabled: bidding.enhancedCpc ?? false }
         break
+      case 'manual-cpm':
+        campaign.manual_cpm = {}
+        break
+      case 'target-cpm':
+        campaign.target_cpm = {}
+        break
       case 'target-cpa':
         campaign.target_cpa = { target_cpa_micros: String(toMicros(bidding.targetCpa as number)) }
         break
@@ -444,6 +450,11 @@ function buildAdCreate(
 ): MutateOperation {
   const props = resource.properties
 
+  // Dispatch to RDA builder if this is a responsive display ad
+  if (props.adType === 'responsive-display') {
+    return buildResponsiveDisplayAdCreate(adGroupResourceName, resource)
+  }
+
   // Build headline assets with optional pinning
   const pinnedHL = props.pinnedHeadlines as Array<{ text: string; position: number }> | undefined
   const pinnedHLMap = new Map(pinnedHL?.map(p => [p.text, p.position]) ?? [])
@@ -476,6 +487,49 @@ function buildAdCreate(
           descriptions,
           ...(path1 ? { path1 } : {}),
           ...(path2 ? { path2 } : {}),
+        },
+        final_urls: [props.finalUrl],
+      },
+    },
+  }
+}
+
+function buildResponsiveDisplayAdCreate(
+  adGroupResourceName: string,
+  resource: Resource,
+): MutateOperation {
+  const props = resource.properties
+  const adStatus = (props.status as string) === 'paused' ? 3 : 2
+
+  const headlines = (props.headlines as string[]).map(text => ({ text }))
+  const descriptions = (props.descriptions as string[]).map(text => ({ text }))
+  const longHeadline = { text: props.longHeadline as string }
+
+  const mainColor = props.mainColor as string | undefined
+  const accentColor = props.accentColor as string | undefined
+  const callToAction = props.callToAction as string | undefined
+
+  // Image asset references — stored as resource name strings in properties
+  const marketingImages = props.marketingImages as unknown[] | undefined
+  const squareMarketingImages = props.squareMarketingImages as unknown[] | undefined
+
+  return {
+    operation: 'ad_group_ad',
+    op: 'create',
+    resource: {
+      ad_group: adGroupResourceName,
+      status: adStatus,
+      ad: {
+        responsive_display_ad: {
+          headlines,
+          long_headline: longHeadline,
+          descriptions,
+          business_name: props.businessName as string,
+          marketing_images: marketingImages ?? [],
+          square_marketing_images: squareMarketingImages ?? [],
+          ...(mainColor ? { main_color: mainColor } : {}),
+          ...(accentColor ? { accent_color: accentColor } : {}),
+          ...(callToAction ? { call_to_action_text: callToAction } : {}),
         },
         final_urls: [props.finalUrl],
       },
@@ -732,6 +786,14 @@ function buildUpdateOperations(
             case 'manual-cpc':
               campaignFields.manual_cpc = { enhanced_cpc_enabled: newBidding.enhancedCpc ?? false }
               campaignMask.push('manual_cpc')
+              break
+            case 'manual-cpm':
+              campaignFields.manual_cpm = {}
+              campaignMask.push('manual_cpm')
+              break
+            case 'target-cpm':
+              campaignFields.target_cpm = {}
+              campaignMask.push('target_cpm')
               break
             case 'target-cpa':
               campaignFields.target_cpa = { target_cpa_micros: String(toMicros(newBidding.targetCpa as number)) }

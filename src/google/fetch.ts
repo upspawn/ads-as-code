@@ -67,6 +67,10 @@ function mapBiddingStrategy(apiType: unknown, row: GoogleAdsRow): BiddingStrateg
         ? { type: 'maximize-clicks', maxCpc: microsToAmount(cpcCeiling as string | number) }
         : { type: 'maximize-clicks' }
     }
+    case 'MANUAL_CPM':
+      return { type: 'manual-cpm' }
+    case 'TARGET_CPM':
+      return { type: 'target-cpm' }
     case 'ENHANCED_CPC':
       return { type: 'manual-cpc', enhancedCpc: true }
     case 'MANUAL_CPC': {
@@ -411,6 +415,113 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
     ...(pinnedDescriptions.length > 0 ? { pinnedDescriptions } : {}),
     ...(path1 ? { path1 } : {}),
     ...(path2 ? { path2 } : {}),
+  }, adId)
+}
+
+// ─── Display Ad Fetcher ─────────────────────────────────────
+
+const DISPLAY_AD_QUERY = `
+SELECT
+  ad_group_ad.ad.id,
+  ad_group_ad.ad.type,
+  ad_group_ad.ad.responsive_display_ad.headlines,
+  ad_group_ad.ad.responsive_display_ad.long_headline,
+  ad_group_ad.ad.responsive_display_ad.descriptions,
+  ad_group_ad.ad.responsive_display_ad.business_name,
+  ad_group_ad.ad.responsive_display_ad.marketing_images,
+  ad_group_ad.ad.responsive_display_ad.square_marketing_images,
+  ad_group_ad.ad.responsive_display_ad.logo_images,
+  ad_group_ad.ad.responsive_display_ad.call_to_action_text,
+  ad_group_ad.ad.responsive_display_ad.main_color,
+  ad_group_ad.ad.responsive_display_ad.accent_color,
+  ad_group_ad.ad.final_urls,
+  ad_group_ad.status,
+  ad_group.id,
+  ad_group.name,
+  campaign.id,
+  campaign.name
+FROM ad_group_ad
+WHERE ad_group_ad.ad.type = 'RESPONSIVE_DISPLAY_AD'
+  AND ad_group_ad.status != 'REMOVED'
+`.trim()
+
+export async function fetchDisplayAds(
+  client: GoogleAdsClient,
+  adGroupIds?: string[],
+): Promise<Resource[]> {
+  let query = DISPLAY_AD_QUERY
+  if (adGroupIds?.length) {
+    query += `\n  AND ad_group.id IN (${adGroupIds.join(', ')})`
+  }
+  const rows = await client.query(query)
+  return rows.map(normalizeDisplayAdRow)
+}
+
+export function normalizeDisplayAdRow(row: GoogleAdsRow): Resource {
+  const adGroupAd = (row.ad_group_ad ?? row.adGroupAd) as Record<string, unknown> | undefined
+  const ad = adGroupAd?.ad as Record<string, unknown> | undefined
+  const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
+  const campaign = row.campaign as Record<string, unknown> | undefined
+
+  const adId = str(ad?.id)
+  const rda = (ad?.responsive_display_ad ?? ad?.responsiveDisplayAd) as Record<string, unknown> | undefined
+
+  // Text fields
+  const headlineAssets = (rda?.headlines ?? []) as Array<{ text: string }>
+  const headlines = headlineAssets.map(h => h.text).sort()
+  const longHeadlineObj = (rda?.long_headline ?? rda?.longHeadline) as { text: string } | undefined
+  const longHeadline = longHeadlineObj?.text ?? ''
+  const descriptionAssets = (rda?.descriptions ?? []) as Array<{ text: string }>
+  const descriptions = descriptionAssets.map(d => d.text).sort()
+  const businessName = str(rda?.business_name ?? rda?.businessName)
+
+  // Images — extract asset resource names
+  const marketingImageRefs = (rda?.marketing_images ?? rda?.marketingImages ?? []) as Array<{ asset: string }>
+  const squareMarketingImageRefs = (rda?.square_marketing_images ?? rda?.squareMarketingImages ?? []) as Array<{ asset: string }>
+  const logoImageRefs = (rda?.logo_images ?? rda?.logoImages ?? []) as Array<{ asset: string }>
+
+  const marketingImages = marketingImageRefs.map(i => i.asset)
+  const squareMarketingImages = squareMarketingImageRefs.map(i => i.asset)
+  const logoImages = logoImageRefs.map(i => i.asset)
+
+  // Style fields
+  const mainColor = str(rda?.main_color ?? rda?.mainColor) || undefined
+  const accentColor = str(rda?.accent_color ?? rda?.accentColor) || undefined
+  const callToAction = str(rda?.call_to_action_text ?? rda?.callToActionText) || undefined
+
+  // Status
+  const adStatus = mapStatus(adGroupAd?.status)
+
+  // Final URL
+  const finalUrls = (ad?.final_urls ?? ad?.finalUrls ?? []) as string[]
+  const finalUrl = finalUrls[0] ?? ''
+
+  // Path construction
+  const adGroupName = str(adGroup?.name)
+  const campaignName = str(campaign?.name)
+  const campaignPath = slugify(campaignName)
+  const groupSlug = slugify(adGroupName)
+
+  // Stable hash matching flattenDisplay's responsiveDisplayHash
+  const payload = JSON.stringify({ headlines: [...headlines].sort(), longHeadline, finalUrl })
+  const h = Bun.hash(payload)
+  const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
+  const path = `${campaignPath}/${groupSlug}/rda:${hash}`
+
+  return resource('ad', path, {
+    adType: 'responsive-display',
+    headlines,
+    longHeadline,
+    descriptions,
+    businessName,
+    finalUrl,
+    ...(adStatus !== 'enabled' ? { status: adStatus } : {}),
+    ...(marketingImages.length > 0 ? { marketingImages } : {}),
+    ...(squareMarketingImages.length > 0 ? { squareMarketingImages } : {}),
+    ...(logoImages.length > 0 ? { logoImages } : {}),
+    ...(mainColor ? { mainColor } : {}),
+    ...(accentColor ? { accentColor } : {}),
+    ...(callToAction ? { callToAction } : {}),
   }, adId)
 }
 
@@ -1027,10 +1138,11 @@ export async function fetchAllState(
   const adGroups = await fetchAdGroups(client, campaignIds)
   const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-  // Step 3: Keywords + ads (scoped to ad groups) — can run in parallel
-  const [keywords, ads] = await Promise.all([
+  // Step 3: Keywords + ads + display ads (scoped to ad groups) — can run in parallel
+  const [keywords, ads, displayAds] = await Promise.all([
     adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
+    adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
   ])
 
   // Step 4: Extensions + negative keywords + targeting + devices + demographics + audiences — can run in parallel
@@ -1051,7 +1163,7 @@ export async function fetchAllState(
   // Merge audience targeting into ad group resources
   const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...extensions, ...negatives]
+  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -1080,9 +1192,10 @@ export async function fetchKnownState(
     const adGroups = await fetchAdGroups(client, knownCampaignIds)
     const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-    const [keywords, ads] = await Promise.all([
+    const [keywords, ads, displayAds] = await Promise.all([
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
+      adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
     ])
     const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
       fetchExtensions(client, knownCampaignIds),
@@ -1098,7 +1211,7 @@ export async function fetchKnownState(
     const campaignsWithDemographics = mergeDemographicsIntoCampaigns(campaignsWithDevices, demographicMap)
     const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...extensions, ...negatives]
+    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything

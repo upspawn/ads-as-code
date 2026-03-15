@@ -31,6 +31,39 @@ function formatStringList(items: string[]): string {
   return '\n' + items.map((s) => `    ${quote(s)},`).join('\n') + '\n  '
 }
 
+// ─── Image Ref Formatter ─────────────────────────────────
+
+function formatImageRef(img: Record<string, unknown>, imports: Set<string>): string {
+  const aspectRatio = img.aspectRatio as string | undefined
+  const imgPath = img.path as string | undefined
+
+  if (!imgPath) {
+    // Raw asset resource name (from fetch, not a typed ImageRef)
+    return `'${String(img)}'`
+  }
+
+  switch (aspectRatio) {
+    case 'landscape':
+      imports.add('landscape')
+      return `landscape(${quote(imgPath)})`
+    case 'square':
+      imports.add('square')
+      return `square(${quote(imgPath)})`
+    case 'portrait':
+      imports.add('portrait')
+      return `portrait(${quote(imgPath)})`
+    case 'logo':
+      imports.add('logo')
+      return `logo(${quote(imgPath)})`
+    case 'logo-landscape':
+      imports.add('logoLandscape')
+      return `logoLandscape(${quote(imgPath)})`
+    default:
+      imports.add('landscape')
+      return `landscape(${quote(imgPath)})`
+  }
+}
+
 // ─── Match Type Helpers ──────────────────────────────────
 
 function matchTypeHelper(matchType: string): string {
@@ -67,6 +100,10 @@ function formatBidding(bidding: Record<string, unknown>): string {
       }
       return `'manual-cpc'`
     }
+    case 'manual-cpm':
+      return `'manual-cpm'`
+    case 'target-cpm':
+      return `'target-cpm'`
     case 'target-cpa':
       return `{ type: 'target-cpa', targetCpa: ${bidding.targetCpa} }`
     case 'target-roas':
@@ -132,6 +169,9 @@ function addTargetingImports(targetingStr: string, imports: Set<string>): void {
   if (targetingStr.includes('affinity(')) imports.add('affinity')
   if (targetingStr.includes('customAudience(')) imports.add('customAudience')
   if (targetingStr.includes('customerMatch(')) imports.add('customerMatch')
+  if (targetingStr.includes('placements(')) imports.add('placements')
+  if (targetingStr.includes('topics(')) imports.add('topics')
+  if (targetingStr.includes('contentKeywords(')) imports.add('contentKeywords')
   if (targetingStr.includes('targeting(')) imports.add('targeting')
 }
 
@@ -186,6 +226,15 @@ function formatTargeting(targeting: Record<string, unknown>): string | null {
       const eh = rule.endHour as number
       const bidAdj = rule.bidAdjustment as number
       parts.push(`scheduleBid('${day}', ${sh}, ${eh}, ${bidAdj})`)
+    } else if (type === 'placement') {
+      const urls = rule.urls as string[]
+      parts.push(`placements(${urls.map(quote).join(', ')})`)
+    } else if (type === 'topic') {
+      const topicNames = rule.topics as string[]
+      parts.push(`topics(${topicNames.map(quote).join(', ')})`)
+    } else if (type === 'content-keyword') {
+      const kws = rule.keywords as string[]
+      parts.push(`contentKeywords(${kws.map(quote).join(', ')})`)
     } else if (type === 'audience') {
       const refs = rule.audiences as Array<Record<string, unknown>>
       const mode = rule.mode as string
@@ -373,48 +422,106 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     }
     const keywordsLine = `keywords: [${keywordParts.join(', ')}],`
 
-    // Ads
+    // Ads — detect RSA vs RDA
     let adLines = ''
     if (groupAds.length > 0) {
-      imports.add('rsa')
-      imports.add('headlines')
-      imports.add('descriptions')
-      imports.add('url')
+      const isRDA = groupAds[0]?.properties.adType === 'responsive-display'
 
-      const formatOneAd = (adRes: Resource): string => {
-        const hl = adRes.properties.headlines as string[]
-        const desc = adRes.properties.descriptions as string[]
-        const adFinalUrl = adRes.properties.finalUrl as string
-        const p1 = adRes.properties.path1 as string | undefined
-        const p2 = adRes.properties.path2 as string | undefined
-        const adSt = adRes.properties.status as string | undefined
+      if (isRDA) {
+        const formatOneRDA = (adRes: Resource): string => {
+          imports.add('responsiveDisplay')
 
-        const headlinesStr =
-          hl.length <= 3
-            ? `headlines(${hl.map(quote).join(', ')})`
-            : `headlines(\n        ${hl.map(quote).join(',\n        ')},\n      )`
-        const descriptionsStr =
-          desc.length <= 2
-            ? `descriptions(${desc.map(quote).join(', ')})`
-            : `descriptions(\n        ${desc.map(quote).join(',\n        ')},\n      )`
+          const hl = adRes.properties.headlines as string[]
+          const desc = adRes.properties.descriptions as string[]
+          const longHL = adRes.properties.longHeadline as string
+          const bn = adRes.properties.businessName as string
+          const adFinalUrl = adRes.properties.finalUrl as string
+          const marketingImgs = adRes.properties.marketingImages as Array<{ type: string; path: string; aspectRatio: string }> | undefined
+          const squareImgs = adRes.properties.squareMarketingImages as Array<{ type: string; path: string; aspectRatio: string }> | undefined
+          const logoImgs = adRes.properties.logoImages as Array<{ type: string; path: string; aspectRatio: string }> | undefined
+          const mainColor = adRes.properties.mainColor as string | undefined
+          const accentColor = adRes.properties.accentColor as string | undefined
+          const callToAction = adRes.properties.callToAction as string | undefined
 
-        const rsaParts = [headlinesStr, descriptionsStr, `url(${quote(adFinalUrl)})`]
+          const rdaParts: string[] = [
+            `headlines: [${hl.map(quote).join(', ')}],`,
+            `longHeadline: ${quote(longHL)},`,
+            `descriptions: [${desc.map(quote).join(', ')}],`,
+            `businessName: ${quote(bn)},`,
+            `finalUrl: ${quote(adFinalUrl)},`,
+          ]
 
-        // Path and status options
-        const opts: string[] = []
-        if (p1) opts.push(`path1: ${quote(p1)}`)
-        if (p2) opts.push(`path2: ${quote(p2)}`)
-        if (adSt === 'paused') opts.push(`status: 'paused'`)
-        if (opts.length > 0) rsaParts.push(`{ ${opts.join(', ')} }`)
+          // Image references
+          if (marketingImgs && marketingImgs.length > 0) {
+            const imgRefs = marketingImgs.map(img => formatImageRef(img, imports))
+            rdaParts.push(`marketingImages: [${imgRefs.join(', ')}],`)
+          } else {
+            rdaParts.push(`marketingImages: [],`)
+          }
+          if (squareImgs && squareImgs.length > 0) {
+            const imgRefs = squareImgs.map(img => formatImageRef(img, imports))
+            rdaParts.push(`squareMarketingImages: [${imgRefs.join(', ')}],`)
+          } else {
+            rdaParts.push(`squareMarketingImages: [],`)
+          }
+          if (logoImgs && logoImgs.length > 0) {
+            const imgRefs = logoImgs.map(img => formatImageRef(img, imports))
+            rdaParts.push(`logoImages: [${imgRefs.join(', ')}],`)
+          }
+          if (mainColor) rdaParts.push(`mainColor: ${quote(mainColor)},`)
+          if (accentColor) rdaParts.push(`accentColor: ${quote(accentColor)},`)
+          if (callToAction) rdaParts.push(`callToAction: ${quote(callToAction)},`)
 
-        return `rsa(\n      ${rsaParts.join(',\n      ')},\n    )`
-      }
+          return `responsiveDisplay({\n      ${rdaParts.join('\n      ')}\n    })`
+        }
 
-      if (groupAds.length === 1) {
-        adLines = `ad: ${formatOneAd(groupAds[0]!)},`
+        if (groupAds.length === 1) {
+          adLines = `ad: ${formatOneRDA(groupAds[0]!)},`
+        } else {
+          const formatted = groupAds.map(a => formatOneRDA(a))
+          adLines = `ad: [\n      ${formatted.join(',\n      ')},\n    ],`
+        }
       } else {
-        const formatted = groupAds.map(a => formatOneAd(a))
-        adLines = `ad: [\n      ${formatted.join(',\n      ')},\n    ],`
+        imports.add('rsa')
+        imports.add('headlines')
+        imports.add('descriptions')
+        imports.add('url')
+
+        const formatOneAd = (adRes: Resource): string => {
+          const hl = adRes.properties.headlines as string[]
+          const desc = adRes.properties.descriptions as string[]
+          const adFinalUrl = adRes.properties.finalUrl as string
+          const p1 = adRes.properties.path1 as string | undefined
+          const p2 = adRes.properties.path2 as string | undefined
+          const adSt = adRes.properties.status as string | undefined
+
+          const headlinesStr =
+            hl.length <= 3
+              ? `headlines(${hl.map(quote).join(', ')})`
+              : `headlines(\n        ${hl.map(quote).join(',\n        ')},\n      )`
+          const descriptionsStr =
+            desc.length <= 2
+              ? `descriptions(${desc.map(quote).join(', ')})`
+              : `descriptions(\n        ${desc.map(quote).join(',\n        ')},\n      )`
+
+          const rsaParts = [headlinesStr, descriptionsStr, `url(${quote(adFinalUrl)})`]
+
+          // Path and status options
+          const opts: string[] = []
+          if (p1) opts.push(`path1: ${quote(p1)}`)
+          if (p2) opts.push(`path2: ${quote(p2)}`)
+          if (adSt === 'paused') opts.push(`status: 'paused'`)
+          if (opts.length > 0) rsaParts.push(`{ ${opts.join(', ')} }`)
+
+          return `rsa(\n      ${rsaParts.join(',\n      ')},\n    )`
+        }
+
+        if (groupAds.length === 1) {
+          adLines = `ad: ${formatOneAd(groupAds[0]!)},`
+        } else {
+          const formatted = groupAds.map(a => formatOneAd(a))
+          adLines = `ad: [\n      ${formatted.join(',\n      ')},\n    ],`
+        }
       }
     }
 
