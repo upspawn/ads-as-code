@@ -219,6 +219,7 @@ function formatCreative(
   imports: Set<string>,
 ): string {
   const props = creative.properties
+  const meta = creative.meta ?? {}
   const format = props.format as string
   const parts: string[] = []
 
@@ -239,8 +240,9 @@ function formatCreative(
 
   if (format === 'video') {
     imports.add('video')
-    const videoPath = (props.video as string) || `./assets/imported/${slugify(name || 'video')}.mp4`
-    const thumbnail = props.thumbnail as string | undefined
+    // Video path: prefer meta.videoPath (from flatten), fall back to properties (legacy), then derive
+    const videoPath = (meta.videoPath as string) || (props.video as string) || `./assets/imported/${slugify(name || 'video')}.mp4`
+    const thumbnail = (meta.thumbnailPath as string) || (props.thumbnail as string) || undefined
     if (thumbnail) parts.push(`thumbnail: ${quote(thumbnail)}`)
     if (parts.length === 0) return `video(${quote(videoPath)})`
     return `video(${quote(videoPath)}, {\n      ${parts.join(',\n      ')},\n    })`
@@ -248,7 +250,8 @@ function formatCreative(
 
   // Default: image
   imports.add('image')
-  const imagePath = (props.image as string) || `./assets/imported/${slugify(name || 'image')}.png`
+  // Image path: prefer meta.imagePath (from flatten), fall back to properties (legacy), then derive
+  const imagePath = (meta.imagePath as string) || (props.image as string) || `./assets/imported/${slugify(name || 'image')}.png`
   if (parts.length === 0) return `image(${quote(imagePath)})`
   return `image(${quote(imagePath)}, {\n      ${parts.join(',\n      ')},\n    })`
 }

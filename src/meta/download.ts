@@ -71,16 +71,17 @@ function extractMediaUrls(resources: Resource[]): Array<{
   for (const r of resources) {
     if (r.kind !== 'creative') continue
     const props = r.properties
+    const meta = r.meta ?? {}
     const name = props.name as string | undefined
 
-    // Image creatives
-    const imageUrl = props.image as string | undefined
+    // Image creatives — check meta.imagePath first (new location), then props.image (legacy)
+    const imageUrl = (meta.imagePath as string | undefined) ?? (props.image as string | undefined)
     if (imageUrl && isRemoteUrl(imageUrl)) {
       media.push({ url: imageUrl, name, resourcePath: r.path, field: 'image' })
     }
 
     // Video creatives (thumbnail only — videos are too large to auto-download)
-    const thumbnailUrl = props.thumbnail as string | undefined
+    const thumbnailUrl = (meta.thumbnailPath as string | undefined) ?? (props.thumbnail as string | undefined)
     if (thumbnailUrl && isRemoteUrl(thumbnailUrl)) {
       media.push({ url: thumbnailUrl, name: name ? `${name}-thumb` : 'thumb', resourcePath: r.path, field: 'thumbnail' })
     }
@@ -177,18 +178,19 @@ export async function downloadMetaImages(
     }
   }
 
-  // Replace remote URLs with local paths in resource properties
+  // Replace remote URLs with local paths in resource meta
   const updatedResources = resources.map((r) => {
     if (r.kind !== 'creative') return r
 
-    const props = { ...r.properties }
-    const imagePath = localPaths.get(`${r.path}:image`)
-    const thumbPath = localPaths.get(`${r.path}:thumbnail`)
+    const localImagePath = localPaths.get(`${r.path}:image`)
+    const localThumbPath = localPaths.get(`${r.path}:thumbnail`)
+    if (!localImagePath && !localThumbPath) return r
 
-    if (imagePath) props.image = imagePath
-    if (thumbPath) props.thumbnail = thumbPath
+    const updatedMeta = { ...(r.meta ?? {}) }
+    if (localImagePath) updatedMeta.imagePath = localImagePath
+    if (localThumbPath) updatedMeta.thumbnailPath = localThumbPath
 
-    return { ...r, properties: props }
+    return { ...r, meta: updatedMeta }
   })
 
   return {
