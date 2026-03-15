@@ -4,6 +4,7 @@ export { geo, languages, weekdays, hours, device, regions, cities, radius, prese
 export { headlines, descriptions, rsa } from './ads.ts'
 export type { RSAOptions } from './ads.ts'
 export { responsiveDisplay } from './display-ads.ts'
+export { demandGenMultiAsset, demandGenCarousel, carouselCard } from './demand-gen-ads.ts'
 export { link, sitelinks, callouts, snippet, call, price, promotion, image } from './extensions.ts'
 export { negatives } from './negatives.ts'
 export { url } from './url.ts'

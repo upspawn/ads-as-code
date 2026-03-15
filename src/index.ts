@@ -76,6 +76,16 @@ export type {
   AssetGroupInput,
   PMaxCampaignInput,
   PMaxCampaignBuilder,
+  GoogleDemandGenCampaign,
+  DemandGenMultiAssetAd,
+  DemandGenCarouselAd,
+  DemandGenCarouselCard,
+  DemandGenAd,
+  DemandGenChannelControls,
+  DemandGenAdGroup,
+  DemandGenCampaignInput,
+  DemandGenAdGroupInput,
+  DemandGenCampaignBuilder,
 } from './google/types.ts'
 
 export type {
@@ -101,6 +111,7 @@ export {
   placements, topics, contentKeywords,
   headlines, descriptions, rsa,
   responsiveDisplay,
+  demandGenMultiAsset, demandGenCarousel, carouselCard,
   link, sitelinks, callouts, snippet, call, price, promotion, image,
   negatives,
   url,
