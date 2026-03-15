@@ -47,6 +47,13 @@ function quote(s: string): string {
   return `'${s.replace(/'/g, "\\'")}'`
 }
 
+/** Derive a name from a file path by stripping directory and extension. */
+function nameFromFile(filePath: string): string {
+  const base = filePath.split('/').pop() ?? filePath
+  const dotIndex = base.lastIndexOf('.')
+  return dotIndex > 0 ? base.slice(0, dotIndex) : base
+}
+
 function indent(text: string, level: number): string {
   const prefix = '  '.repeat(level)
   return text
@@ -229,6 +236,19 @@ function formatCreative(
   const cta = props.cta as string | undefined
   const url = props.url as string | undefined
   const name = props.name as string | undefined
+
+  // Emit explicit name when it differs from what nameFromFile would derive
+  // from the media path. This ensures flatten roundtrips produce the same
+  // creative name the API returns, instead of a slugified filename.
+  if (name) {
+    const mediaFile = format === 'video'
+      ? ((meta.videoPath as string) || (props.video as string))
+      : ((meta.imagePath as string) || (props.image as string))
+    const derived = mediaFile ? nameFromFile(mediaFile) : undefined
+    if (!derived || derived !== name) {
+      parts.push(`name: ${quote(name)}`)
+    }
+  }
 
   if (headline) parts.push(`headline: ${quote(headline)}`)
   if (primaryText) parts.push(`primaryText: ${quote(primaryText)}`)

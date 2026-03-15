@@ -300,12 +300,14 @@ export async function runImport(args: string[], flags: GlobalFlags) {
     written.push('negatives.ts')
   }
 
-  // 11. Seed cache with imported resources
-  const platformIdLookup = buildPlatformIdLookup(resources)
+  // 11. Seed cache with imported resources (only campaigns that were actually written)
+  const importedResources = campaigns.flatMap(([_, { resources: res }]) => res)
+  const platformIdLookup = buildPlatformIdLookup(importedResources)
 
-  // Seed cache directly from the fetched resources (no re-flatten needed
-  // for the initial import — the fetched resource paths are canonical).
-  for (const r of resources) {
+  // Seed cache directly from the imported resources (not all fetched resources —
+  // non-imported campaigns would appear as managed paths without code files,
+  // causing the plan to show false delete operations).
+  for (const r of importedResources) {
     const platformId = r.platformId ?? resolvePlatformId(r, platformIdLookup)
     cache.setResource({
       project: 'default',

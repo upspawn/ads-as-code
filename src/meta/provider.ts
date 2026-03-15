@@ -1,7 +1,7 @@
 import type { ProviderModule } from '../core/providers.ts'
 import type { Resource, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
-import type { MetaCampaign } from './flatten.ts'
+import type { MetaCampaign } from './index.ts'
 import { flattenMeta } from './flatten.ts'
 import { codegenMeta } from './codegen.ts'
 import { downloadMetaImages } from './download.ts'

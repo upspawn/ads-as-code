@@ -395,7 +395,7 @@ function remainingChanges(changes: Change[], afterChange: Change): Change[] {
 
 /**
  * Upload images for creative resources that have `pendingUpload: true`.
- * Mutates the resource properties in place to add `imageHash`.
+ * Mutates the resource meta in place to add `imageHash`.
  * Returns true if all uploads succeeded.
  */
 async function uploadPendingImages(

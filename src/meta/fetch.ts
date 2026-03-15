@@ -366,21 +366,28 @@ function normalizeAd(raw: MetaApiAd, adSetPaths: AdSetPathMap): Resource[] {
   const adSetPath = adSetPaths.get(raw.adset_id)
   if (!adSetPath) return [] // orphan ad — ad set was filtered out
 
-  const adSlug = slugify(raw.name)
+  const { properties: creativeProps, meta: creativeMeta } = extractCreativeProps(raw.creative)
+
+  // Use the creative name as the canonical name for both creative and ad.
+  // This matches flatten behavior where the ad name is derived from the creative
+  // (via resolveAdName -> creative.name). Using the raw ad name would produce
+  // different paths since Meta ad names and creative names are independent.
+  const canonicalName = raw.creative?.name ?? raw.name
+  creativeProps.name = canonicalName
+
+  const adSlug = slugify(canonicalName)
   const adPath = `${adSetPath}/${adSlug}`
   const creativePath = `${adPath}/cr`
-
-  const { properties: creativeProps, meta: creativeMeta } = extractCreativeProps(raw.creative)
-  creativeProps.name = raw.creative?.name ?? raw.name
 
   const resources: Resource[] = []
 
   // Creative resource
   resources.push(resource('creative', creativePath, creativeProps, raw.creative?.id, creativeMeta))
 
-  // Ad resource
+  // Ad resource — name uses the canonical creative name for path consistency,
+  // and the ad's own name is preserved in properties for API operations
   resources.push(resource('ad', adPath, {
-    name: raw.name,
+    name: canonicalName,
     status: mapStatus(raw.status),
     creativePath,
   }, raw.id))
