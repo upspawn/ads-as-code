@@ -96,6 +96,10 @@ export type MetaPlacements =
   | {
       readonly platforms: readonly MetaPlatform[]
       readonly positions?: readonly PlacementPosition[]
+      readonly facebookPositions?: readonly string[]
+      readonly instagramPositions?: readonly string[]
+      readonly messengerPositions?: readonly string[]
+      readonly audienceNetworkPositions?: readonly string[]
       readonly devicePlatforms?: readonly ('mobile' | 'desktop')[]
       readonly publisherPlatforms?: readonly ('facebook' | 'instagram' | 'audience_network' | 'messenger')[]
     }

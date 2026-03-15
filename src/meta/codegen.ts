@@ -108,6 +108,44 @@ function isDefaultStatus(status: unknown): boolean {
   return status === 'PAUSED'
 }
 
+// ─── Placement Codegen ──────────────────────────────────
+
+/** Format a manual placements object into a `manual(...)` call string. */
+function formatManualPlacements(p: Record<string, unknown>): string {
+  const platforms = p.platforms as string[]
+  const platformsStr = `[${platforms.map(quote).join(', ')}]`
+
+  const positionEntries: string[] = []
+  const facebookPositions = p.facebookPositions as string[] | undefined
+  const instagramPositions = p.instagramPositions as string[] | undefined
+  const messengerPositions = p.messengerPositions as string[] | undefined
+  const audienceNetworkPositions = p.audienceNetworkPositions as string[] | undefined
+
+  if (facebookPositions?.length) {
+    positionEntries.push(`facebookPositions: [${facebookPositions.map(quote).join(', ')}]`)
+  }
+  if (instagramPositions?.length) {
+    positionEntries.push(`instagramPositions: [${instagramPositions.map(quote).join(', ')}]`)
+  }
+  if (messengerPositions?.length) {
+    positionEntries.push(`messengerPositions: [${messengerPositions.map(quote).join(', ')}]`)
+  }
+  if (audienceNetworkPositions?.length) {
+    positionEntries.push(`audienceNetworkPositions: [${audienceNetworkPositions.map(quote).join(', ')}]`)
+  }
+
+  if (positionEntries.length > 0) {
+    return `manual(${platformsStr}, {\n      ${positionEntries.join(',\n      ')},\n    })`
+  }
+
+  const positions = p.positions as string[] | undefined
+  if (positions?.length) {
+    return `manual(${platformsStr}, [${positions.map(quote).join(', ')}])`
+  }
+
+  return `manual(${platformsStr})`
+}
+
 // ─── Bidding Codegen ─────────────────────────────────────
 
 function formatMetaBidding(bidding: Record<string, unknown>): string {
@@ -227,15 +265,22 @@ function formatCreative(
 ): string {
   const props = creative.properties
   const meta = creative.meta ?? {}
-  const format = props.format as string
-  const parts: string[] = []
+  const format = props.format as string | undefined
+  const name = props.name as string | undefined
 
+  // Boosted posts have no format — they are existing page posts promoted as ads.
+  // Emit a minimal object literal with just the name, no image()/video() call.
+  if (!format) {
+    if (!name) return '{ /* boosted post */ }'
+    return `{ name: ${quote(name)} }`
+  }
+
+  const parts: string[] = []
   const headline = props.headline as string | undefined
   const primaryText = props.primaryText as string | undefined
   const description = props.description as string | undefined
   const cta = props.cta as string | undefined
   const url = props.url as string | undefined
-  const name = props.name as string | undefined
 
   // Emit explicit name when it differs from what nameFromFile would derive
   // from the media path. This ensures flatten roundtrips produce the same
@@ -393,13 +438,8 @@ function generateMetaCampaignFile(
       if (typeof placements === 'object' && placements !== null) {
         const p = placements as Record<string, unknown>
         const platforms = p.platforms as string[] | undefined
-        const positions = p.positions as string[] | undefined
         if (platforms) {
-          const args = [
-            `[${platforms.map(quote).join(', ')}]`,
-            positions ? `[${positions.map(quote).join(', ')}]` : undefined,
-          ].filter(Boolean)
-          adSetConfigParts.push(`placements: manual(${args.join(', ')}),`)
+          adSetConfigParts.push(`placements: ${formatManualPlacements(p)},`)
         }
       }
     }

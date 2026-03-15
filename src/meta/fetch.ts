@@ -255,11 +255,15 @@ function normalizePlacements(raw: Record<string, unknown>): unknown {
 
   const facebookPositions = raw.facebook_positions as string[] | undefined
   const instagramPositions = raw.instagram_positions as string[] | undefined
+  const messengerPositions = raw.messenger_positions as string[] | undefined
+  const audienceNetworkPositions = raw.audience_network_positions as string[] | undefined
 
   return {
     platforms,
     ...(facebookPositions && { facebookPositions }),
     ...(instagramPositions && { instagramPositions }),
+    ...(messengerPositions && { messengerPositions }),
+    ...(audienceNetworkPositions && { audienceNetworkPositions }),
   }
 }
 
@@ -349,6 +353,11 @@ function extractCreativeProps(creative: MetaApiCreative | undefined): { properti
     // Platform-internal identifier goes in meta
     if (ld.image_hash) meta.imageHash = ld.image_hash
   }
+  // else: boosted posts and other non-standard creatives have no
+  // object_story_spec.link_data or video_data. We intentionally omit
+  // format, headline, primaryText, cta, and url — these fields don't
+  // exist on the API side, so including them (even as empty strings)
+  // would produce a false diff.
 
   // Fallback image_hash from creative level
   if (!meta.imageHash && creative.image_hash) {
