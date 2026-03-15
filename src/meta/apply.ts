@@ -106,6 +106,9 @@ function buildCampaignCreateParams(
     } else {
       params['daily_budget'] = budgetToCents(budget)
     }
+  } else {
+    // When no campaign-level budget (ad set budgets instead), Meta requires this field
+    params['is_adset_budget_sharing_enabled'] = 'false'
   }
 
   return params
