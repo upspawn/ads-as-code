@@ -260,10 +260,11 @@ describe('flattenMeta() default resolution', () => {
     expect(adSet.properties.bidding).toEqual({ type: 'COST_CAP', cap: 10 })
   })
 
-  test('defaults placements to automatic', () => {
+  test('omits placements when automatic (default)', () => {
     const resources = flattenMeta(makeCampaign())
     const adSet = resources.find(r => r.kind === 'adSet')!
-    expect(adSet.properties.placements).toBe('automatic')
+    // Automatic placements are omitted to match fetch behavior
+    expect(adSet.properties.placements).toBeUndefined()
   })
 
   test('defaults status to PAUSED', () => {
@@ -347,24 +348,26 @@ describe('flattenMeta() default resolution', () => {
 // ─── Default Tracking (_defaults array) ──────────────────
 
 describe('flattenMeta() default tracking', () => {
-  test('tracks defaulted fields on campaign', () => {
+  test('tracks defaulted fields on campaign (in meta)', () => {
     const resources = flattenMeta(makeCampaign())
     const campaign = resources.find(r => r.kind === 'campaign')!
-    const defaults = campaign.properties._defaults as string[]
+    const defaults = campaign.meta?._defaults as string[]
     expect(defaults).toContain('status')
+    // _defaults should NOT be in properties
+    expect(campaign.properties._defaults).toBeUndefined()
   })
 
-  test('tracks defaulted fields on ad set', () => {
+  test('tracks defaulted fields on ad set (in meta)', () => {
     const resources = flattenMeta(makeCampaign())
     const adSet = resources.find(r => r.kind === 'adSet')!
-    const defaults = adSet.properties._defaults as string[]
+    const defaults = adSet.meta?._defaults as string[]
     expect(defaults).toContain('optimization')
     expect(defaults).toContain('bidding')
     expect(defaults).toContain('placements')
     expect(defaults).toContain('status')
   })
 
-  test('tracks defaulted fields on ad (name, url, cta from ad set)', () => {
+  test('tracks defaulted fields on ad (name, url, cta from ad set) in meta', () => {
     const resources = flattenMeta(makeCampaign({
       adSets: [makeAdSet({
         content: {
@@ -375,7 +378,7 @@ describe('flattenMeta() default tracking', () => {
       })],
     }))
     const ad = resources.find(r => r.kind === 'ad')!
-    const defaults = ad.properties._defaults as string[]
+    const defaults = ad.meta?._defaults as string[]
     expect(defaults).toContain('name')
     expect(defaults).toContain('url')
     expect(defaults).toContain('cta')
@@ -405,13 +408,13 @@ describe('flattenMeta() default tracking', () => {
     }))
 
     const campaign = resources.find(r => r.kind === 'campaign')!
-    expect(campaign.properties._defaults).toBeUndefined()
+    expect(campaign.meta?._defaults).toBeUndefined()
 
     const adSet = resources.find(r => r.kind === 'adSet')!
-    expect(adSet.properties._defaults).toBeUndefined()
+    expect(adSet.meta?._defaults).toBeUndefined()
 
     const ad = resources.find(r => r.kind === 'ad')!
-    expect(ad.properties._defaults).toBeUndefined()
+    expect(ad.meta?._defaults).toBeUndefined()
   })
 
   test('tracks only the fields that were actually defaulted', () => {
@@ -425,7 +428,7 @@ describe('flattenMeta() default tracking', () => {
       })],
     }))
     const adSet = resources.find(r => r.kind === 'adSet')!
-    const defaults = adSet.properties._defaults as string[]
+    const defaults = adSet.meta?._defaults as string[]
     expect(defaults).not.toContain('optimization')
     expect(defaults).toContain('bidding')
     expect(defaults).toContain('placements')
@@ -548,16 +551,17 @@ describe('flattenMeta() creative properties', () => {
     const resources = flattenMeta(makeCampaign())
     const creative = resources.find(r => r.kind === 'creative')!
     expect(creative.properties.format).toBe('image')
-    expect(creative.properties.image).toBe('./assets/hero.png')
     expect(creative.properties.headline).toBe('Rename Files Instantly')
     expect(creative.properties.primaryText).toBe('Stop wasting hours organizing files manually.')
+    // File path is in meta, not properties (it's SDK-internal)
+    expect(creative.meta?.imagePath).toBe('./assets/hero.png')
+    expect(creative.properties.image).toBeUndefined()
   })
 
-  test('image creative stores file path for later SHA computation', () => {
+  test('image creative stores file path in meta for later SHA computation', () => {
     const resources = flattenMeta(makeCampaign())
     const creative = resources.find(r => r.kind === 'creative')!
-    // File path is stored in the creative properties for the upload task to process
-    expect(creative.properties.image).toBe('./assets/hero.png')
+    expect(creative.meta?.imagePath).toBe('./assets/hero.png')
   })
 
   test('video creative has correct properties', () => {
@@ -580,9 +584,12 @@ describe('flattenMeta() creative properties', () => {
     }))
     const creative = resources.find(r => r.kind === 'creative')!
     expect(creative.properties.format).toBe('video')
-    expect(creative.properties.video).toBe('./assets/demo.mp4')
-    expect(creative.properties.thumbnail).toBe('./assets/thumb.jpg')
     expect(creative.properties.description).toBe('Quick overview')
+    // File paths are in meta, not properties
+    expect(creative.meta?.videoPath).toBe('./assets/demo.mp4')
+    expect(creative.meta?.thumbnailPath).toBe('./assets/thumb.jpg')
+    expect(creative.properties.video).toBeUndefined()
+    expect(creative.properties.thumbnail).toBeUndefined()
   })
 })
 

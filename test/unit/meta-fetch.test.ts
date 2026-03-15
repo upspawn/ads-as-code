@@ -319,11 +319,12 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const creative = resources.find(r => r.kind === 'creative')!
 
-    expect(creative.path).toBe('retargeting-us/website-visitors-30d/hero-ad/cr')
+    // Path uses creative name (not ad name) for consistency with flatten
+    expect(creative.path).toBe('retargeting-us/website-visitors-30d/hero-creative/cr')
     expect(creative.platformId).toBe('cr_1')
   })
 
-  test('ad path matches ad set path + ad slug', async () => {
+  test('ad path matches ad set path + slugified creative name', async () => {
     const client = createMockClient({
       campaigns: [makeApiCampaign()],
       adSets: [makeApiAdSet()],
@@ -333,7 +334,8 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const ad = resources.find(r => r.kind === 'ad')!
 
-    expect(ad.path).toBe('retargeting-us/website-visitors-30d/hero-ad')
+    // Path uses creative name (not ad name) for consistency with flatten
+    expect(ad.path).toBe('retargeting-us/website-visitors-30d/hero-creative')
     expect(ad.platformId).toBe('ad_1')
   })
 
@@ -347,7 +349,7 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const ad = resources.find(r => r.kind === 'ad')!
 
-    expect(ad.properties.creativePath).toBe('retargeting-us/website-visitors-30d/hero-ad/cr')
+    expect(ad.properties.creativePath).toBe('retargeting-us/website-visitors-30d/hero-creative/cr')
   })
 
   test('extracts creative properties from link_data', async () => {
@@ -360,7 +362,8 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const creative = resources.find(r => r.kind === 'creative')!
 
-    expect(creative.properties.imageHash).toBe('abc123def456')
+    // imageHash is in meta (platform-internal), not properties
+    expect(creative.meta?.imageHash).toBe('abc123def456')
     expect(creative.properties.headline).toBe('Rename Files Instantly')
     expect(creative.properties.primaryText).toBe('Stop wasting time renaming files.')
     expect(creative.properties.description).toBe('AI-powered file organization')
@@ -397,8 +400,9 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const creative = resources.find(r => r.kind === 'creative')!
 
-    expect(creative.properties.videoId).toBe('vid_123')
-    expect(creative.properties.imageHash).toBe('thumb_hash')
+    // videoId and imageHash are in meta (platform-internal)
+    expect(creative.meta?.videoId).toBe('vid_123')
+    expect(creative.meta?.imageHash).toBe('thumb_hash')
     expect(creative.properties.headline).toBe('renamed.to Demo')
     expect(creative.properties.primaryText).toBe('Watch our demo')
     expect(creative.properties.description).toBe('See how it works')
@@ -436,9 +440,12 @@ describe('fetchMetaAll() full account', () => {
         makeApiAdSet({ id: 'adset_2', name: 'Lookalike 1%', campaign_id: 'camp_2' }),
       ],
       ads: [
-        makeApiAd({ id: 'ad_1', name: 'Hero', adset_id: 'adset_1' }),
-        makeApiAd({ id: 'ad_2', name: 'Comparison', adset_id: 'adset_1' }),
-        makeApiAd({ id: 'ad_3', name: 'Demo Video', adset_id: 'adset_2' }),
+        makeApiAd({ id: 'ad_1', name: 'Hero', adset_id: 'adset_1',
+          creative: { ...makeApiAd().creative, id: 'cr_1', name: 'Hero' } }),
+        makeApiAd({ id: 'ad_2', name: 'Comparison', adset_id: 'adset_1',
+          creative: { ...makeApiAd().creative, id: 'cr_2', name: 'Comparison' } }),
+        makeApiAd({ id: 'ad_3', name: 'Demo Video', adset_id: 'adset_2',
+          creative: { ...makeApiAd().creative, id: 'cr_3', name: 'Demo Video' } }),
       ],
     })
 
@@ -452,7 +459,7 @@ describe('fetchMetaAll() full account', () => {
     expect(resources.filter(r => r.kind === 'creative')).toHaveLength(3)
     expect(resources.filter(r => r.kind === 'ad')).toHaveLength(3)
 
-    // Check paths are correct
+    // Check paths are correct — paths use creative name (not ad name)
     const adPaths = resources.filter(r => r.kind === 'ad').map(r => r.path).sort()
     expect(adPaths).toEqual([
       'cold-construction/lookalike-1/demo-video',
@@ -484,8 +491,10 @@ describe('fetchMetaAll() full account', () => {
       campaigns: [makeApiCampaign()],
       adSets: [makeApiAdSet()],
       ads: [
-        makeApiAd({ id: 'ad_1', name: 'Ad One' }),
-        makeApiAd({ id: 'ad_2', name: 'Ad Two' }),
+        makeApiAd({ id: 'ad_1', name: 'Ad One',
+          creative: { ...makeApiAd().creative, id: 'cr_1', name: 'Creative One' } }),
+        makeApiAd({ id: 'ad_2', name: 'Ad Two',
+          creative: { ...makeApiAd().creative, id: 'cr_2', name: 'Creative Two' } }),
       ],
     })
 

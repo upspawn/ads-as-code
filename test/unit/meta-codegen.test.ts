@@ -44,6 +44,7 @@ function makeAdSet(
 function makeCreative(
   path: string,
   overrides: Partial<Resource['properties']> = {},
+  metaOverrides: Record<string, unknown> = {},
 ): Resource {
   return {
     kind: 'creative',
@@ -51,12 +52,15 @@ function makeCreative(
     properties: {
       name: 'hero',
       format: 'image',
-      image: './assets/imported/hero-abc123.png',
       headline: 'Rename Files Instantly',
       primaryText: 'Stop wasting hours organizing files manually.',
       cta: 'SIGN_UP',
       url: 'https://renamed.to',
       ...overrides,
+    },
+    meta: {
+      imagePath: './assets/imported/hero-abc123.png',
+      ...metaOverrides,
     },
   }
 }
@@ -316,11 +320,13 @@ describe('codegenMeta', () => {
         properties: {
           name: 'demo',
           format: 'video',
-          video: './assets/imported/demo.mp4',
           headline: 'See It In Action',
           primaryText: 'Watch the demo.',
           cta: 'WATCH_MORE',
           url: 'https://renamed.to',
+        },
+        meta: {
+          videoPath: './assets/imported/demo.mp4',
         },
       },
     ]
@@ -533,11 +539,12 @@ describe('codegenMeta', () => {
   })
 
   test('creative with no properties omits empty object', () => {
+    // Use a name that matches the filename to avoid an explicit name: property
     const resources: Resource[] = [
       makeMetaCampaign(),
       makeAdSet('retargeting-us/visitors', 'Visitors'),
-      makeCreative('retargeting-us/visitors/hero/cr', {
-        // Overwrite all properties to undefined/missing
+      makeCreative('retargeting-us/visitors/hero-abc123/cr', {
+        name: 'hero-abc123',
         headline: undefined,
         primaryText: undefined,
         description: undefined,
@@ -551,8 +558,9 @@ describe('codegenMeta', () => {
     // Should not produce empty object with trailing comma
     expect(code).not.toContain('{,')
     expect(code).not.toContain('{\n      ,')
-    // Should just be image('path')
+    // Should just be image('path') with no second argument
     expect(code).toContain("image('./assets/imported/hero-abc123.png')")
+    expect(code).not.toContain("image('./assets/imported/hero-abc123.png',")
   })
 
   test('custom audiences in targeting', () => {

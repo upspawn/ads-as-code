@@ -11,7 +11,10 @@ const ASSETS_DIR = join(TEST_ROOT, 'assets', 'imported')
 
 function makeCreative(
   path: string,
-  overrides: Partial<Resource['properties']> = {},
+  overrides: {
+    properties?: Partial<Resource['properties']>
+    meta?: Record<string, unknown>
+  } = {},
 ): Resource {
   return {
     kind: 'creative',
@@ -19,12 +22,15 @@ function makeCreative(
     properties: {
       name: 'hero',
       format: 'image',
-      image: 'https://example.com/images/hero.png',
       headline: 'Test',
       primaryText: 'Test ad',
       cta: 'SIGN_UP',
       url: 'https://example.com',
-      ...overrides,
+      ...overrides.properties,
+    },
+    meta: {
+      imagePath: 'https://example.com/images/hero.png',
+      ...overrides.meta,
     },
   }
 }
@@ -64,7 +70,7 @@ describe('downloadMetaImages', () => {
     const resources: Resource[] = [
       makeCampaign('test-campaign'),
       makeCreative('test-campaign/set1/hero/cr', {
-        image: './assets/local/hero.png',
+        meta: { imagePath: './assets/local/hero.png' },
       }),
     ]
 
@@ -92,7 +98,7 @@ describe('downloadMetaImages', () => {
   test('creates assets/imported directory if it does not exist', async () => {
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
-        image: 'https://example.com/images/hero.png',
+        meta: { imagePath: 'https://example.com/images/hero.png' },
       }),
     ]
 
@@ -110,7 +116,7 @@ describe('downloadMetaImages', () => {
     }
   })
 
-  test('downloads image and replaces URL with local path', async () => {
+  test('downloads image and replaces URL with local path in meta', async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
@@ -120,7 +126,7 @@ describe('downloadMetaImages', () => {
     const resources: Resource[] = [
       makeCampaign('test-campaign'),
       makeCreative('test-campaign/set1/hero/cr', {
-        image: 'https://cdn.example.com/ads/hero-image.png',
+        meta: { imagePath: 'https://cdn.example.com/ads/hero-image.png' },
       }),
     ]
 
@@ -137,9 +143,9 @@ describe('downloadMetaImages', () => {
       // Campaign resource should be unchanged
       expect(result[0]).toEqual(resources[0])
 
-      // Creative should have local path
+      // Creative should have local path in meta.imagePath
       const creative = result[1]!
-      const imagePath = creative.properties.image as string
+      const imagePath = creative.meta?.imagePath as string
       expect(imagePath).toStartWith('./assets/imported/')
       expect(imagePath).toEndWith('.png')
       expect(imagePath).toContain('hero-')
@@ -164,7 +170,7 @@ describe('downloadMetaImages', () => {
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
-        image: 'https://cdn.example.com/ads/hero-image.png',
+        meta: { imagePath: 'https://cdn.example.com/ads/hero-image.png' },
       }),
     ]
 
@@ -190,7 +196,7 @@ describe('downloadMetaImages', () => {
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
-        image: 'https://cdn.example.com/ads/missing.png',
+        meta: { imagePath: 'https://cdn.example.com/ads/missing.png' },
       }),
     ]
 
@@ -205,9 +211,9 @@ describe('downloadMetaImages', () => {
       expect(stats.errors).toHaveLength(1)
       expect(stats.errors[0]).toContain('HTTP 404')
 
-      // Creative should keep original URL since download failed
+      // Creative should keep original URL in meta since download failed
       const creative = result[0]!
-      expect(creative.properties.image).toBe('https://cdn.example.com/ads/missing.png')
+      expect(creative.meta?.imagePath).toBe('https://cdn.example.com/ads/missing.png')
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -221,7 +227,7 @@ describe('downloadMetaImages', () => {
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
-        image: 'https://cdn.example.com/ads/hero.png',
+        meta: { imagePath: 'https://cdn.example.com/ads/hero.png' },
       }),
     ]
 
@@ -243,12 +249,12 @@ describe('downloadMetaImages', () => {
 
     const resources: Resource[] = [
       makeCreative('campaign/set1/hero/cr', {
-        name: 'hero',
-        image: 'https://cdn1.example.com/hero.png',
+        properties: { name: 'hero' },
+        meta: { imagePath: 'https://cdn1.example.com/hero.png' },
       }),
       makeCreative('campaign/set2/hero/cr', {
-        name: 'hero',
-        image: 'https://cdn2.example.com/hero.png', // Same name, different URL
+        properties: { name: 'hero' },
+        meta: { imagePath: 'https://cdn2.example.com/hero.png' }, // Same name, different URL
       }),
     ]
 
@@ -261,8 +267,8 @@ describe('downloadMetaImages', () => {
 
       expect(stats.downloaded).toBe(2)
 
-      const path1 = result[0]!.properties.image as string
-      const path2 = result[1]!.properties.image as string
+      const path1 = result[0]!.meta?.imagePath as string
+      const path2 = result[1]!.meta?.imagePath as string
 
       // Same base name but different hash suffixes
       expect(path1).not.toBe(path2)
@@ -286,12 +292,14 @@ describe('downloadMetaImages', () => {
         properties: {
           name: 'demo',
           format: 'video',
-          video: './assets/demo.mp4', // local — not downloaded
-          thumbnail: 'https://cdn.example.com/thumb.jpg',
           headline: 'Demo',
           primaryText: 'Watch',
           cta: 'WATCH_MORE',
           url: 'https://example.com',
+        },
+        meta: {
+          videoPath: './assets/demo.mp4', // local — not downloaded
+          thumbnailPath: 'https://cdn.example.com/thumb.jpg',
         },
       },
     ]
@@ -307,8 +315,8 @@ describe('downloadMetaImages', () => {
       expect(stats.downloaded).toBe(1)
 
       const creative = result[0]!
-      expect(creative.properties.video).toBe('./assets/demo.mp4') // unchanged
-      expect(creative.properties.thumbnail as string).toStartWith('./assets/imported/')
+      expect(creative.meta?.videoPath).toBe('./assets/demo.mp4') // unchanged
+      expect(creative.meta?.thumbnailPath as string).toStartWith('./assets/imported/')
     } finally {
       globalThis.fetch = originalFetch
     }

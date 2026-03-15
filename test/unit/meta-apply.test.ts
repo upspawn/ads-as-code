@@ -10,10 +10,12 @@ function makeResource(
   path: string,
   props: Record<string, unknown>,
   platformId?: string,
+  meta?: Record<string, unknown>,
 ): Resource {
-  return platformId
-    ? { kind, path, properties: props, platformId }
-    : { kind, path, properties: props }
+  const r: Record<string, unknown> = { kind, path, properties: props }
+  if (platformId) r.platformId = platformId
+  if (meta && Object.keys(meta).length > 0) r.meta = meta
+  return r as Resource
 }
 
 function emptyChangeset(): Changeset {
@@ -424,13 +426,12 @@ describe('creative create', () => {
             resource: makeResource('creative', 'camp/adset/hero/cr', {
               name: 'hero',
               format: 'image',
-              imageHash: 'img_hash_abc',
               headline: 'Rename Files Fast',
               primaryText: 'AI-powered bulk file renaming.',
               description: 'Save hours of manual work.',
               cta: 'LEARN_MORE',
               url: 'https://renamed.to',
-            }),
+            }, undefined, { imageHash: 'img_hash_abc' }),
           },
         ],
         updates: [],

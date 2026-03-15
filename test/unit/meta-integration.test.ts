@@ -477,19 +477,20 @@ describe('Meta default resolution (minimal campaign)', () => {
 
     const resources = flattenMeta(campaign)
 
-    // Campaign defaults
+    // Campaign defaults — _defaults is in meta, not properties
     const campaignRes = resources.find(r => r.kind === 'campaign')!
     expect(campaignRes.properties.status).toBe('PAUSED')
-    expect(campaignRes.properties._defaults).toContain('status')
+    expect(campaignRes.meta?._defaults).toContain('status')
+    expect(campaignRes.properties._defaults).toBeUndefined()
 
-    // Ad set defaults
+    // Ad set defaults — placements omitted when automatic
     const adSetRes = resources.find(r => r.kind === 'adSet')!
     expect(adSetRes.properties.optimization).toBe('LINK_CLICKS')
     expect(adSetRes.properties.bidding).toEqual({ type: 'LOWEST_COST_WITHOUT_CAP' })
-    expect(adSetRes.properties.placements).toBe('automatic')
+    expect(adSetRes.properties.placements).toBeUndefined()
     expect(adSetRes.properties.status).toBe('PAUSED')
 
-    const adSetDefaults = adSetRes.properties._defaults as string[]
+    const adSetDefaults = adSetRes.meta?._defaults as string[]
     expect(adSetDefaults).toContain('optimization')
     expect(adSetDefaults).toContain('bidding')
     expect(adSetDefaults).toContain('placements')
@@ -695,7 +696,8 @@ describe('spec DSL example compiles and flattens correctly', () => {
 
     const visitors = adSets.find(r => r.path === 'retargeting-us/website-visitors-30d')!
     expect(visitors.properties.optimization).toBe('LINK_CLICKS') // default for traffic
-    expect(visitors.properties.placements).toBe('automatic')
+    // Automatic placements are omitted to match fetch behavior
+    expect(visitors.properties.placements).toBeUndefined()
 
     const construction = adSets.find(r => r.path === 'retargeting-us/cold-construction')!
     expect(construction.properties.optimization).toBe('LANDING_PAGE_VIEWS') // explicitly set
