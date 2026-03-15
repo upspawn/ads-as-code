@@ -174,7 +174,7 @@ describe('google.app()', () => {
       type: 'app',
       headlines: ['H1', 'H2'],
       descriptions: ['D1'],
-      images: [{ path: './hero.png', aspectRatio: 'landscape' }],
+      images: [{ type: 'image-ref' as const, path: './hero.png', aspectRatio: 'landscape' }],
       videos: ['https://youtube.com/watch?v=abc'],
     }
     const campaign = google.app('Test', {

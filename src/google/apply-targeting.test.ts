@@ -112,7 +112,7 @@ describe('buildTargetingOperations — schedule-bid', () => {
       })
       const ops = changeToMutations(change, CUSTOMER_ID, new Map())
       const scheduleOp = ops.find(op => op.resource.ad_schedule)
-      expect(scheduleOp!.resource.ad_schedule.day_of_week).toBe(expectedNum)
+      expect((scheduleOp!.resource.ad_schedule as Record<string, unknown>).day_of_week).toBe(expectedNum)
     }
   })
 })

@@ -139,10 +139,10 @@ describe('buildSharedSetOperations()', () => {
 
     const criterionOps = ops.filter(op => op.operation === 'shared_criterion')
     expect(criterionOps).toHaveLength(2)
-    expect(criterionOps[0]!.resource.keyword.text).toBe('free')
-    expect(criterionOps[0]!.resource.keyword.match_type).toBe(4) // BROAD
-    expect(criterionOps[1]!.resource.keyword.text).toBe('cheap')
-    expect(criterionOps[1]!.resource.keyword.match_type).toBe(2) // EXACT
+    expect((criterionOps[0]!.resource.keyword as Record<string, unknown>).text).toBe('free')
+    expect((criterionOps[0]!.resource.keyword as Record<string, unknown>).match_type).toBe(4) // BROAD
+    expect((criterionOps[1]!.resource.keyword as Record<string, unknown>).text).toBe('cheap')
+    expect((criterionOps[1]!.resource.keyword as Record<string, unknown>).match_type).toBe(2) // EXACT
   })
 
   test('links shared set to campaigns', async () => {
