@@ -49,6 +49,12 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     budget: campaign.budget,
     bidding: campaign.bidding,
     targeting: campaign.targeting,
+    ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
+    ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
+    ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
+    ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
+    ...(campaign.customParameters !== undefined && { customParameters: campaign.customParameters }),
+    ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
   }))
 
   // 2. Ad groups + children

@@ -285,6 +285,156 @@ describe('.callouts()', () => {
   })
 })
 
+// ─── New Bidding Strategies ─────────────────────────────────────────
+
+describe('new bidding strategies', () => {
+  test('target-roas string shorthand normalizes with default targetRoas', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'target-roas',
+    })
+
+    expect(campaign.bidding).toEqual({ type: 'target-roas', targetRoas: 1.0 })
+  })
+
+  test('target-roas object preserves targetRoas value', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: { type: 'target-roas', targetRoas: 4.0 },
+    })
+
+    expect(campaign.bidding).toEqual({ type: 'target-roas', targetRoas: 4.0 })
+  })
+
+  test('target-impression-share string shorthand normalizes with defaults', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'target-impression-share',
+    })
+
+    expect(campaign.bidding).toEqual({
+      type: 'target-impression-share',
+      location: 'anywhere',
+      targetPercent: 50,
+    })
+  })
+
+  test('target-impression-share object preserves all fields', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: {
+        type: 'target-impression-share',
+        location: 'absolute-top',
+        targetPercent: 90,
+        maxCpc: 5.0,
+      },
+    })
+
+    expect(campaign.bidding).toEqual({
+      type: 'target-impression-share',
+      location: 'absolute-top',
+      targetPercent: 90,
+      maxCpc: 5.0,
+    })
+  })
+
+  test('maximize-conversion-value string shorthand normalizes correctly', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversion-value',
+    })
+
+    expect(campaign.bidding).toEqual({ type: 'maximize-conversion-value' })
+  })
+
+  test('maximize-conversion-value object with targetRoas is preserved', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: { type: 'maximize-conversion-value', targetRoas: 3.5 },
+    })
+
+    expect(campaign.bidding).toEqual({ type: 'maximize-conversion-value', targetRoas: 3.5 })
+  })
+})
+
+// ─── Campaign Config Fields ────────────────────────────────────────
+
+describe('campaign config fields', () => {
+  test('startDate and endDate are passed through', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+      startDate: '2026-04-01',
+      endDate: '2026-06-30',
+    })
+
+    expect(campaign.startDate).toBe('2026-04-01')
+    expect(campaign.endDate).toBe('2026-06-30')
+  })
+
+  test('trackingTemplate is passed through', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+      trackingTemplate: '{lpurl}?source=google&campaign={campaignid}',
+    })
+
+    expect(campaign.trackingTemplate).toBe('{lpurl}?source=google&campaign={campaignid}')
+  })
+
+  test('finalUrlSuffix is passed through', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+      finalUrlSuffix: 'utm_source=google&utm_medium=cpc',
+    })
+
+    expect(campaign.finalUrlSuffix).toBe('utm_source=google&utm_medium=cpc')
+  })
+
+  test('customParameters are passed through', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+      customParameters: { channel: 'search', variant: 'a' },
+    })
+
+    expect(campaign.customParameters).toEqual({ channel: 'search', variant: 'a' })
+  })
+
+  test('networkSettings are passed through', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+      networkSettings: {
+        searchNetwork: true,
+        searchPartners: false,
+        displayNetwork: false,
+      },
+    })
+
+    expect(campaign.networkSettings).toEqual({
+      searchNetwork: true,
+      searchPartners: false,
+      displayNetwork: false,
+    })
+  })
+
+  test('optional fields are omitted when not provided', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    })
+
+    expect(campaign.startDate).toBeUndefined()
+    expect(campaign.endDate).toBeUndefined()
+    expect(campaign.trackingTemplate).toBeUndefined()
+    expect(campaign.finalUrlSuffix).toBeUndefined()
+    expect(campaign.customParameters).toBeUndefined()
+    expect(campaign.networkSettings).toBeUndefined()
+  })
+})
+
 // ─── defineConfig() ─────────────────────────────────────────────────
 
 describe('defineConfig()', () => {

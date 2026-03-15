@@ -330,6 +330,82 @@ describe('flatten() edge cases', () => {
   })
 })
 
+// ─── flatten — new campaign config fields ────────────────
+
+describe('flatten() campaign config fields', () => {
+  test('includes startDate and endDate in campaign properties', () => {
+    const campaign = makeCampaign({
+      startDate: '2026-04-01',
+      endDate: '2026-06-30',
+      groups: {},
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const c = resources.find(r => r.kind === 'campaign')!
+    expect(c.properties.startDate).toBe('2026-04-01')
+    expect(c.properties.endDate).toBe('2026-06-30')
+  })
+
+  test('includes trackingTemplate and finalUrlSuffix in campaign properties', () => {
+    const campaign = makeCampaign({
+      trackingTemplate: '{lpurl}?src=google',
+      finalUrlSuffix: 'utm_source=google',
+      groups: {},
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const c = resources.find(r => r.kind === 'campaign')!
+    expect(c.properties.trackingTemplate).toBe('{lpurl}?src=google')
+    expect(c.properties.finalUrlSuffix).toBe('utm_source=google')
+  })
+
+  test('includes customParameters in campaign properties', () => {
+    const campaign = makeCampaign({
+      customParameters: { channel: 'search' },
+      groups: {},
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const c = resources.find(r => r.kind === 'campaign')!
+    expect(c.properties.customParameters).toEqual({ channel: 'search' })
+  })
+
+  test('includes networkSettings in campaign properties', () => {
+    const campaign = makeCampaign({
+      networkSettings: { searchNetwork: true, searchPartners: true, displayNetwork: false },
+      groups: {},
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const c = resources.find(r => r.kind === 'campaign')!
+    expect(c.properties.networkSettings).toEqual({
+      searchNetwork: true,
+      searchPartners: true,
+      displayNetwork: false,
+    })
+  })
+
+  test('omits new fields from campaign properties when not set', () => {
+    const campaign = makeCampaign({
+      groups: {},
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const c = resources.find(r => r.kind === 'campaign')!
+    expect(c.properties).not.toHaveProperty('startDate')
+    expect(c.properties).not.toHaveProperty('endDate')
+    expect(c.properties).not.toHaveProperty('trackingTemplate')
+    expect(c.properties).not.toHaveProperty('finalUrlSuffix')
+    expect(c.properties).not.toHaveProperty('customParameters')
+    expect(c.properties).not.toHaveProperty('networkSettings')
+  })
+})
+
 // ─── flattenAll ───────────────────────────────────────────
 
 describe('flattenAll()', () => {

@@ -3,19 +3,37 @@ import type {
   AdGroupInput,
   BiddingInput,
   BiddingStrategy,
+  CallExtension,
   CampaignBuilder,
   GoogleAdGroup,
   GoogleSearchCampaign,
+  ImageExtension,
+  PriceExtension,
+  PromotionExtension,
   SearchCampaignInput,
   Sitelink,
+  StructuredSnippet,
 } from './types.ts'
 
 /**
  * Normalize a BiddingInput (string shorthand or full object) to a BiddingStrategy.
+ *
+ * String shorthands like 'maximize-conversions' expand to `{ type: 'maximize-conversions' }`.
+ * Some strategies require additional fields when used — the shorthand creates
+ * a minimal valid object that can be used as a starting point.
  */
 function normalizeBidding(input: BiddingInput): BiddingStrategy {
   if (typeof input === 'string') {
-    return { type: input }
+    switch (input) {
+      case 'target-roas':
+        return { type: 'target-roas', targetRoas: 1.0 }
+      case 'target-impression-share':
+        return { type: 'target-impression-share', location: 'anywhere', targetPercent: 50 }
+      case 'maximize-conversion-value':
+        return { type: 'maximize-conversion-value' }
+      default:
+        return { type: input }
+    }
   }
   return input
 }
@@ -146,6 +164,56 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
     })
   }
 
+  /**
+   * Set structured snippet extensions on the campaign. Replaces any existing snippets.
+   */
+  builder.snippets = function (...snippets: StructuredSnippet[]): CampaignBuilder {
+    return createBuilder({
+      ...campaign,
+      extensions: { ...campaign.extensions, structuredSnippets: snippets },
+    })
+  }
+
+  /**
+   * Set call extensions on the campaign. Replaces any existing calls.
+   */
+  builder.calls = function (...calls: CallExtension[]): CampaignBuilder {
+    return createBuilder({
+      ...campaign,
+      extensions: { ...campaign.extensions, calls },
+    })
+  }
+
+  /**
+   * Set price extensions on the campaign. Replaces any existing prices.
+   */
+  builder.prices = function (...prices: PriceExtension[]): CampaignBuilder {
+    return createBuilder({
+      ...campaign,
+      extensions: { ...campaign.extensions, prices },
+    })
+  }
+
+  /**
+   * Set promotion extensions on the campaign. Replaces any existing promotions.
+   */
+  builder.promotions = function (...promos: PromotionExtension[]): CampaignBuilder {
+    return createBuilder({
+      ...campaign,
+      extensions: { ...campaign.extensions, promotions: promos },
+    })
+  }
+
+  /**
+   * Set image extensions on the campaign. Replaces any existing images.
+   */
+  builder.images = function (...images: ImageExtension[]): CampaignBuilder {
+    return createBuilder({
+      ...campaign,
+      extensions: { ...campaign.extensions, images },
+    })
+  }
+
   return builder
 }
 
@@ -194,6 +262,12 @@ export const google = {
       targeting: input.targeting ?? { rules: [] },
       negatives: input.negatives ?? [],
       groups: {},
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
+      ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+      ...(input.customParameters !== undefined && { customParameters: input.customParameters }),
+      ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
     }
     return createBuilder(campaign)
   },
