@@ -423,8 +423,12 @@ function generateMetaCampaignFile(
     }
   }
 
-  // Build import statement
-  const importList = Array.from(imports).sort()
+  // Build import statement — map Meta creative helpers to their aliased exports
+  const IMPORT_ALIASES: Record<string, string> = {
+    image: 'metaImage as image',
+    video: 'metaVideo as video',
+  }
+  const importList = Array.from(imports).sort().map((i) => IMPORT_ALIASES[i] ?? i)
   const importLine = `import { ${importList.join(', ')} } from '@upspawn/ads'`
 
   // Assemble file

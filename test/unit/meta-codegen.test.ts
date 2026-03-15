@@ -296,10 +296,10 @@ describe('codegenMeta', () => {
     expect(importLine).toContain('targeting')
     expect(importLine).toContain('geo')
     expect(importLine).toContain('age')
-    expect(importLine).toContain('image')
+    expect(importLine).toContain('metaImage as image')
 
     // Should NOT contain unused helpers
-    expect(importLine).not.toContain('video')
+    expect(importLine).not.toContain('metaVideo')
     expect(importLine).not.toContain('costCap')
     expect(importLine).not.toContain('bidCap')
     expect(importLine).not.toContain('manual')
@@ -331,8 +331,8 @@ describe('codegenMeta', () => {
     expect(code).toContain("headline: 'See It In Action'")
     // import should include video, not image
     const importLine = code.split('\n').find((l) => l.startsWith('import'))!
-    expect(importLine).toContain('video')
-    expect(importLine).not.toContain(' image')
+    expect(importLine).toContain('metaVideo as video')
+    expect(importLine).not.toContain('metaImage')
   })
 
   test('multiple ad sets generate correct chaining', () => {
