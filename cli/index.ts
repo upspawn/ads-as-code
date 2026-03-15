@@ -18,6 +18,7 @@ Commands:
   history       Show operation history
   doctor        Run diagnostic checks on project setup
   cache         Manage the local cache (clear, stats)
+  generate      Generate AI-powered ad copy and keywords
   diff          Compare local vs platform state (not implemented yet)
   destroy       Remove all managed resources (not implemented yet)
 
@@ -112,6 +113,11 @@ async function main() {
     case 'doctor': {
       const { runDoctor } = await import('./doctor.ts')
       await runDoctor(process.cwd())
+      break
+    }
+    case 'generate': {
+      const { runGenerate } = await import('./generate.ts')
+      await runGenerate(args.slice(1), flags)
       break
     }
     case 'cache': {
