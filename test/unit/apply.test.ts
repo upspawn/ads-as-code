@@ -954,6 +954,49 @@ describe('ad create — extended fields', () => {
 
 // ─── Device Bid Adjustments ────────────────────────────────
 
+// ─── Keyword Update — Mutable Fields ────────────────────────
+
+describe('keyword update — mutable fields', () => {
+  test('updates bid (cpc_bid_micros)', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT', bid: 2.0,
+    }, 'customers/123/adGroupCriteria/100~200')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'bid', from: 1.5, to: 2.0 }],
+    }, '123', new Map())
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion' && m.op === 'update')!
+    expect(kwOp).toBeDefined()
+    expect(kwOp.resource.cpc_bid_micros).toBe('2000000')
+    expect(kwOp.updateMask).toContain('cpc_bid_micros')
+  })
+
+  test('updates status to paused', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT', status: 'paused',
+    }, 'customers/123/adGroupCriteria/100~200')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'status', from: 'enabled', to: 'paused' }],
+    }, '123', new Map())
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion' && m.op === 'update')!
+    expect(kwOp.resource.status).toBe(3)
+    expect(kwOp.updateMask).toContain('status')
+  })
+
+  test('updates finalUrl', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT', finalUrl: 'https://renamed.to/pdf',
+    }, 'customers/123/adGroupCriteria/100~200')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'finalUrl', from: undefined, to: 'https://renamed.to/pdf' }],
+    }, '123', new Map())
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion' && m.op === 'update')!
+    expect(kwOp.resource.final_urls).toEqual(['https://renamed.to/pdf'])
+  })
+})
+
 describe('device bid adjustments', () => {
   test('campaign create with device targeting creates campaign_criterion', () => {
     const change: Change = {

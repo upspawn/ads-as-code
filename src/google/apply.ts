@@ -620,6 +620,34 @@ function buildUpdateOperations(
         updateMask: mask.join(','),
       }]
     }
+    case 'keyword': {
+      const kwResourceName = resolveResourceName(customerId, 'adGroupCriteria', resource.platformId)
+      const kwFields: Record<string, unknown> = { resource_name: kwResourceName }
+      const kwMask: string[] = []
+
+      for (const c of change.changes) {
+        if (c.field === 'status') {
+          kwFields.status = (c.to as string) === 'paused' ? 3 : 2
+          kwMask.push('status')
+        }
+        if (c.field === 'bid') {
+          kwFields.cpc_bid_micros = c.to !== undefined ? String(toMicros(c.to as number)) : '0'
+          kwMask.push('cpc_bid_micros')
+        }
+        if (c.field === 'finalUrl') {
+          kwFields.final_urls = c.to ? [c.to as string] : []
+          kwMask.push('final_urls')
+        }
+      }
+
+      if (kwMask.length === 0) return []
+      return [{
+        operation: 'ad_group_criterion',
+        op: 'update',
+        resource: kwFields,
+        updateMask: kwMask.join(','),
+      }]
+    }
     default:
       return []
   }
