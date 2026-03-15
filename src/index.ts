@@ -61,6 +61,8 @@ export type {
   GoogleConfig,
   GoogleAdsClient,
   Campaign,
+  GoogleAdGroupUnresolved,
+  GoogleSearchCampaignUnresolved,
 } from './google/types.ts'
 
 // === Helpers ===
@@ -81,6 +83,11 @@ export type { UrlResult } from './helpers/url.ts'
 // === Config ===
 
 export { defineConfig } from './core/config.ts'
+
+// === AI ===
+
+export { ai } from './ai/index.ts'
+export type { AiConfig, RsaMarker, KeywordsMarker } from './ai/index.ts'
 
 // === Providers ===
 
