@@ -1,5 +1,5 @@
 // Imported from Google Ads on 2026-03-15
-import { broad, daily, descriptions, google, headlines, phrase, rsa, url } from '@upspawn/ads'
+import { broad, daily, descriptions, google, headlines, link, phrase, rsa, url } from '@upspawn/ads'
 
 export default google.search('Search - OneDrive + SharePoint', {
   budget: daily(3),
@@ -207,3 +207,10 @@ export default google.search('Search - OneDrive + SharePoint', {
       url('https://www.renamed.to/integrations/onedrive'),
     ),
   })
+  .sitelinks(
+    link('PDF Renamer', 'https://www.renamed.to/pdf-renamer', { description1: 'Also works without OneDrive', description2: 'Upload PDFs directly' }),
+    link('See Pricing', 'https://www.renamed.to/pricing', { description1: '50 files free monthly', description2: 'Then $9 for 1,000 documents' }),
+    link('Google Drive Too', 'https://www.renamed.to/integrations/google-drive', { description1: 'Also works with Google Drive', description2: 'Connect in one click' }),
+    link('Dropbox Too', 'https://www.renamed.to/integrations/dropbox', { description1: 'Also works with Dropbox', description2: 'Connect in 3 minutes' }),
+  )
+  .callouts('No Credit Card Required', 'Beats Power Automate', 'AI-Powered', 'Audit Trail')

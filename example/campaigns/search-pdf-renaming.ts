@@ -1,5 +1,5 @@
 // Imported from Google Ads on 2026-03-15
-import { broad, daily, descriptions, exact, google, headlines, phrase, rsa, url } from '@upspawn/ads'
+import { broad, daily, descriptions, exact, google, headlines, link, phrase, rsa, url } from '@upspawn/ads'
 
 export default google.search('Search - PDF Renaming', {
   budget: daily(1.5),
@@ -154,3 +154,10 @@ export default google.search('Search - PDF Renaming', {
       url('https://www.renamed.to/pdf-renamer'),
     ),
   })
+  .sitelinks(
+    link('See Pricing', 'https://www.renamed.to/pricing', { description1: '50 files free monthly', description2: 'Then $9 for 1,000 documents' }),
+    link('Google Drive Integration', 'https://www.renamed.to/integrations/google-drive', { description1: 'Auto-rename in Google Drive', description2: 'Connect in one click' }),
+    link('Dropbox Integration', 'https://www.renamed.to/integrations/dropbox', { description1: 'Auto-rename in Dropbox', description2: 'Connect in 3 minutes' }),
+    link('Solutions for Accountants', 'https://www.renamed.to/solutions/accountants', { description1: 'Auto-name invoices and receipts', description2: 'By vendor, date, and amount' }),
+  )
+  .callouts('No Credit Card Required', 'AI-Powered', '95% Accuracy', '50 Free Documents')

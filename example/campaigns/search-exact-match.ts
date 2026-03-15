@@ -1,9 +1,10 @@
 // Imported from Google Ads on 2026-03-15
-import { broad, daily, descriptions, exact, google, headlines, phrase, rsa, url } from '@upspawn/ads'
+import { broad, daily, descriptions, exact, google, headlines, link, phrase, rsa, targeting, url, weekdays } from '@upspawn/ads'
 
 export default google.search('Search - Exact Match', {
   budget: daily(3),
   bidding: 'maximize-clicks',
+  targeting: targeting(weekdays()),
   negatives: [...broad(
     'free',
     'job',
@@ -342,3 +343,10 @@ export default google.search('Search - Exact Match', {
       url('https://www.renamed.to/pdf-split'),
     ),
   })
+  .sitelinks(
+    link('PDF Renamer', 'https://www.renamed.to/pdf-renamer', { description1: 'Rename PDFs by content', description2: 'Invoices, contracts, reports' }),
+    link('Pricing', 'https://www.renamed.to/pricing', { description1: 'Free tier available', description2: 'No credit card required' }),
+    link('Google Drive Integration', 'https://www.renamed.to/integrations/google-drive', { description1: 'Auto-rename files in Drive', description2: 'Set up watched folders' }),
+    link('Solutions for Accountants', 'https://www.renamed.to/solutions/accountants', { description1: 'Rename invoices & statements', description2: 'Trusted by bookkeepers' }),
+  )
+  .callouts('No Credit Card Required', 'AI-Powered', 'Works with Any File Type', 'Rename 1000+ Files')

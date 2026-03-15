@@ -1,5 +1,5 @@
 // Imported from Google Ads on 2026-03-15
-import { broad, daily, descriptions, google, headlines, phrase, rsa, url } from '@upspawn/ads'
+import { broad, daily, descriptions, google, headlines, link, phrase, rsa, url } from '@upspawn/ads'
 
 export default google.search('Search - Dropbox', {
   budget: daily(0.5),
@@ -162,3 +162,10 @@ export default google.search('Search - Dropbox', {
       url('https://www.renamed.to/integrations/dropbox'),
     ),
   })
+  .sitelinks(
+    link('PDF Renamer', 'https://www.renamed.to/pdf-renamer', { description1: 'Also works without Dropbox', description2: 'Upload PDFs directly' }),
+    link('See Pricing', 'https://www.renamed.to/pricing', { description1: '50 files free monthly', description2: 'Then $9 for 1,000 documents' }),
+    link('Google Drive Too', 'https://www.renamed.to/integrations/google-drive', { description1: 'Also works with Google Drive', description2: 'Connect in one click' }),
+    link('Solutions for Accountants', 'https://www.renamed.to/solutions/accountants', { description1: 'Auto-name invoices and receipts', description2: 'By vendor, date, and amount' }),
+  )
+  .callouts('No Credit Card Required', 'No Zapier Needed', 'AI-Powered', '50 Free Documents')

@@ -100,8 +100,7 @@ async function fetchAllCampaigns(
       ad_group.name,
       ad_group.status
     FROM ad_group
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND ad_group.status != 'REMOVED'
     ORDER BY ad_group.name
   `)
@@ -138,8 +137,7 @@ async function fetchAllCampaigns(
       ad_group_criterion.keyword.match_type,
       ad_group_criterion.status
     FROM ad_group_criterion
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND ad_group_criterion.type = 'KEYWORD'
       AND ad_group_criterion.status != 'REMOVED'
     ORDER BY ad_group_criterion.keyword.text
@@ -188,8 +186,7 @@ async function fetchAllCampaigns(
       ad_group_ad.ad.final_urls,
       ad_group_ad.status
     FROM ad_group_ad
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'
       AND ad_group_ad.status != 'REMOVED'
   `)
@@ -234,11 +231,11 @@ async function fetchAllCampaigns(
   const negRows = await client.query(`
     SELECT
       campaign.name,
+      campaign.status,
       campaign_criterion.keyword.text,
       campaign_criterion.keyword.match_type
     FROM campaign_criterion
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND campaign_criterion.type = 'KEYWORD'
       AND campaign_criterion.negative = TRUE
   `)
@@ -270,6 +267,7 @@ async function fetchAllCampaigns(
   const sitelinkRows = await client.query(`
     SELECT
       campaign.name,
+      campaign.status,
       campaign_asset.resource_name,
       campaign_asset.field_type,
       asset.id,
@@ -278,8 +276,7 @@ async function fetchAllCampaigns(
       asset.sitelink_asset.description2,
       asset.final_urls
     FROM campaign_asset
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND campaign_asset.field_type = 'SITELINK'
       AND campaign_asset.status != 'REMOVED'
   `)
@@ -317,13 +314,13 @@ async function fetchAllCampaigns(
   const calloutRows = await client.query(`
     SELECT
       campaign.name,
+      campaign.status,
       campaign_asset.resource_name,
       campaign_asset.field_type,
       asset.id,
       asset.callout_asset.callout_text
     FROM campaign_asset
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND campaign_asset.field_type = 'CALLOUT'
       AND campaign_asset.status != 'REMOVED'
   `)
@@ -354,12 +351,12 @@ async function fetchAllCampaigns(
   const targetingRows = await client.query(`
     SELECT
       campaign.name,
+      campaign.status,
       campaign_criterion.type,
       campaign_criterion.location.geo_target_constant,
       campaign_criterion.language.language_constant
     FROM campaign_criterion
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND campaign_criterion.type IN ('LOCATION', 'LANGUAGE')
       AND campaign_criterion.negative = FALSE
   `)
@@ -414,12 +411,12 @@ async function fetchAllCampaigns(
   const scheduleRows = await client.query(`
     SELECT
       campaign.name,
+      campaign.status,
       campaign_criterion.ad_schedule.day_of_week,
       campaign_criterion.ad_schedule.start_hour,
       campaign_criterion.ad_schedule.end_hour
     FROM campaign_criterion
-    WHERE campaign.advertising_channel_type = 'SEARCH'
-      AND ${statusFilter}
+    WHERE ${statusFilter}
       AND campaign_criterion.type = 'AD_SCHEDULE'
   `)
 
