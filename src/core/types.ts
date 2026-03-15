@@ -78,6 +78,10 @@ export type AudienceTarget = {
   readonly mode?: 'targeting' | 'observation'
 }
 
+export type PlacementTarget = { readonly type: 'placement'; readonly urls: string[] }
+export type TopicTarget = { readonly type: 'topic'; readonly topics: string[] }
+export type ContentKeywordTarget = { readonly type: 'content-keyword'; readonly keywords: string[] }
+
 export type TargetingRule =
   | GeoTarget
   | LanguageTarget
@@ -90,6 +94,9 @@ export type TargetingRule =
   | DemographicTarget
   | ScheduleBidTarget
   | AudienceTarget
+  | PlacementTarget
+  | TopicTarget
+  | ContentKeywordTarget
 
 export type Targeting = { readonly rules: TargetingRule[] }
 

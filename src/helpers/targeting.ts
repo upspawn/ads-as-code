@@ -12,6 +12,9 @@ import type {
   PresenceTarget,
   DemographicTarget,
   ScheduleBidTarget,
+  PlacementTarget,
+  TopicTarget,
+  ContentKeywordTarget,
   AgeRange,
   Gender,
   IncomeRange,
@@ -231,6 +234,57 @@ export function scheduleBid(day: Day, startHour: number, endHour: number, bidAdj
   if (startHour >= endHour) throw new Error(`startHour (${startHour}) must be less than endHour (${endHour})`)
   if (bidAdjustment < -1 || bidAdjustment > 9) throw new Error(`bidAdjustment must be between -1.0 and 9.0, got ${bidAdjustment}`)
   return { type: 'schedule-bid' as const, day, startHour, endHour, bidAdjustment }
+}
+
+/**
+ * Target specific website placements for Display campaigns.
+ *
+ * @param urls - One or more website URLs or YouTube channel URLs
+ * @returns A placement targeting rule
+ * @throws If no URLs are provided
+ *
+ * @example
+ * ```ts
+ * placements('youtube.com', 'news.google.com')
+ * ```
+ */
+export function placements(...urls: string[]): PlacementTarget {
+  if (urls.length === 0) throw new Error('placements() requires at least one URL')
+  return { type: 'placement' as const, urls }
+}
+
+/**
+ * Target specific content topics for Display campaigns.
+ *
+ * @param topicNames - One or more topic names (from Google's topic taxonomy)
+ * @returns A topic targeting rule
+ * @throws If no topics are provided
+ *
+ * @example
+ * ```ts
+ * topics('Computers & Electronics', 'Business')
+ * ```
+ */
+export function topics(...topicNames: string[]): TopicTarget {
+  if (topicNames.length === 0) throw new Error('topics() requires at least one topic')
+  return { type: 'topic' as const, topics: topicNames }
+}
+
+/**
+ * Target pages containing specific keywords for Display campaigns.
+ *
+ * @param kws - One or more content keywords
+ * @returns A content keyword targeting rule
+ * @throws If no keywords are provided
+ *
+ * @example
+ * ```ts
+ * contentKeywords('file management', 'pdf tools')
+ * ```
+ */
+export function contentKeywords(...kws: string[]): ContentKeywordTarget {
+  if (kws.length === 0) throw new Error('contentKeywords() requires at least one keyword')
+  return { type: 'content-keyword' as const, keywords: kws }
 }
 
 /**
