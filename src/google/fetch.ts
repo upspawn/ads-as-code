@@ -133,8 +133,6 @@ SELECT
   campaign.network_settings.target_google_search,
   campaign.network_settings.target_search_network,
   campaign.network_settings.target_content_network,
-  campaign.start_date,
-  campaign.end_date,
   campaign.tracking_url_template,
   campaign.final_url_suffix,
   campaign.url_custom_parameters,
