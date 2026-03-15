@@ -82,6 +82,11 @@ export type { UrlResult } from './helpers/url.ts'
 
 export { defineConfig } from './core/config.ts'
 
+// === AI ===
+
+export { ai } from './ai/index.ts'
+export type { AiConfig, RsaMarker, KeywordsMarker } from './ai/index.ts'
+
 // === Providers ===
 
 export { google } from './google/index.ts'
