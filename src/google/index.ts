@@ -56,7 +56,23 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
   }
 
   /**
-   * Add a locale-specific ad group with targeting override.
+   * Add a locale-specific ad group with a targeting override.
+   *
+   * The targeting replaces any campaign-level targeting for this group,
+   * making it ideal for multi-language or multi-region campaigns.
+   *
+   * @param key - Unique identifier for the ad group (e.g. `'en-us'`, `'de'`)
+   * @param targeting - Targeting rules that override campaign-level targeting
+   * @param input - Ad group definition with keywords and ads
+   * @returns A new CampaignBuilder with the ad group added
+   *
+   * @example
+   * ```ts
+   * campaign.locale('en-us', targeting(geo('US'), languages('en')), {
+   *   keywords: exact('rename files'),
+   *   ad: rsa(headlines(...), descriptions(...), url('https://renamed.to')),
+   * })
+   * ```
    */
   builder.locale = function (key: string, targeting: Targeting, input: AdGroupInput): CampaignBuilder {
     const group = normalizeAdGroup(input, targeting)
@@ -65,7 +81,19 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
   }
 
   /**
-   * Add an ad group without targeting override.
+   * Add an ad group that inherits campaign-level targeting.
+   *
+   * @param key - Unique identifier for the ad group (e.g. `'pdf-renaming'`)
+   * @param input - Ad group definition with keywords and ads
+   * @returns A new CampaignBuilder with the ad group added
+   *
+   * @example
+   * ```ts
+   * campaign.group('pdf-renaming', {
+   *   keywords: exact('rename pdf', 'pdf renamer'),
+   *   ad: rsa(headlines(...), descriptions(...), url('https://renamed.to/pdf-renamer')),
+   * })
+   * ```
    */
   builder.group = function (key: string, input: AdGroupInput): CampaignBuilder {
     const group = normalizeAdGroup(input)
@@ -74,7 +102,18 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
   }
 
   /**
-   * Set sitelink extensions on the campaign.
+   * Set sitelink extensions on the campaign. Replaces any existing sitelinks.
+   *
+   * @param links - Sitelink objects created with the `link()` helper
+   * @returns A new CampaignBuilder with sitelinks set
+   *
+   * @example
+   * ```ts
+   * campaign.sitelinks(
+   *   link('Pricing', '/pricing'),
+   *   link('Features', '/features'),
+   * )
+   * ```
    */
   builder.sitelinks = function (...links: Sitelink[]): CampaignBuilder {
     return createBuilder({
@@ -84,7 +123,16 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
   }
 
   /**
-   * Set callout extensions on the campaign. Each callout must be <= 25 characters.
+   * Set callout extensions on the campaign. Replaces any existing callouts.
+   *
+   * @param texts - Callout strings (max 25 characters each)
+   * @returns A new CampaignBuilder with callouts set
+   * @throws If any callout exceeds 25 characters
+   *
+   * @example
+   * ```ts
+   * campaign.callouts('Free Trial', 'No Credit Card', 'AI-Powered')
+   * ```
    */
   builder.callouts = function (...texts: string[]): CampaignBuilder {
     for (const text of texts) {
@@ -103,22 +151,36 @@ function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
 
 /**
  * Google Ads campaign builder namespace.
+ *
+ * Provides factory methods for creating Google Ads campaigns
+ * with a type-safe, chainable builder API.
  */
 export const google = {
   /**
-   * Create a Google Search campaign with chained builder methods.
+   * Create a Google Search campaign with a chainable builder API.
+   *
+   * Returns a `CampaignBuilder` that exposes `.locale()`, `.group()`,
+   * `.sitelinks()`, and `.callouts()` for adding ad groups and extensions.
+   * Each method returns a new builder (immutable chaining).
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration (budget, bidding, targeting, negatives, status)
+   * @returns A CampaignBuilder for adding ad groups and extensions
    *
    * @example
    * ```ts
-   * const campaign = google.search('My Campaign', {
-   *   budget: { amount: 20, currency: 'EUR', period: 'daily' },
+   * const campaign = google.search('Search - Exact Match', {
+   *   budget: daily(20),
    *   bidding: 'maximize-conversions',
+   *   targeting: targeting(geo('US', 'DE'), languages('en', 'de')),
+   *   negatives: negatives('free', 'open source'),
    * })
-   * .locale('en-us', { rules: [{ type: 'geo', countries: ['US'] }] }, {
-   *   keywords: [{ text: 'rename files', matchType: 'EXACT' }],
-   *   ad: { type: 'rsa', headlines: [...], descriptions: [...], finalUrl: 'https://...' },
+   * .locale('en-us', targeting(geo('US'), languages('en')), {
+   *   keywords: exact('rename files', 'batch rename'),
+   *   ad: rsa(headlines(...), descriptions(...), url('https://renamed.to')),
    * })
-   * .sitelinks({ text: 'Pricing', url: '/pricing' })
+   * .sitelinks(link('Pricing', '/pricing'))
+   * .callouts('Free Trial', 'No Credit Card')
    * ```
    */
   search(name: string, input: SearchCampaignInput): CampaignBuilder {

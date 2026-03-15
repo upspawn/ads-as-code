@@ -4,7 +4,18 @@ import type { RSAd } from '../google/types.ts'
 const HEADLINE_MAX = 30
 const DESCRIPTION_MAX = 90
 
-/** Create validated headlines (max 30 chars each) */
+/**
+ * Create validated RSA headlines. Each headline must be 30 characters or fewer.
+ *
+ * @param texts - Headline strings to validate and brand
+ * @returns Array of branded Headline values
+ * @throws If any headline exceeds 30 characters
+ *
+ * @example
+ * ```ts
+ * headlines('Rename Files Fast', 'AI File Renamer', 'Batch Rename Tool')
+ * ```
+ */
 export function headlines(...texts: string[]): Headline[] {
   return texts.map(text => {
     if (text.length > HEADLINE_MAX) {
@@ -16,7 +27,21 @@ export function headlines(...texts: string[]): Headline[] {
   })
 }
 
-/** Create validated descriptions (max 90 chars each) */
+/**
+ * Create validated RSA descriptions. Each description must be 90 characters or fewer.
+ *
+ * @param texts - Description strings to validate and brand
+ * @returns Array of branded Description values
+ * @throws If any description exceeds 90 characters
+ *
+ * @example
+ * ```ts
+ * descriptions(
+ *   'Rename thousands of files in seconds with AI-powered rules.',
+ *   'Try free. No credit card required.',
+ * )
+ * ```
+ */
 export function descriptions(...texts: string[]): Description[] {
   return texts.map(text => {
     if (text.length > DESCRIPTION_MAX) {
@@ -28,7 +53,26 @@ export function descriptions(...texts: string[]): Description[] {
   })
 }
 
-/** Create a Responsive Search Ad */
+/**
+ * Build a Responsive Search Ad from validated headlines, descriptions, and a URL.
+ *
+ * Google requires 3-15 headlines and 2-4 descriptions per RSA.
+ *
+ * @param headlineList - Validated headlines (3-15 required)
+ * @param descriptionList - Validated descriptions (2-4 required)
+ * @param urlResult - URL object from the `url()` helper, with optional UTM params
+ * @returns A complete RSA definition
+ * @throws If headline count is outside 3-15 or description count is outside 2-4
+ *
+ * @example
+ * ```ts
+ * rsa(
+ *   headlines('Rename Files Fast', 'AI File Renamer', 'Batch Rename Tool'),
+ *   descriptions('Rename files in seconds.', 'Try free today.'),
+ *   url('https://renamed.to'),
+ * )
+ * ```
+ */
 export function rsa(
   headlineList: Headline[],
   descriptionList: Description[],
