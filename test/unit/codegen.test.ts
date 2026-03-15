@@ -755,6 +755,48 @@ describe('generateCampaignFile() bidding strategies', () => {
   })
 })
 
+// ─── Campaign Status and Tracking ────────────────────────
+
+describe('generateCampaignFile — campaign status and tracking', () => {
+  function campaignWith(extra: Record<string, unknown>): Resource[] {
+    return [{
+      kind: 'campaign' as const, path: 'test',
+      properties: { name: 'Test', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' }, ...extra },
+    }]
+  }
+
+  test('emits status: paused', () => {
+    const r = [{ ...campaignWith({})[0]!, properties: { ...campaignWith({})[0]!.properties, status: 'paused' } }]
+    expect(generateCampaignFile(r, 'Test')).toContain("status: 'paused'")
+  })
+
+  test('omits status when enabled', () => {
+    expect(generateCampaignFile(campaignWith({}), 'Test')).not.toMatch(/status:/)
+  })
+
+  test('emits startDate and endDate', () => {
+    const code = generateCampaignFile(campaignWith({ startDate: '2026-04-01', endDate: '2026-04-30' }), 'Test')
+    expect(code).toContain("startDate: '2026-04-01'")
+    expect(code).toContain("endDate: '2026-04-30'")
+  })
+
+  test('emits trackingTemplate', () => {
+    const code = generateCampaignFile(campaignWith({ trackingTemplate: '{lpurl}?utm=google' }), 'Test')
+    expect(code).toContain('trackingTemplate:')
+  })
+
+  test('emits finalUrlSuffix', () => {
+    const code = generateCampaignFile(campaignWith({ finalUrlSuffix: 'utm_medium=cpc' }), 'Test')
+    expect(code).toContain("finalUrlSuffix: 'utm_medium=cpc'")
+  })
+
+  test('emits customParameters', () => {
+    const code = generateCampaignFile(campaignWith({ customParameters: { campaign: 'test' } }), 'Test')
+    expect(code).toContain('customParameters:')
+    expect(code).toContain("campaign: 'test'")
+  })
+})
+
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {

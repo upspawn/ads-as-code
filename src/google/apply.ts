@@ -158,6 +158,17 @@ function buildCampaignCreate(
     }
   }
 
+  // Dates
+  if (props.startDate) campaign.start_date = props.startDate as string
+  if (props.endDate) campaign.end_date = props.endDate as string
+  // Tracking
+  if (props.trackingTemplate) campaign.tracking_url_template = props.trackingTemplate as string
+  if (props.finalUrlSuffix) campaign.final_url_suffix = props.finalUrlSuffix as string
+  const customParams = props.customParameters as Record<string, string> | undefined
+  if (customParams) {
+    campaign.url_custom_parameters = Object.entries(customParams).map(([key, value]) => ({ key, value }))
+  }
+
   return {
     operation: 'campaign',
     op: 'create',
@@ -449,6 +460,27 @@ function buildUpdateOperations(
             target_content_network: ns.displayNetwork,
           }
           campaignMask.push('network_settings')
+        }
+        if (c.field === 'startDate') {
+          campaignFields.start_date = c.to as string
+          campaignMask.push('start_date')
+        }
+        if (c.field === 'endDate') {
+          campaignFields.end_date = c.to as string
+          campaignMask.push('end_date')
+        }
+        if (c.field === 'trackingTemplate') {
+          campaignFields.tracking_url_template = c.to as string
+          campaignMask.push('tracking_url_template')
+        }
+        if (c.field === 'finalUrlSuffix') {
+          campaignFields.final_url_suffix = c.to as string
+          campaignMask.push('final_url_suffix')
+        }
+        if (c.field === 'customParameters') {
+          const params = c.to as Record<string, string>
+          campaignFields.url_custom_parameters = Object.entries(params).map(([key, value]) => ({ key, value }))
+          campaignMask.push('url_custom_parameters')
         }
         if (c.field === 'bidding') {
           const newBidding = c.to as Record<string, unknown>

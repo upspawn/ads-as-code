@@ -226,6 +226,29 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     )
   }
 
+  // Status (only emit if paused — enabled is default)
+  const campaignStatus = props.status as string | undefined
+  if (campaignStatus === 'paused') {
+    configParts.push(`status: 'paused',`)
+  }
+
+  // Dates
+  const startDate = props.startDate as string | undefined
+  if (startDate) configParts.push(`startDate: ${quote(startDate)},`)
+  const endDate = props.endDate as string | undefined
+  if (endDate) configParts.push(`endDate: ${quote(endDate)},`)
+
+  // Tracking
+  const trackingTemplate = props.trackingTemplate as string | undefined
+  if (trackingTemplate) configParts.push(`trackingTemplate: ${quote(trackingTemplate)},`)
+  const finalUrlSuffix = props.finalUrlSuffix as string | undefined
+  if (finalUrlSuffix) configParts.push(`finalUrlSuffix: ${quote(finalUrlSuffix)},`)
+  const customParameters = props.customParameters as Record<string, string> | undefined
+  if (customParameters && Object.keys(customParameters).length > 0) {
+    const entries = Object.entries(customParameters).map(([k, v]) => `${k}: ${quote(v)}`).join(', ')
+    configParts.push(`customParameters: { ${entries} },`)
+  }
+
   // Build the campaign header
   const lines: string[] = []
   lines.push(`// Imported from Google Ads on ${today}`)

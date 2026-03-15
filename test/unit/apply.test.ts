@@ -753,6 +753,95 @@ describe('bidding strategies on update', () => {
   })
 })
 
+// ─── Campaign Dates and Tracking ─────────────────────────────
+
+describe('campaign create — dates and tracking', () => {
+  test('sets start_date and end_date', () => {
+    const resource = makeResource('campaign', 'test', {
+      name: 'Test', status: 'enabled',
+      budget: { amount: 5, currency: 'EUR', period: 'daily' },
+      bidding: { type: 'maximize-conversions' },
+      startDate: '2026-04-01', endDate: '2026-04-30',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map())
+    const c = mutations.find(m => m.operation === 'campaign')!
+    expect((c.resource as Record<string, unknown>).start_date).toBe('2026-04-01')
+    expect((c.resource as Record<string, unknown>).end_date).toBe('2026-04-30')
+  })
+
+  test('sets tracking_url_template and final_url_suffix', () => {
+    const resource = makeResource('campaign', 'test', {
+      name: 'Test', status: 'enabled',
+      budget: { amount: 5, currency: 'EUR', period: 'daily' },
+      bidding: { type: 'maximize-conversions' },
+      trackingTemplate: '{lpurl}?src=google', finalUrlSuffix: 'utm_medium=cpc',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map())
+    const c = mutations.find(m => m.operation === 'campaign')!
+    expect((c.resource as Record<string, unknown>).tracking_url_template).toBe('{lpurl}?src=google')
+    expect((c.resource as Record<string, unknown>).final_url_suffix).toBe('utm_medium=cpc')
+  })
+
+  test('sets url_custom_parameters', () => {
+    const resource = makeResource('campaign', 'test', {
+      name: 'Test', status: 'enabled',
+      budget: { amount: 5, currency: 'EUR', period: 'daily' },
+      bidding: { type: 'maximize-conversions' },
+      customParameters: { campaign: 'test', source: 'google' },
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map())
+    const c = mutations.find(m => m.operation === 'campaign')!
+    const params = (c.resource as Record<string, unknown>).url_custom_parameters as Array<{ key: string; value: string }>
+    expect(params).toHaveLength(2)
+    expect(params.find(p => p.key === 'campaign')?.value).toBe('test')
+  })
+})
+
+describe('campaign update — dates and tracking', () => {
+  test('updates trackingTemplate', () => {
+    const resource = makeResource('campaign', 'test', {
+      name: 'Test', status: 'enabled',
+      budget: { amount: 5, currency: 'EUR', period: 'daily' },
+      bidding: { type: 'maximize-conversions' },
+    }, '999')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'trackingTemplate', from: undefined, to: '{lpurl}?src=google' }],
+    }, '123', new Map())
+    const op = mutations.find(m => m.operation === 'campaign' && m.op === 'update')!
+    expect((op.resource as Record<string, unknown>).tracking_url_template).toBe('{lpurl}?src=google')
+    expect(op.updateMask).toContain('tracking_url_template')
+  })
+
+  test('updates startDate and endDate', () => {
+    const resource = makeResource('campaign', 'test', {}, '999')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [
+        { field: 'startDate', from: undefined, to: '2026-04-01' },
+        { field: 'endDate', from: undefined, to: '2026-04-30' },
+      ],
+    }, '123', new Map())
+    const op = mutations.find(m => m.operation === 'campaign' && m.op === 'update')!
+    expect((op.resource as Record<string, unknown>).start_date).toBe('2026-04-01')
+    expect((op.resource as Record<string, unknown>).end_date).toBe('2026-04-30')
+    expect(op.updateMask).toContain('start_date')
+    expect(op.updateMask).toContain('end_date')
+  })
+
+  test('updates customParameters', () => {
+    const resource = makeResource('campaign', 'test', {}, '999')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'customParameters', from: undefined, to: { campaign: 'test' } }],
+    }, '123', new Map())
+    const op = mutations.find(m => m.operation === 'campaign' && m.op === 'update')!
+    const params = (op.resource as Record<string, unknown>).url_custom_parameters as Array<{ key: string; value: string }>
+    expect(params).toEqual([{ key: 'campaign', value: 'test' }])
+    expect(op.updateMask).toContain('url_custom_parameters')
+  })
+})
+
 // ─── Device Bid Adjustments ────────────────────────────────
 
 describe('device bid adjustments', () => {

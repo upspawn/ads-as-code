@@ -133,6 +133,11 @@ SELECT
   campaign.network_settings.target_google_search,
   campaign.network_settings.target_search_network,
   campaign.network_settings.target_content_network,
+  campaign.start_date,
+  campaign.end_date,
+  campaign.tracking_url_template,
+  campaign.final_url_suffix,
+  campaign.url_custom_parameters,
   campaign_budget.id,
   campaign_budget.resource_name,
   campaign_budget.amount_micros
@@ -176,12 +181,27 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     displayNetwork: (networkSettingsRaw.target_content_network ?? networkSettingsRaw.targetContentNetwork) === true,
   } : undefined
 
+  // Dates and tracking: support both snake_case (gRPC) and camelCase (REST)
+  const startDate = str(campaign?.start_date ?? campaign?.startDate) || undefined
+  const endDate = str(campaign?.end_date ?? campaign?.endDate) || undefined
+  const trackingTemplate = str(campaign?.tracking_url_template ?? campaign?.trackingUrlTemplate) || undefined
+  const finalUrlSuffix = str(campaign?.final_url_suffix ?? campaign?.finalUrlSuffix) || undefined
+  const rawCustomParams = (campaign?.url_custom_parameters ?? campaign?.urlCustomParameters) as Array<{ key: string; value: string }> | undefined
+  const customParameters = rawCustomParams?.length
+    ? Object.fromEntries(rawCustomParams.map(p => [p.key, p.value]))
+    : undefined
+
   const props: Record<string, unknown> = {
     name,
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
     ...(networkSettings ? { networkSettings } : {}),
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+    ...(trackingTemplate ? { trackingTemplate } : {}),
+    ...(finalUrlSuffix ? { finalUrlSuffix } : {}),
+    ...(customParameters ? { customParameters } : {}),
   }
   const meta = budgetResourceName ? { budgetResourceName } : undefined
   return { kind: 'campaign' as const, path, properties: props, ...(meta ? { meta } : {}), ...(id ? { platformId: id } : {}) }
