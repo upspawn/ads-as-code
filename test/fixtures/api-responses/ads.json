@@ -1,65 +1,65 @@
 [
   {
-    "adGroupAd": {
-      "resourceName": "customers/7300967494/adGroupAds/111111~50001",
-      "status": "ENABLED",
+    "ad_group_ad": {
+      "resource_name": "customers/7300967494/adGroupAds/111111~50001",
+      "status": 2,
       "ad": {
-        "id": "50001",
-        "type": "RESPONSIVE_SEARCH_AD",
-        "responsiveSearchAd": {
+        "id": 50001,
+        "type": 15,
+        "responsive_search_ad": {
           "headlines": [
-            { "text": "Rename PDFs Fast", "pinnedField": "UNSPECIFIED" },
-            { "text": "AI-Powered Tool", "pinnedField": "UNSPECIFIED" },
-            { "text": "Try It Free", "pinnedField": "UNSPECIFIED" }
+            { "text": "Rename PDFs Fast", "pinned_field": 0 },
+            { "text": "AI-Powered Tool", "pinned_field": 0 },
+            { "text": "Try It Free", "pinned_field": 0 }
           ],
           "descriptions": [
-            { "text": "Rename your PDFs in seconds with AI.", "pinnedField": "UNSPECIFIED" },
-            { "text": "No more manual renaming.", "pinnedField": "UNSPECIFIED" }
+            { "text": "Rename your PDFs in seconds with AI.", "pinned_field": 0 },
+            { "text": "No more manual renaming.", "pinned_field": 0 }
           ]
         },
-        "finalUrls": ["https://renamed.to/pdf-renamer"]
+        "final_urls": ["https://renamed.to/pdf-renamer"]
       }
     },
-    "adGroup": {
-      "resourceName": "customers/7300967494/adGroups/111111",
-      "id": "111111",
+    "ad_group": {
+      "resource_name": "customers/7300967494/adGroups/111111",
+      "id": 111111,
       "name": "pdf-core"
     },
     "campaign": {
-      "resourceName": "customers/7300967494/campaigns/123456",
-      "id": "123456",
+      "resource_name": "customers/7300967494/campaigns/123456",
+      "id": 123456,
       "name": "Search - PDF Renaming"
     }
   },
   {
-    "adGroupAd": {
-      "resourceName": "customers/7300967494/adGroupAds/222222~50002",
-      "status": "ENABLED",
+    "ad_group_ad": {
+      "resource_name": "customers/7300967494/adGroupAds/222222~50002",
+      "status": 2,
       "ad": {
-        "id": "50002",
-        "type": "RESPONSIVE_SEARCH_AD",
-        "responsiveSearchAd": {
+        "id": 50002,
+        "type": 15,
+        "responsive_search_ad": {
           "headlines": [
-            { "text": "Bulk PDF Renaming", "pinnedField": "UNSPECIFIED" },
-            { "text": "Rename 100s of PDFs", "pinnedField": "UNSPECIFIED" },
-            { "text": "AI Batch Rename", "pinnedField": "UNSPECIFIED" }
+            { "text": "Bulk PDF Renaming", "pinned_field": 0 },
+            { "text": "Rename 100s of PDFs", "pinned_field": 0 },
+            { "text": "AI Batch Rename", "pinned_field": 0 }
           ],
           "descriptions": [
-            { "text": "Batch rename PDFs with AI-powered rules.", "pinnedField": "UNSPECIFIED" },
-            { "text": "Upload a folder and rename in seconds.", "pinnedField": "UNSPECIFIED" }
+            { "text": "Batch rename PDFs with AI-powered rules.", "pinned_field": 0 },
+            { "text": "Upload a folder and rename in seconds.", "pinned_field": 0 }
           ]
         },
-        "finalUrls": ["https://renamed.to/pdf-renamer"]
+        "final_urls": ["https://renamed.to/pdf-renamer"]
       }
     },
-    "adGroup": {
-      "resourceName": "customers/7300967494/adGroups/222222",
-      "id": "222222",
+    "ad_group": {
+      "resource_name": "customers/7300967494/adGroups/222222",
+      "id": 222222,
       "name": "pdf-bulk"
     },
     "campaign": {
-      "resourceName": "customers/7300967494/campaigns/123456",
-      "id": "123456",
+      "resource_name": "customers/7300967494/campaigns/123456",
+      "id": 123456,
       "name": "Search - PDF Renaming"
     }
   }

@@ -211,23 +211,14 @@ export async function runPlan(rootDir: string, options: { json?: boolean } = {})
   const cache = new Cache(cachePath)
 
   // 6. Fetch live state
-  // Dynamic import path constructed at runtime to avoid compile-time resolution errors
-  // when the fetch module doesn't exist yet (being built by another agent).
   let actual: Resource[] = []
   try {
-    const fetchModulePath = ['..', 'src', 'google', 'fetch.ts'].join('/')
-    const fetchModule = await import(fetchModulePath) as Record<string, unknown>
-    if (typeof fetchModule['fetchAllState'] === 'function') {
-      actual = await (fetchModule['fetchAllState'] as (client: unknown) => Promise<Resource[]>)(client)
-    } else if (typeof fetchModule['fetchKnownState'] === 'function') {
-      const cachedPaths = cache.getManagedPaths('default', 'ads-as-code')
-      actual = await (fetchModule['fetchKnownState'] as (client: unknown, paths: string[]) => Promise<Resource[]>)(client, cachedPaths)
-    }
+    const { fetchAllState } = await import('../src/google/fetch.ts')
+    actual = await fetchAllState(client)
   } catch (err) {
     // fetch module may not exist yet (being built by another agent)
-    if ((err as NodeJS.ErrnoException)?.code === 'ERR_MODULE_NOT_FOUND' ||
-        (err as Error)?.message?.includes('Cannot find module') ||
-        (err as Error)?.message?.includes('Module not found')) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    if (errMsg.includes('Cannot find module') || errMsg.includes('Module not found')) {
       console.warn('Warning: src/google/fetch.ts not available — comparing against empty state.')
       console.warn('The fetch module is being built by another agent. Proceeding with local-only plan.')
     } else {

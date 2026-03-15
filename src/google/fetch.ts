@@ -9,6 +9,32 @@ export type FetchOptions = {
   readonly includePaused?: boolean
 }
 
+// ─── Enum Maps (google-ads-api gRPC returns numeric enums) ──
+
+const STATUS_MAP: Record<number, string> = {
+  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENABLED', 3: 'PAUSED', 4: 'REMOVED',
+}
+
+const BIDDING_STRATEGY_MAP: Record<number, string> = {
+  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENHANCED_CPC', 3: 'MANUAL_CPC',
+  4: 'MANUAL_CPM', 5: 'PAGE_ONE_PROMOTED', 6: 'TARGET_CPA',
+  7: 'TARGET_OUTRANK_SHARE', 8: 'TARGET_ROAS', 9: 'TARGET_SPEND',
+  10: 'MAXIMIZE_CONVERSIONS', 11: 'MAXIMIZE_CONVERSION_VALUE',
+  12: 'PERCENT_CPC', 13: 'MANUAL_CPV', 14: 'TARGET_CPM',
+  15: 'TARGET_IMPRESSION_SHARE',
+}
+
+const MATCH_TYPE_MAP: Record<number, string> = {
+  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'EXACT', 3: 'PHRASE', 4: 'BROAD',
+}
+
+/** Resolve an enum value that may be a number (gRPC) or string (REST). */
+function resolveEnum(value: unknown, map: Record<number, string>): string {
+  if (typeof value === 'number') return map[value] ?? 'UNKNOWN'
+  if (typeof value === 'string') return value
+  return 'UNKNOWN'
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, platformId?: string): Resource {
@@ -16,59 +42,55 @@ function resource(kind: ResourceKind, path: string, properties: Record<string, u
 }
 
 function microsToAmount(micros: string | number): number {
-  const val = typeof micros === 'string' ? parseInt(micros, 10) : micros
+  const val = typeof micros === 'string' ? parseInt(micros, 10) : Number(micros)
   return val / 1_000_000
 }
 
-function mapStatus(apiStatus: string): 'enabled' | 'paused' {
-  return apiStatus === 'ENABLED' ? 'enabled' : 'paused'
+function mapStatus(apiStatus: unknown): 'enabled' | 'paused' {
+  const resolved = resolveEnum(apiStatus, STATUS_MAP)
+  return resolved === 'ENABLED' ? 'enabled' : 'paused'
 }
 
-function mapBiddingStrategy(apiType: string, row: GoogleAdsRow): BiddingStrategy {
-  switch (apiType) {
+function mapBiddingStrategy(apiType: unknown, row: GoogleAdsRow): BiddingStrategy {
+  const resolved = resolveEnum(apiType, BIDDING_STRATEGY_MAP)
+  switch (resolved) {
     case 'MAXIMIZE_CONVERSIONS':
       return { type: 'maximize-conversions' }
+    case 'TARGET_SPEND':   // TARGET_SPEND is what Google Ads API uses for "Maximize Clicks"
     case 'MAXIMIZE_CLICKS': {
-      const maxCpc = nested(row, 'campaign.maximizeClicks.cpcBidCeilingMicros')
-      return maxCpc
-        ? { type: 'maximize-clicks', maxCpc: microsToAmount(maxCpc as string) }
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const maxClicks = (campaign?.maximize_clicks ?? campaign?.maximizeClicks) as Record<string, unknown> | undefined
+      const cpcCeiling = maxClicks?.cpc_bid_ceiling_micros ?? maxClicks?.cpcBidCeilingMicros
+      return cpcCeiling
+        ? { type: 'maximize-clicks', maxCpc: microsToAmount(cpcCeiling as string | number) }
         : { type: 'maximize-clicks' }
     }
+    case 'ENHANCED_CPC':
+      return { type: 'manual-cpc', enhancedCpc: true }
     case 'MANUAL_CPC': {
-      const enhanced = nested(row, 'campaign.manualCpc.enhancedCpcEnabled')
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const manualCpc = (campaign?.manual_cpc ?? campaign?.manualCpc) as Record<string, unknown> | undefined
+      const enhanced = manualCpc?.enhanced_cpc_enabled ?? manualCpc?.enhancedCpcEnabled
       return { type: 'manual-cpc', enhancedCpc: enhanced === true }
     }
     case 'TARGET_CPA': {
-      const cpa = nested(row, 'campaign.targetCpa.targetCpaMicros')
-      return { type: 'target-cpa', targetCpa: cpa ? microsToAmount(cpa as string) : 0 }
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const targetCpa = (campaign?.target_cpa ?? campaign?.targetCpa) as Record<string, unknown> | undefined
+      const micros = targetCpa?.target_cpa_micros ?? targetCpa?.targetCpaMicros
+      return { type: 'target-cpa', targetCpa: micros ? microsToAmount(micros as string | number) : 0 }
     }
     default:
       return { type: 'maximize-conversions' }
   }
 }
 
-function mapMatchType(apiMatchType: string): string {
-  switch (apiMatchType) {
-    case 'EXACT': return 'EXACT'
-    case 'PHRASE': return 'PHRASE'
-    case 'BROAD': return 'BROAD'
-    default: return apiMatchType
-  }
-}
-
-/** Safely access nested properties using dot notation (e.g. "campaign.id") */
-function nested(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.')
-  let current: unknown = obj
-  for (const part of parts) {
-    if (current === null || current === undefined || typeof current !== 'object') return undefined
-    current = (current as Record<string, unknown>)[part]
-  }
-  return current
+function mapMatchType(apiMatchType: unknown): string {
+  return resolveEnum(apiMatchType, MATCH_TYPE_MAP)
 }
 
 function str(v: unknown): string {
-  return String(v ?? '')
+  if (v === null || v === undefined) return ''
+  return String(v)
 }
 
 // ─── Campaign Fetcher ───────────────────────────────────────
@@ -82,7 +104,7 @@ SELECT
   campaign_budget.id,
   campaign_budget.amount_micros
 FROM campaign
-WHERE campaign.serving_status != 'REMOVED'
+WHERE campaign.status != 'REMOVED'
 `.trim()
 
 const CAMPAIGN_QUERY_ENABLED = `${CAMPAIGN_QUERY}
@@ -99,13 +121,14 @@ export async function fetchCampaigns(
 
 function normalizeCampaignRow(row: GoogleAdsRow): Resource {
   const campaign = row.campaign as Record<string, unknown> | undefined
-  const budget = row.campaignBudget as Record<string, unknown> | undefined
+  // gRPC returns snake_case: campaign_budget; REST returns camelCase: campaignBudget
+  const budget = (row.campaign_budget ?? row.campaignBudget) as Record<string, unknown> | undefined
 
   const id = str(campaign?.id)
   const name = str(campaign?.name)
-  const status = mapStatus(str(campaign?.status))
-  const biddingType = str(campaign?.biddingStrategyType)
-  const amountMicros = budget?.amountMicros
+  const status = mapStatus(campaign?.status)
+  const biddingType = campaign?.bidding_strategy_type ?? campaign?.biddingStrategyType
+  const amountMicros = budget?.amount_micros ?? budget?.amountMicros
   const amount = amountMicros ? microsToAmount(amountMicros as string | number) : 0
 
   const bidding = mapBiddingStrategy(biddingType, row)
@@ -145,12 +168,13 @@ export async function fetchAdGroups(
 }
 
 function normalizeAdGroupRow(row: GoogleAdsRow): Resource {
-  const adGroup = row.adGroup as Record<string, unknown> | undefined
+  // gRPC returns snake_case: ad_group; REST returns camelCase: adGroup
+  const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
   const campaign = row.campaign as Record<string, unknown> | undefined
 
   const id = str(adGroup?.id)
   const name = str(adGroup?.name)
-  const status = mapStatus(str(adGroup?.status))
+  const status = mapStatus(adGroup?.status)
   const campaignName = str(campaign?.name)
   const campaignPath = slugify(campaignName)
   const path = `${campaignPath}/${name}`
@@ -190,14 +214,15 @@ export async function fetchKeywords(
 }
 
 function normalizeKeywordRow(row: GoogleAdsRow): Resource {
-  const criterion = row.adGroupCriterion as Record<string, unknown> | undefined
-  const adGroup = row.adGroup as Record<string, unknown> | undefined
+  // gRPC returns snake_case: ad_group_criterion; REST returns camelCase: adGroupCriterion
+  const criterion = (row.ad_group_criterion ?? row.adGroupCriterion) as Record<string, unknown> | undefined
+  const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
   const campaign = row.campaign as Record<string, unknown> | undefined
 
-  const criterionId = str(criterion?.criterionId)
+  const criterionId = str(criterion?.criterion_id ?? criterion?.criterionId)
   const keyword = criterion?.keyword as Record<string, unknown> | undefined
   const text = str(keyword?.text)
-  const matchType = mapMatchType(str(keyword?.matchType))
+  const matchType = mapMatchType(keyword?.match_type ?? keyword?.matchType)
   const adGroupName = str(adGroup?.name)
   const campaignName = str(campaign?.name)
 
@@ -242,19 +267,22 @@ export async function fetchAds(
 }
 
 function normalizeAdRow(row: GoogleAdsRow): Resource {
-  const adGroupAd = row.adGroupAd as Record<string, unknown> | undefined
+  // gRPC returns snake_case: ad_group_ad; REST returns camelCase: adGroupAd
+  const adGroupAd = (row.ad_group_ad ?? row.adGroupAd) as Record<string, unknown> | undefined
   const ad = adGroupAd?.ad as Record<string, unknown> | undefined
-  const adGroup = row.adGroup as Record<string, unknown> | undefined
+  const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
   const campaign = row.campaign as Record<string, unknown> | undefined
 
   const adId = str(ad?.id)
-  const rsa = ad?.responsiveSearchAd as Record<string, unknown> | undefined
+  // gRPC returns snake_case: responsive_search_ad; REST returns camelCase: responsiveSearchAd
+  const rsa = (ad?.responsive_search_ad ?? ad?.responsiveSearchAd) as Record<string, unknown> | undefined
   const headlineAssets = (rsa?.headlines ?? []) as Array<{ text: string }>
   const descriptionAssets = (rsa?.descriptions ?? []) as Array<{ text: string }>
 
   const headlines = headlineAssets.map(h => h.text).sort()
   const descriptions = descriptionAssets.map(d => d.text).sort()
-  const finalUrls = (ad?.finalUrls ?? []) as string[]
+  // gRPC returns snake_case: final_urls; REST returns camelCase: finalUrls
+  const finalUrls = (ad?.final_urls ?? ad?.finalUrls ?? []) as string[]
   const finalUrl = finalUrls[0] ?? ''
 
   const adGroupName = str(adGroup?.name)
@@ -321,14 +349,15 @@ export async function fetchExtensions(
   const slRows = await client.query(slQuery)
   for (const row of slRows) {
     const asset = row.asset as Record<string, unknown> | undefined
-    const sitelink = asset?.sitelinkAsset as Record<string, unknown> | undefined
+    // gRPC returns snake_case: sitelink_asset; REST returns camelCase: sitelinkAsset
+    const sitelink = (asset?.sitelink_asset ?? asset?.sitelinkAsset) as Record<string, unknown> | undefined
     const campaign = row.campaign as Record<string, unknown> | undefined
 
     const assetId = str(asset?.id)
-    const linkText = str(sitelink?.linkText)
+    const linkText = str(sitelink?.link_text ?? sitelink?.linkText)
     const desc1 = sitelink?.description1 as string | undefined
     const desc2 = sitelink?.description2 as string | undefined
-    const finalUrls = (asset?.finalUrls ?? []) as string[]
+    const finalUrls = (asset?.final_urls ?? asset?.finalUrls ?? []) as string[]
     const url = finalUrls[0] ?? ''
     const campaignName = str(campaign?.name)
     const campaignPath = slugify(campaignName)
@@ -350,11 +379,12 @@ export async function fetchExtensions(
   const coRows = await client.query(coQuery)
   for (const row of coRows) {
     const asset = row.asset as Record<string, unknown> | undefined
-    const callout = asset?.calloutAsset as Record<string, unknown> | undefined
+    // gRPC returns snake_case: callout_asset; REST returns camelCase: calloutAsset
+    const callout = (asset?.callout_asset ?? asset?.calloutAsset) as Record<string, unknown> | undefined
     const campaign = row.campaign as Record<string, unknown> | undefined
 
     const assetId = str(asset?.id)
-    const calloutText = str(callout?.calloutText)
+    const calloutText = str(callout?.callout_text ?? callout?.calloutText)
     const campaignName = str(campaign?.name)
     const campaignPath = slugify(campaignName)
     const path = `${campaignPath}/co:${calloutText.toLowerCase()}`

@@ -34,7 +34,7 @@ function emptyChangeset(): Changeset {
 // ─── changeToMutations ──────────────────────────────────────
 
 describe('changeToMutations', () => {
-  test('campaign create produces budget + campaign operations', () => {
+  test('campaign create produces budget + campaign operations with snake_case', () => {
     const change: Change = {
       op: 'create',
       resource: makeResource('campaign', 'search-pdf-renaming', {
@@ -51,21 +51,22 @@ describe('changeToMutations', () => {
     // At least 2 ops: budget + campaign
     expect(mutations.length).toBeGreaterThanOrEqual(2)
 
-    // First op should be budget
+    // First op should be budget with snake_case entity
     const budgetOp = mutations[0]!
-    expect(budgetOp.operation).toBe('campaignBudgetOperation')
+    expect(budgetOp.operation).toBe('campaign_budget')
+    expect(budgetOp.op).toBe('create')
 
-    // Budget should have explicitly_shared: false
+    // Budget should have explicitly_shared: false (snake_case)
     const budgetResource = budgetOp.resource as Record<string, unknown>
-    const budgetCreate = budgetResource.create as Record<string, unknown>
-    expect(budgetCreate.explicitlyShared).toBe(false)
+    expect(budgetResource.explicitly_shared).toBe(false)
 
-    // Budget should be in micros
-    expect(budgetCreate.amountMicros).toBe('20000000')
+    // Budget should be in micros (snake_case)
+    expect(budgetResource.amount_micros).toBe('20000000')
 
-    // Second op should be campaign
+    // Second op should be campaign with snake_case entity
     const campaignOp = mutations[1]!
-    expect(campaignOp.operation).toBe('campaignOperation')
+    expect(campaignOp.operation).toBe('campaign')
+    expect(campaignOp.op).toBe('create')
   })
 
   test('monthly budget converts via /30.4', () => {
@@ -83,10 +84,9 @@ describe('changeToMutations', () => {
     const mutations = changeToMutations(change, '7300967494', new Map())
     const budgetOp = mutations[0]!
     const budgetResource = budgetOp.resource as Record<string, unknown>
-    const budgetCreate = budgetResource.create as Record<string, unknown>
 
     // 304 / 30.4 = 10, in micros = 10000000
-    expect(budgetCreate.amountMicros).toBe('10000000')
+    expect(budgetResource.amount_micros).toBe('10000000')
   })
 
   test('language targeting maps to criterion IDs', () => {
@@ -107,9 +107,9 @@ describe('changeToMutations', () => {
 
     const mutations = changeToMutations(change, '7300967494', new Map())
 
-    // Should include language criterion operations
+    // Should include language criterion operations with snake_case entity
     const langOps = mutations.filter(m =>
-      m.operation === 'campaignCriterionOperation' &&
+      m.operation === 'campaign_criterion' &&
       JSON.stringify(m.resource).includes('languageConstants'),
     )
 
@@ -140,7 +140,7 @@ describe('changeToMutations', () => {
     const mutations = changeToMutations(change, '7300967494', new Map())
 
     const geoOps = mutations.filter(m =>
-      m.operation === 'campaignCriterionOperation' &&
+      m.operation === 'campaign_criterion' &&
       JSON.stringify(m.resource).includes('geoTargetConstants'),
     )
 
@@ -165,13 +165,14 @@ describe('changeToMutations', () => {
 
     expect(mutations).toHaveLength(1)
     const op = mutations[0]!
-    expect(op.operation).toBe('adGroupCriterionOperation')
+    expect(op.operation).toBe('ad_group_criterion')
+    expect(op.op).toBe('create')
 
-    const create = (op.resource as Record<string, unknown>).create as Record<string, unknown>
-    expect(create.adGroup).toBe('customers/7300967494/adGroups/111111')
+    const create = op.resource as Record<string, unknown>
+    expect(create.ad_group).toBe('customers/7300967494/adGroups/111111')
   })
 
-  test('ad create includes RSA headlines and descriptions', () => {
+  test('ad create includes RSA headlines and descriptions with snake_case', () => {
     const resourceMap = new Map([['search-pdf/pdf-core', '111111']])
     const change: Change = {
       op: 'create',
@@ -186,22 +187,23 @@ describe('changeToMutations', () => {
 
     expect(mutations).toHaveLength(1)
     const op = mutations[0]!
-    expect(op.operation).toBe('adGroupAdOperation')
+    expect(op.operation).toBe('ad_group_ad')
+    expect(op.op).toBe('create')
 
-    const create = (op.resource as Record<string, unknown>).create as Record<string, unknown>
+    const create = op.resource as Record<string, unknown>
     const ad = create.ad as Record<string, unknown>
-    const rsa = ad.responsiveSearchAd as Record<string, unknown>
+    const rsa = ad.responsive_search_ad as Record<string, unknown>
 
     // Headlines are asset objects
     const headlines = rsa.headlines as Array<{ text: string }>
     expect(headlines).toHaveLength(2)
     expect(headlines[0]!.text).toBe('Rename PDFs Fast')
 
-    // Final URL in array
-    expect(ad.finalUrls).toEqual(['https://renamed.to'])
+    // Final URL in array (snake_case)
+    expect(ad.final_urls).toEqual(['https://renamed.to'])
   })
 
-  test('campaign delete uses remove operation (not status=REMOVED)', () => {
+  test('campaign delete uses remove operation with snake_case entity', () => {
     const change: Change = {
       op: 'delete',
       resource: makeResource('campaign', 'old-campaign', {}, '999'),
@@ -211,12 +213,12 @@ describe('changeToMutations', () => {
 
     expect(mutations).toHaveLength(1)
     const op = mutations[0]!
-    expect(op.operation).toBe('campaignOperation')
+    expect(op.operation).toBe('campaign')
+    expect(op.op).toBe('remove')
 
-    // Should use 'remove' path, not status update
+    // Should use resource_name for remove
     const resource = op.resource as Record<string, unknown>
-    expect(resource.remove).toBe('customers/7300967494/campaigns/999')
-    expect(resource.update).toBeUndefined()
+    expect(resource.resource_name).toBe('customers/7300967494/campaigns/999')
   })
 
   test('negative keyword create goes on campaign level', () => {
@@ -233,9 +235,10 @@ describe('changeToMutations', () => {
 
     expect(mutations).toHaveLength(1)
     const op = mutations[0]!
-    expect(op.operation).toBe('campaignCriterionOperation')
+    expect(op.operation).toBe('campaign_criterion')
+    expect(op.op).toBe('create')
 
-    const create = (op.resource as Record<string, unknown>).create as Record<string, unknown>
+    const create = op.resource as Record<string, unknown>
     expect(create.campaign).toBe('customers/7300967494/campaigns/123456')
     expect(create.negative).toBe(true)
   })
@@ -271,21 +274,21 @@ describe('dependency ordering', () => {
     // Verify order: campaign first, then ad group, then keyword, then ad
     expect(client.mutateCalls.length).toBe(4)
 
-    // First call: campaign (has budget + campaign ops)
+    // First call: campaign (has budget + campaign ops) — snake_case entities
     const firstCall = client.mutateCalls[0]!
-    expect(firstCall.some(op => op.operation === 'campaignBudgetOperation')).toBe(true)
+    expect(firstCall.some(op => op.operation === 'campaign_budget')).toBe(true)
 
     // Second call: ad group
     const secondCall = client.mutateCalls[1]!
-    expect(secondCall.some(op => op.operation === 'adGroupOperation')).toBe(true)
+    expect(secondCall.some(op => op.operation === 'ad_group')).toBe(true)
 
     // Third call: keyword
     const thirdCall = client.mutateCalls[2]!
-    expect(thirdCall.some(op => op.operation === 'adGroupCriterionOperation')).toBe(true)
+    expect(thirdCall.some(op => op.operation === 'ad_group_criterion')).toBe(true)
 
     // Fourth call: ad
     const fourthCall = client.mutateCalls[3]!
-    expect(fourthCall.some(op => op.operation === 'adGroupAdOperation')).toBe(true)
+    expect(fourthCall.some(op => op.operation === 'ad_group_ad')).toBe(true)
 
     cache.close()
   })
@@ -325,14 +328,14 @@ describe('dependency ordering', () => {
 
     await applyChangeset(client, changeset, cache, 'test-project')
 
-    // Verify reverse order: ad, keyword, adGroup, campaign
+    // Verify reverse order: ad, keyword, adGroup, campaign — snake_case entities
     expect(client.mutateCalls.length).toBe(4)
 
     const ops = client.mutateCalls.map(calls => calls[0]!.operation)
-    expect(ops[0]).toBe('adGroupAdOperation')      // ad first
-    expect(ops[1]).toBe('adGroupCriterionOperation') // keyword
-    expect(ops[2]).toBe('adGroupOperation')          // adGroup
-    expect(ops[3]).toBe('campaignOperation')          // campaign last
+    expect(ops[0]).toBe('ad_group_ad')           // ad first
+    expect(ops[1]).toBe('ad_group_criterion')    // keyword
+    expect(ops[2]).toBe('ad_group')              // adGroup
+    expect(ops[3]).toBe('campaign')              // campaign last
   })
 })
 
@@ -472,12 +475,12 @@ describe('amount micros', () => {
 
     const mutations = changeToMutations(change, '7300967494', new Map())
     const budgetOp = mutations[0]!
-    const create = (budgetOp.resource as Record<string, unknown>).create as Record<string, unknown>
+    const budgetResource = budgetOp.resource as Record<string, unknown>
 
-    expect(create.amountMicros).toBe('8500000')
+    expect(budgetResource.amount_micros).toBe('8500000')
   })
 
-  test('maximize-clicks maxCpc is converted to micros', () => {
+  test('maximize-clicks maxCpc is converted to micros with snake_case', () => {
     const change: Change = {
       op: 'create',
       resource: makeResource('campaign', 'test', {
@@ -491,9 +494,9 @@ describe('amount micros', () => {
 
     const mutations = changeToMutations(change, '7300967494', new Map())
     const campaignOp = mutations[1]!
-    const create = (campaignOp.resource as Record<string, unknown>).create as Record<string, unknown>
+    const campaignResource = campaignOp.resource as Record<string, unknown>
 
-    const targetSpend = create.targetSpend as Record<string, unknown>
-    expect(targetSpend.cpcBidCeilingMicros).toBe('1500000')
+    const targetSpend = campaignResource.target_spend as Record<string, unknown>
+    expect(targetSpend.cpc_bid_ceiling_micros).toBe('1500000')
   })
 })

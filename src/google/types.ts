@@ -105,6 +105,7 @@ export type GoogleAdsRow = Record<string, unknown>
 
 export type MutateOperation = {
   readonly operation: string
+  readonly op?: 'create' | 'update' | 'remove'
   readonly resource: Record<string, unknown>
   readonly updateMask?: string
 }

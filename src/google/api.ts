@@ -142,6 +142,30 @@ function mapHttpError(status: number, body: string): AdsError {
   }
 }
 
+// === gRPC Error Extraction ===
+
+/**
+ * Extract a human-readable message from a google-ads-api gRPC error.
+ * gRPC errors are plain objects (not Error instances) with shape:
+ *   { errors: [{ message: string, error_code: {...} }], request_id: string }
+ */
+function extractGrpcErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object' && err !== null) {
+    const obj = err as Record<string, unknown>
+    // google-ads-api gRPC error shape
+    if (Array.isArray(obj.errors)) {
+      const messages = (obj.errors as Array<{ message?: string }>)
+        .map(e => e.message)
+        .filter(Boolean)
+      if (messages.length > 0) return messages.join('; ')
+    }
+    // Fallback: try .message property
+    if (typeof obj.message === 'string') return obj.message
+  }
+  return String(err)
+}
+
 // === API Client Factory (uses google-ads-api gRPC package) ===
 
 export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAdsClient> {
@@ -169,7 +193,9 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
       const results = await customer.query(gaql)
       return results as GoogleAdsRow[]
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
+      // google-ads-api gRPC errors are plain objects (not Error instances)
+      // with shape: { errors: [{ message: string, error_code: {...} }], request_id: string }
+      const message = extractGrpcErrorMessage(err)
       throw adsError({ type: 'api', code: 0, message })
     }
   }
@@ -178,7 +204,7 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
     try {
       const mutateOps = operations.map(op => ({
         entity: op.operation,
-        operation: 'create' as const,
+        operation: (op.op ?? 'create') as 'create' | 'update' | 'remove',
         resource: op.resource,
         ...(op.updateMask ? { update_mask: { paths: op.updateMask.split(',') } } : {}),
       }))
@@ -188,7 +214,7 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
         resourceName: r.resource_name ?? '',
       }))
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = extractGrpcErrorMessage(err)
       throw adsError({ type: 'api', code: 0, message })
     }
   }

@@ -47,7 +47,7 @@ export async function runStatus(rootDir: string, options: { json?: boolean; filt
       campaign.bidding_strategy_type,
       metrics.cost_micros
     FROM campaign
-    WHERE campaign.status != 'REMOVED'
+    WHERE campaign.status != "REMOVED"
     ORDER BY campaign.name
   `
 
@@ -66,8 +66,8 @@ export async function runStatus(rootDir: string, options: { json?: boolean; filt
       campaign.name,
       ad_group.name
     FROM ad_group
-    WHERE campaign.status != 'REMOVED'
-      AND ad_group.status != 'REMOVED'
+    WHERE campaign.status != "REMOVED"
+      AND ad_group.status != "REMOVED"
   `
 
   let adGroupRows: GoogleAdsRow[] = []
@@ -83,8 +83,8 @@ export async function runStatus(rootDir: string, options: { json?: boolean; filt
       campaign.name,
       ad_group_criterion.keyword.text
     FROM keyword_view
-    WHERE campaign.status != 'REMOVED'
-      AND ad_group.status != 'REMOVED'
+    WHERE campaign.status != "REMOVED"
+      AND ad_group.status != "REMOVED"
   `
 
   let keywordRows: GoogleAdsRow[] = []
@@ -92,6 +92,22 @@ export async function runStatus(rootDir: string, options: { json?: boolean; filt
     keywordRows = await client.query(keywordGaql)
   } catch {
     // Non-fatal
+  }
+
+  // Enum maps for gRPC numeric values
+  const STATUS_MAP: Record<number, string> = {
+    0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENABLED', 3: 'PAUSED', 4: 'REMOVED',
+  }
+  const BIDDING_MAP: Record<number, string> = {
+    0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENHANCED_CPC', 3: 'MANUAL_CPC',
+    6: 'TARGET_CPA', 8: 'TARGET_ROAS', 9: 'TARGET_SPEND',
+    10: 'MAXIMIZE_CONVERSIONS', 11: 'MAXIMIZE_CONVERSION_VALUE',
+    15: 'TARGET_IMPRESSION_SHARE',
+  }
+  function resolveEnum(v: unknown, map: Record<number, string>): string {
+    if (typeof v === 'number') return map[v] ?? 'UNKNOWN'
+    if (typeof v === 'string') return v
+    return 'UNKNOWN'
   }
 
   // Build ad group count map
@@ -116,12 +132,17 @@ export async function runStatus(rootDir: string, options: { json?: boolean; filt
   let rows: CampaignRow[] = campaignRows.map((row) => {
     const r = row as Record<string, Record<string, unknown>>
     const name = (r.campaign?.name as string) ?? '(unknown)'
-    const status = (r.campaign?.status as string) ?? 'UNKNOWN'
-    const budgetMicros = r.campaignBudget?.amountMicros ?? r.campaign_budget?.amount_micros
+    // gRPC returns numeric enums; resolve to string
+    const status = resolveEnum(r.campaign?.status, STATUS_MAP)
+    // gRPC returns snake_case: campaign_budget; REST returns camelCase: campaignBudget
+    const budgetObj = r.campaign_budget ?? r.campaignBudget
+    const budgetMicros = budgetObj?.amount_micros ?? budgetObj?.amountMicros
     const dailyBudget = budgetMicros
       ? `$${(Number(budgetMicros) / 1_000_000).toFixed(2)}`
       : '—'
-    const bidding = (r.campaign?.biddingStrategyType as string) ?? '—'
+    // gRPC returns snake_case: bidding_strategy_type; REST: biddingStrategyType
+    const biddingRaw = r.campaign?.bidding_strategy_type ?? r.campaign?.biddingStrategyType
+    const bidding = resolveEnum(biddingRaw, BIDDING_MAP)
 
     return {
       name,

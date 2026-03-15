@@ -1,65 +1,53 @@
 [
   {
     "campaign": {
-      "resourceName": "customers/7300967494/campaigns/123456",
-      "id": "123456",
+      "resource_name": "customers/7300967494/campaigns/123456",
+      "id": 123456,
       "name": "Search - PDF Renaming",
-      "status": "ENABLED",
-      "biddingStrategyType": "MAXIMIZE_CONVERSIONS",
-      "networkSettings": {
-        "targetGoogleSearch": true,
-        "targetSearchNetwork": false
-      }
+      "status": 2,
+      "bidding_strategy_type": 10
     },
-    "campaignBudget": {
-      "resourceName": "customers/7300967494/campaignBudgets/789",
-      "id": "789",
-      "amountMicros": "20000000",
-      "deliveryMethod": "STANDARD",
-      "explicitlyShared": false
+    "campaign_budget": {
+      "resource_name": "customers/7300967494/campaignBudgets/789",
+      "id": 789,
+      "amount_micros": 20000000,
+      "delivery_method": 2,
+      "explicitly_shared": false
     }
   },
   {
     "campaign": {
-      "resourceName": "customers/7300967494/campaigns/234567",
-      "id": "234567",
+      "resource_name": "customers/7300967494/campaigns/234567",
+      "id": 234567,
       "name": "Search - Google Drive",
-      "status": "PAUSED",
-      "biddingStrategyType": "MAXIMIZE_CLICKS",
-      "networkSettings": {
-        "targetGoogleSearch": true,
-        "targetSearchNetwork": false
-      }
+      "status": 3,
+      "bidding_strategy_type": 9
     },
-    "campaignBudget": {
-      "resourceName": "customers/7300967494/campaignBudgets/890",
-      "id": "890",
-      "amountMicros": "5000000",
-      "deliveryMethod": "STANDARD",
-      "explicitlyShared": false
+    "campaign_budget": {
+      "resource_name": "customers/7300967494/campaignBudgets/890",
+      "id": 890,
+      "amount_micros": 5000000,
+      "delivery_method": 2,
+      "explicitly_shared": false
     }
   },
   {
     "campaign": {
-      "resourceName": "customers/7300967494/campaigns/345678",
-      "id": "345678",
+      "resource_name": "customers/7300967494/campaigns/345678",
+      "id": 345678,
       "name": "Search - OneDrive",
-      "status": "ENABLED",
-      "biddingStrategyType": "TARGET_CPA",
-      "targetCpa": {
-        "targetCpaMicros": "5000000"
-      },
-      "networkSettings": {
-        "targetGoogleSearch": true,
-        "targetSearchNetwork": false
+      "status": 2,
+      "bidding_strategy_type": 6,
+      "target_cpa": {
+        "target_cpa_micros": 5000000
       }
     },
-    "campaignBudget": {
-      "resourceName": "customers/7300967494/campaignBudgets/901",
-      "id": "901",
-      "amountMicros": "4000000",
-      "deliveryMethod": "STANDARD",
-      "explicitlyShared": false
+    "campaign_budget": {
+      "resource_name": "customers/7300967494/campaignBudgets/901",
+      "id": 901,
+      "amount_micros": 4000000,
+      "delivery_method": 2,
+      "explicitly_shared": false
     }
   }
 ]

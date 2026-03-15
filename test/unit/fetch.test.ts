@@ -37,14 +37,14 @@ function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsC
 // ─── fetchCampaigns ─────────────────────────────────────────
 
 describe('fetchCampaigns', () => {
-  test('normalizes campaign rows to Resources', async () => {
+  test('normalizes campaign rows with snake_case fields and numeric enums', async () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
     // Should return 3 campaigns from fixture
     expect(resources).toHaveLength(3)
 
-    // First campaign
+    // First campaign: status=2 (ENABLED), bidding_strategy_type=6 (MAXIMIZE_CONVERSIONS)
     const pdf = resources[0]!
     expect(pdf.kind).toBe('campaign')
     expect(pdf.path).toBe('search-pdf-renaming')
@@ -52,13 +52,13 @@ describe('fetchCampaigns', () => {
     expect(pdf.properties.name).toBe('Search - PDF Renaming')
     expect(pdf.properties.status).toBe('enabled')
 
-    // Budget: 20000000 micros → 20
+    // Budget: amount_micros 20000000 → 20
     const budget = pdf.properties.budget as { amount: number; currency: string; period: string }
     expect(budget.amount).toBe(20)
     expect(budget.currency).toBe('EUR')
     expect(budget.period).toBe('daily')
 
-    // Bidding: MAXIMIZE_CONVERSIONS
+    // Bidding: 6 → MAXIMIZE_CONVERSIONS → maximize-conversions
     const bidding = pdf.properties.bidding as { type: string }
     expect(bidding.type).toBe('maximize-conversions')
   })
@@ -76,19 +76,23 @@ describe('fetchCampaigns', () => {
     expect(onedriveBudget.amount).toBe(4) // 4000000 micros → 4
   })
 
-  test('maps bidding strategy types correctly', async () => {
+  test('maps numeric bidding strategy types correctly', async () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
+    // 6 = MAXIMIZE_CONVERSIONS
     expect((resources[0]!.properties.bidding as { type: string }).type).toBe('maximize-conversions')
+    // 10 = TARGET_SPEND → maximize-clicks
     expect((resources[1]!.properties.bidding as { type: string }).type).toBe('maximize-clicks')
+    // 9 = TARGET_CPA
     expect((resources[2]!.properties.bidding as { type: string }).type).toBe('target-cpa')
   })
 
-  test('maps status correctly', async () => {
+  test('maps numeric status enums correctly', async () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
+    // 2 = ENABLED, 3 = PAUSED
     expect(resources[0]!.properties.status).toBe('enabled')
     expect(resources[1]!.properties.status).toBe('paused')
     expect(resources[2]!.properties.status).toBe('enabled')
@@ -115,7 +119,7 @@ describe('fetchCampaigns', () => {
 // ─── fetchAdGroups ──────────────────────────────────────────
 
 describe('fetchAdGroups', () => {
-  test('normalizes ad group rows to Resources', async () => {
+  test('normalizes ad group rows with snake_case fields', async () => {
     const client = createMockClient({ adGroups: adGroupFixtures as GoogleAdsRow[] })
     const resources = await fetchAdGroups(client)
 
@@ -127,6 +131,7 @@ describe('fetchAdGroups', () => {
     expect(pdfCore.platformId).toBe('111111')
     expect(pdfCore.properties.status).toBe('enabled')
 
+    // status=3 → paused
     const driveCore = resources[2]!
     expect(driveCore.path).toBe('search-google-drive/drive-core')
     expect(driveCore.properties.status).toBe('paused')
@@ -144,7 +149,7 @@ describe('fetchAdGroups', () => {
 // ─── fetchKeywords ──────────────────────────────────────────
 
 describe('fetchKeywords', () => {
-  test('normalizes keyword rows to Resources', async () => {
+  test('normalizes keyword rows with snake_case fields and numeric match_type', async () => {
     const client = createMockClient({ keywords: keywordFixtures as GoogleAdsRow[] })
     const resources = await fetchKeywords(client)
 
@@ -158,10 +163,11 @@ describe('fetchKeywords', () => {
     expect(first.properties.matchType).toBe('EXACT')
   })
 
-  test('maps all match types correctly', async () => {
+  test('maps all numeric match types correctly', async () => {
     const client = createMockClient({ keywords: keywordFixtures as GoogleAdsRow[] })
     const resources = await fetchKeywords(client)
 
+    // match_type: 2=EXACT, 3=PHRASE, 4=BROAD
     expect(resources[0]!.properties.matchType).toBe('EXACT')
     expect(resources[1]!.properties.matchType).toBe('PHRASE')
     expect(resources[2]!.properties.matchType).toBe('EXACT')
@@ -180,7 +186,7 @@ describe('fetchKeywords', () => {
 // ─── fetchAds ───────────────────────────────────────────────
 
 describe('fetchAds', () => {
-  test('normalizes RSA ad rows to Resources', async () => {
+  test('normalizes RSA ad rows with snake_case fields', async () => {
     const client = createMockClient({ ads: adFixtures as GoogleAdsRow[] })
     const resources = await fetchAds(client)
 
@@ -199,7 +205,7 @@ describe('fetchAds', () => {
     const descriptions = first.properties.descriptions as string[]
     expect(descriptions).toEqual(['No more manual renaming.', 'Rename your PDFs in seconds with AI.'])
 
-    // Final URL
+    // Final URL from final_urls (snake_case)
     expect(first.properties.finalUrl).toBe('https://renamed.to/pdf-renamer')
   })
 

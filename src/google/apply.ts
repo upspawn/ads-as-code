@@ -49,6 +49,11 @@ function extractAdGroupPath(path: string): string {
 }
 
 // ─── Mutation Builders ──────────────────────────────────────
+// google-ads-api gRPC expects:
+//   entity: snake_case resource name (e.g. 'campaign_budget')
+//   op: 'create' | 'update' | 'remove'
+//   resource: flat object with snake_case fields (for create/update)
+//             or resource name string (for remove)
 
 function buildCampaignBudgetCreate(
   customerId: string,
@@ -56,14 +61,13 @@ function buildCampaignBudgetCreate(
   budget: { amount: number; period: string },
 ): MutateOperation {
   return {
-    operation: 'campaignBudgetOperation',
+    operation: 'campaign_budget',
+    op: 'create',
     resource: {
-      create: {
-        resourceName: `customers/${customerId}/campaignBudgets/${tempBudgetId}`,
-        amountMicros: String(dailyBudgetMicros(budget)),
-        deliveryMethod: 'STANDARD',
-        explicitlyShared: false,
-      },
+      resource_name: `customers/${customerId}/campaignBudgets/${tempBudgetId}`,
+      amount_micros: String(dailyBudgetMicros(budget)),
+      delivery_method: 2, // STANDARD
+      explicitly_shared: false,
     },
   }
 }
@@ -76,11 +80,11 @@ function buildCampaignCreate(
 ): MutateOperation {
   const props = resource.properties
   const campaign: Record<string, unknown> = {
-    resourceName: `customers/${customerId}/campaigns/${tempCampaignId}`,
+    resource_name: `customers/${customerId}/campaigns/${tempCampaignId}`,
     name: props.name,
-    status: (props.status as string) === 'enabled' ? 'ENABLED' : 'PAUSED',
-    advertisingChannelType: 'SEARCH',
-    campaignBudget: `customers/${customerId}/campaignBudgets/${tempBudgetId}`,
+    status: (props.status as string) === 'enabled' ? 2 : 3, // 2=ENABLED, 3=PAUSED
+    advertising_channel_type: 2, // SEARCH
+    campaign_budget: `customers/${customerId}/campaignBudgets/${tempBudgetId}`,
   }
 
   // Bidding strategy
@@ -88,30 +92,31 @@ function buildCampaignCreate(
   if (bidding) {
     switch (bidding.type) {
       case 'maximize-conversions':
-        campaign.maximizeConversions = {}
+        campaign.maximize_conversions = {}
         break
       case 'maximize-clicks':
-        campaign.targetSpend = bidding.maxCpc
-          ? { cpcBidCeilingMicros: String(toMicros(bidding.maxCpc as number)) }
+        campaign.target_spend = bidding.maxCpc
+          ? { cpc_bid_ceiling_micros: String(toMicros(bidding.maxCpc as number)) }
           : {}
         break
       case 'manual-cpc':
-        campaign.manualCpc = { enhancedCpcEnabled: bidding.enhancedCpc ?? false }
+        campaign.manual_cpc = { enhanced_cpc_enabled: bidding.enhancedCpc ?? false }
         break
       case 'target-cpa':
-        campaign.targetCpa = { targetCpaMicros: String(toMicros(bidding.targetCpa as number)) }
+        campaign.target_cpa = { target_cpa_micros: String(toMicros(bidding.targetCpa as number)) }
         break
     }
   }
 
   return {
-    operation: 'campaignOperation',
-    resource: { create: campaign },
+    operation: 'campaign',
+    op: 'create',
+    resource: campaign,
   }
 }
 
 function buildTargetingOperations(
-  customerId: string,
+  _customerId: string,
   campaignResourceName: string,
   targeting: { rules: Array<Record<string, unknown>> },
 ): MutateOperation[] {
@@ -124,13 +129,12 @@ function buildTargetingOperations(
         const criterionId = LANGUAGE_CRITERIA[lang]
         if (criterionId) {
           ops.push({
-            operation: 'campaignCriterionOperation',
+            operation: 'campaign_criterion',
+            op: 'create',
             resource: {
-              create: {
-                campaign: campaignResourceName,
-                language: {
-                  languageConstant: `languageConstants/${criterionId}`,
-                },
+              campaign: campaignResourceName,
+              language: {
+                language_constant: `languageConstants/${criterionId}`,
               },
             },
           })
@@ -144,13 +148,12 @@ function buildTargetingOperations(
         const geoTargetId = GEO_TARGETS[country]
         if (geoTargetId) {
           ops.push({
-            operation: 'campaignCriterionOperation',
+            operation: 'campaign_criterion',
+            op: 'create',
             resource: {
-              create: {
-                campaign: campaignResourceName,
-                location: {
-                  geoTargetConstant: `geoTargetConstants/${geoTargetId}`,
-                },
+              campaign: campaignResourceName,
+              location: {
+                geo_target_constant: `geoTargetConstants/${geoTargetId}`,
               },
             },
           })
@@ -174,15 +177,14 @@ function buildAdGroupCreate(
   const adGroupName = parts[1] ?? resource.path
 
   return {
-    operation: 'adGroupOperation',
+    operation: 'ad_group',
+    op: 'create',
     resource: {
-      create: {
-        resourceName: `customers/${customerId}/adGroups/${tempId}`,
-        campaign: campaignResourceName,
-        name: adGroupName,
-        status: (props.status as string) === 'paused' ? 'PAUSED' : 'ENABLED',
-        type: 'SEARCH_STANDARD',
-      },
+      resource_name: `customers/${customerId}/adGroups/${tempId}`,
+      campaign: campaignResourceName,
+      name: adGroupName,
+      status: (props.status as string) === 'paused' ? 3 : 2, // 3=PAUSED, 2=ENABLED
+      type: 2, // SEARCH_STANDARD
     },
   }
 }
@@ -194,15 +196,14 @@ function buildKeywordCreate(
 ): MutateOperation {
   const props = resource.properties
   return {
-    operation: 'adGroupCriterionOperation',
+    operation: 'ad_group_criterion',
+    op: 'create',
     resource: {
-      create: {
-        adGroup: adGroupResourceName,
-        status: 'ENABLED',
-        keyword: {
-          text: props.text,
-          matchType: props.matchType,
-        },
+      ad_group: adGroupResourceName,
+      status: 2, // ENABLED
+      keyword: {
+        text: props.text,
+        match_type: props.matchType,
       },
     },
   }
@@ -215,15 +216,14 @@ function buildNegativeCreate(
 ): MutateOperation {
   const props = resource.properties
   return {
-    operation: 'campaignCriterionOperation',
+    operation: 'campaign_criterion',
+    op: 'create',
     resource: {
-      create: {
-        campaign: campaignResourceName,
-        negative: true,
-        keyword: {
-          text: props.text,
-          matchType: props.matchType,
-        },
+      campaign: campaignResourceName,
+      negative: true,
+      keyword: {
+        text: props.text,
+        match_type: props.matchType,
       },
     },
   }
@@ -237,23 +237,22 @@ function buildAdCreate(
   const props = resource.properties
   const headlines = (props.headlines as string[]).map(text => ({
     text,
-    pinnedField: 'UNSPECIFIED',
+    pinned_field: 0, // UNSPECIFIED
   }))
   const descriptions = (props.descriptions as string[]).map(text => ({
     text,
-    pinnedField: 'UNSPECIFIED',
+    pinned_field: 0, // UNSPECIFIED
   }))
 
   return {
-    operation: 'adGroupAdOperation',
+    operation: 'ad_group_ad',
+    op: 'create',
     resource: {
-      create: {
-        adGroup: adGroupResourceName,
-        status: 'ENABLED',
-        ad: {
-          responsiveSearchAd: { headlines, descriptions },
-          finalUrls: [props.finalUrl],
-        },
+      ad_group: adGroupResourceName,
+      status: 2, // ENABLED
+      ad: {
+        responsive_search_ad: { headlines, descriptions },
+        final_urls: [props.finalUrl],
       },
     },
   }
@@ -266,19 +265,16 @@ function buildSitelinkCreate(
 ): MutateOperation {
   const props = resource.properties
   return {
-    operation: 'assetOperation',
+    operation: 'asset',
+    op: 'create',
     resource: {
-      create: {
-        sitelinkAsset: {
-          linkText: props.text,
-          description1: props.description1,
-          description2: props.description2,
-        },
-        finalUrls: [props.url],
+      sitelink_asset: {
+        link_text: props.text,
+        description1: props.description1,
+        description2: props.description2,
       },
+      final_urls: [props.url],
     },
-    // The campaign association is a separate operation, but for simplicity
-    // we embed the campaign reference as metadata
     updateMask: campaignResourceName,
   }
 }
@@ -290,12 +286,11 @@ function buildCalloutCreate(
 ): MutateOperation {
   const props = resource.properties
   return {
-    operation: 'assetOperation',
+    operation: 'asset',
+    op: 'create',
     resource: {
-      create: {
-        calloutAsset: {
-          calloutText: props.text,
-        },
+      callout_asset: {
+        callout_text: props.text,
       },
     },
     updateMask: campaignResourceName,
@@ -313,23 +308,27 @@ function buildDeleteOperation(
   switch (resource.kind) {
     case 'campaign':
       return {
-        operation: 'campaignOperation',
-        resource: { remove: `customers/${customerId}/campaigns/${resource.platformId}` },
+        operation: 'campaign',
+        op: 'remove',
+        resource: { resource_name: `customers/${customerId}/campaigns/${resource.platformId}` },
       }
     case 'adGroup':
       return {
-        operation: 'adGroupOperation',
-        resource: { remove: `customers/${customerId}/adGroups/${resource.platformId}` },
+        operation: 'ad_group',
+        op: 'remove',
+        resource: { resource_name: `customers/${customerId}/adGroups/${resource.platformId}` },
       }
     case 'keyword':
       return {
-        operation: 'adGroupCriterionOperation',
-        resource: { remove: `customers/${customerId}/adGroupCriteria/${resource.platformId}` },
+        operation: 'ad_group_criterion',
+        op: 'remove',
+        resource: { resource_name: `customers/${customerId}/adGroupCriteria/${resource.platformId}` },
       }
     case 'ad':
       return {
-        operation: 'adGroupAdOperation',
-        resource: { remove: `customers/${customerId}/adGroupAds/${resource.platformId}` },
+        operation: 'ad_group_ad',
+        op: 'remove',
+        resource: { resource_name: `customers/${customerId}/adGroupAds/${resource.platformId}` },
       }
     default:
       return null
@@ -350,34 +349,36 @@ function buildUpdateOperation(
   switch (resource.kind) {
     case 'campaign': {
       const update: Record<string, unknown> = {
-        resourceName: `customers/${customerId}/campaigns/${resource.platformId}`,
+        resource_name: `customers/${customerId}/campaigns/${resource.platformId}`,
       }
       for (const c of change.changes) {
         if (c.field === 'status') {
-          update.status = (c.to as string) === 'enabled' ? 'ENABLED' : 'PAUSED'
+          update.status = (c.to as string) === 'enabled' ? 2 : 3 // 2=ENABLED, 3=PAUSED
         }
         if (c.field === 'name') {
           update.name = c.to
         }
       }
       return {
-        operation: 'campaignOperation',
-        resource: { update },
+        operation: 'campaign',
+        op: 'update',
+        resource: update,
         updateMask: changedFields.join(','),
       }
     }
     case 'adGroup': {
       const update: Record<string, unknown> = {
-        resourceName: `customers/${customerId}/adGroups/${resource.platformId}`,
+        resource_name: `customers/${customerId}/adGroups/${resource.platformId}`,
       }
       for (const c of change.changes) {
         if (c.field === 'status') {
-          update.status = (c.to as string) === 'enabled' ? 'ENABLED' : 'PAUSED'
+          update.status = (c.to as string) === 'enabled' ? 2 : 3 // 2=ENABLED, 3=PAUSED
         }
       }
       return {
-        operation: 'adGroupOperation',
-        resource: { update },
+        operation: 'ad_group',
+        op: 'update',
+        resource: update,
         updateMask: changedFields.join(','),
       }
     }
