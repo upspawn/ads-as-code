@@ -146,6 +146,10 @@ SELECT
   campaign.network_settings.target_google_search,
   campaign.network_settings.target_search_network,
   campaign.network_settings.target_content_network,
+  campaign.shopping_setting.merchant_id,
+  campaign.shopping_setting.campaign_priority,
+  campaign.shopping_setting.enable_local,
+  campaign.shopping_setting.feed_label,
   campaign.tracking_url_template,
   campaign.final_url_suffix,
   campaign.url_custom_parameters,
@@ -189,6 +193,7 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
   const channelTypeStr = resolveEnum(channelTypeRaw, CHANNEL_TYPE_MAP)
   const channelType = channelTypeStr === 'DISPLAY' ? 'display'
     : channelTypeStr === 'PERFORMANCE_MAX' ? 'performance-max'
+    : channelTypeStr === 'SHOPPING' ? 'shopping'
     : undefined // Search and other types don't set channelType (preserves existing behavior)
 
   // Network settings: support both snake_case (gRPC) and camelCase (REST)
@@ -209,12 +214,27 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     ? Object.fromEntries(rawCustomParams.map(p => [p.key, p.value]))
     : undefined
 
+  // Shopping settings: support both snake_case (gRPC) and camelCase (REST)
+  const shoppingSettingRaw = (campaign?.shopping_setting ?? campaign?.shoppingSetting) as Record<string, unknown> | undefined
+  const shoppingSetting = channelType === 'shopping' && shoppingSettingRaw ? (() => {
+    const merchantId = shoppingSettingRaw.merchant_id ?? shoppingSettingRaw.merchantId
+    const result: Record<string, unknown> = { merchantId: Number(merchantId) }
+    const priority = shoppingSettingRaw.campaign_priority ?? shoppingSettingRaw.campaignPriority
+    if (priority !== undefined && priority !== null) result.campaignPriority = Number(priority)
+    const enableLocal = shoppingSettingRaw.enable_local ?? shoppingSettingRaw.enableLocal
+    if (enableLocal !== undefined && enableLocal !== null) result.enableLocal = enableLocal === true
+    const feedLabel = str(shoppingSettingRaw.feed_label ?? shoppingSettingRaw.feedLabel)
+    if (feedLabel) result.feedLabel = feedLabel
+    return result
+  })() : undefined
+
   const props: Record<string, unknown> = {
     name,
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
     ...(channelType ? { channelType } : {}),
+    ...(shoppingSetting ? { shoppingSetting } : {}),
     ...(networkSettings ? { networkSettings } : {}),
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),

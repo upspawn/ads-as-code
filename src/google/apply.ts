@@ -138,9 +138,12 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
-  // Channel type: 2=SEARCH, 3=DISPLAY, 10=PERFORMANCE_MAX
+  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 10=PERFORMANCE_MAX
   const channelTypeStr = props.channelType as string | undefined
-  const channelType = channelTypeStr === 'display' ? 3 : channelTypeStr === 'performance-max' ? 10 : 2
+  const channelType = channelTypeStr === 'display' ? 3
+    : channelTypeStr === 'shopping' ? 4
+    : channelTypeStr === 'performance-max' ? 10
+    : 2
 
   const campaign: Record<string, unknown> = {
     resource_name: `customers/${customerId}/campaigns/${tempCampaignId}`,
@@ -205,6 +208,17 @@ function buildCampaignCreate(
       target_google_search: networkSettings.searchNetwork,
       target_search_network: networkSettings.searchPartners,
       target_content_network: networkSettings.displayNetwork,
+    }
+  }
+
+  // Shopping settings
+  const shoppingSetting = props.shoppingSetting as Record<string, unknown> | undefined
+  if (shoppingSetting) {
+    campaign.shopping_setting = {
+      merchant_id: shoppingSetting.merchantId,
+      ...(shoppingSetting.campaignPriority !== undefined && { campaign_priority: shoppingSetting.campaignPriority }),
+      ...(shoppingSetting.enableLocal !== undefined && { enable_local: shoppingSetting.enableLocal }),
+      ...(shoppingSetting.feedLabel !== undefined && { feed_label: shoppingSetting.feedLabel }),
     }
   }
 
@@ -383,19 +397,30 @@ function buildAdGroupCreate(
   const parts = resource.path.split('/')
   const adGroupName = parts[1] ?? resource.path
 
-  // Ad group type: 2=SEARCH_STANDARD, 7=DISPLAY_STANDARD
-  const adGroupType = (props.adGroupType as string) === 'display' ? 7 : 2
+  // Ad group type: 2=SEARCH_STANDARD, 5=SHOPPING_PRODUCT_ADS, 7=DISPLAY_STANDARD
+  const adGroupTypeStr = props.adGroupType as string | undefined
+  const adGroupType = adGroupTypeStr === 'display' ? 7
+    : adGroupTypeStr === 'shopping' ? 5
+    : 2
+
+  const adGroupResource: Record<string, unknown> = {
+    resource_name: `customers/${customerId}/adGroups/${tempId}`,
+    campaign: campaignResourceName,
+    name: adGroupName,
+    status: (props.status as string) === 'paused' ? 3 : 2, // 3=PAUSED, 2=ENABLED
+    type: adGroupType,
+  }
+
+  // Shopping ad groups may have a default CPC bid
+  const bid = props.bid as number | undefined
+  if (bid !== undefined) {
+    adGroupResource.cpc_bid_micros = String(toMicros(bid))
+  }
 
   return {
     operation: 'ad_group',
     op: 'create',
-    resource: {
-      resource_name: `customers/${customerId}/adGroups/${tempId}`,
-      campaign: campaignResourceName,
-      name: adGroupName,
-      status: (props.status as string) === 'paused' ? 3 : 2, // 3=PAUSED, 2=ENABLED
-      type: adGroupType,
-    },
+    resource: adGroupResource,
   }
 }
 
