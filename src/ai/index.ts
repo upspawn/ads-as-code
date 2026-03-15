@@ -14,6 +14,19 @@ export const ai = {
   keywords: keywordsMarker,
 } as const
 
-// Re-export types for consumer convenience
+// Campaign multiplication
+export { expand } from './expand.ts'
+export type { ExpandConfig, ExpandEntry, ExpansionTarget } from './expand.ts'
+
+// Core AI types and type guards
 export type { AiConfig, AiJudgeConfig, AiOptimizeConfig, AiMarker, RsaMarker, KeywordsMarker } from './types.ts'
 export { isAiMarker, isRsaMarker, isKeywordsMarker } from './types.ts'
+
+// Lock file types (for consumers who inspect .gen.json programmatically)
+export type { LockFile, LockSlot } from './lockfile.ts'
+
+// Generation types
+export type { GenerateResult, GenerateObjectFn } from './generate.ts'
+
+// Staleness detection
+export type { StaleSlot } from './resolve.ts'

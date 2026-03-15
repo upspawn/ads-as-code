@@ -87,7 +87,22 @@ export { defineConfig } from './core/config.ts'
 // === AI ===
 
 export { ai } from './ai/index.ts'
-export type { AiConfig, RsaMarker, KeywordsMarker } from './ai/index.ts'
+export { expand } from './ai/index.ts'
+export type {
+  AiConfig,
+  AiJudgeConfig,
+  AiOptimizeConfig,
+  AiMarker,
+  RsaMarker,
+  KeywordsMarker,
+  ExpandConfig,
+  ExpandEntry,
+  ExpansionTarget,
+  LockFile,
+  LockSlot,
+  GenerateResult,
+  StaleSlot,
+} from './ai/index.ts'
 
 // === Providers ===
 
