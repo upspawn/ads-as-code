@@ -896,6 +896,65 @@ describe('generateCampaignFile — ad completeness', () => {
   })
 })
 
+// ─── Ad Group Negatives ────────────────────────────────
+
+describe('generateCampaignFile — ad group negatives', () => {
+  test('emits negatives inside group when ad-group-level negatives exist', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+      // Ad group negative
+      { kind: 'negative', path: 'c/g/neg:free:BROAD', properties: { text: 'free', matchType: 'BROAD' } },
+      // Campaign-level negative (should NOT appear in group)
+      { kind: 'negative', path: 'c/neg:cheap:EXACT', properties: { text: 'cheap', matchType: 'EXACT' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    // Group should have negatives
+    expect(code).toContain('.group(')
+    // Extract the group body to check negatives appear inside it
+    const groupMatch = code.match(/\.group\([^,]+,\s*\{([\s\S]*?)\}\)/s)
+    expect(groupMatch).toBeTruthy()
+    const groupBody = groupMatch![1]!
+    expect(groupBody).toContain('negatives:')
+  })
+
+  test('does not put ad-group negatives in campaign-level negatives', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+      // Only ad group negative, no campaign negative
+      { kind: 'negative', path: 'c/g/neg:free:BROAD', properties: { text: 'free', matchType: 'BROAD' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    // Campaign config (before .group()) should NOT have negatives
+    const configSection = code.split('.group(')[0]!
+    expect(configSection).not.toContain('negatives:')
+  })
+
+  test('campaign negatives still appear at config level', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+      // Ad group negative
+      { kind: 'negative', path: 'c/g/neg:free:BROAD', properties: { text: 'free', matchType: 'BROAD' } },
+      // Campaign-level negative
+      { kind: 'negative', path: 'c/neg:cheap:EXACT', properties: { text: 'cheap', matchType: 'EXACT' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    // Campaign config should have 'cheap' but not 'free'
+    const configSection = code.split('.group(')[0]!
+    expect(configSection).toContain('negatives:')
+    expect(configSection).toContain("'cheap'")
+    expect(configSection).not.toContain("'free'")
+  })
+})
+
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {

@@ -253,14 +253,22 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   const lines: string[] = []
   lines.push(`// Imported from Google Ads on ${today}`)
 
-  // Negatives
-  const negativesByMatchType = groupBy(negativeResources, (r) => r.properties.matchType as string)
+  // Split negatives: campaign-level (2 path segments) vs ad-group-level (3+ segments)
+  const campaignLevelNegatives = negativeResources.filter((n) => {
+    const parts = n.path.split('/')
+    return parts.length === 2 // campaignSlug/neg:text:MATCH
+  })
+  const adGroupLevelNegatives = negativeResources.filter((n) => {
+    const parts = n.path.split('/')
+    return parts.length > 2 // campaignSlug/groupSlug/neg:text:MATCH
+  })
+
+  const negativesByMatchType = groupBy(campaignLevelNegatives, (r) => r.properties.matchType as string)
 
   if (negativeResources.length > 0) {
-    // Collect all match type helpers needed for negatives
-    for (const matchType of Object.keys(negativesByMatchType)) {
-      const helper = matchTypeHelper(matchType)
-      imports.add(helper)
+    // Collect all match type helpers needed for negatives (campaign + ad group)
+    for (const neg of negativeResources) {
+      imports.add(matchTypeHelper(neg.properties.matchType as string))
     }
   }
 
@@ -349,6 +357,20 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
       }
     }
 
+    // Ad group negatives
+    const groupNegs = adGroupLevelNegatives.filter((n) => n.path.startsWith(`${ag.path}/`))
+    let groupNegLine = ''
+    if (groupNegs.length > 0) {
+      const negsByMatch = groupBy(groupNegs, (n) => n.properties.matchType as string)
+      const negParts: string[] = []
+      for (const [matchType, negs] of Object.entries(negsByMatch)) {
+        const helper = matchTypeHelper(matchType)
+        const texts = negs.map((n) => n.properties.text as string)
+        negParts.push(`...${helper}(${formatStringList(texts)})`)
+      }
+      groupNegLine = `negatives: [${negParts.join(', ')}],`
+    }
+
     // Group-level targeting
     const groupTargeting = ag.properties.targeting as Record<string, unknown> | undefined
     let groupTargetingStr: string | null = null
@@ -365,12 +387,13 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     }
 
     // Determine whether to use .group() or .locale()
+    const negLine = groupNegLine ? `\n    ${groupNegLine}` : ''
     if (groupTargetingStr) {
       groupLines.push(
-        `  .locale(${quote(groupKey)}, ${groupTargetingStr}, {\n    ${keywordsLine}\n    ${adLines}\n  })`,
+        `  .locale(${quote(groupKey)}, ${groupTargetingStr}, {\n    ${keywordsLine}\n    ${adLines}${negLine}\n  })`,
       )
     } else {
-      groupLines.push(`  .group(${quote(groupKey)}, {\n    ${keywordsLine}\n    ${adLines}\n  })`)
+      groupLines.push(`  .group(${quote(groupKey)}, {\n    ${keywordsLine}\n    ${adLines}${negLine}\n  })`)
     }
   }
 
@@ -403,8 +426,8 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     calloutLine = `  .callouts(${texts.map(quote).join(', ')})`
   }
 
-  // Negatives — append to config
-  if (negativeResources.length > 0) {
+  // Negatives — campaign-level only (ad-group negatives are emitted inside each group)
+  if (campaignLevelNegatives.length > 0) {
     const negParts: string[] = []
     for (const [matchType, negs] of Object.entries(negativesByMatchType)) {
       const helper = matchTypeHelper(matchType)
