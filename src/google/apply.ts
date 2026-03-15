@@ -24,6 +24,19 @@ const CREATION_ORDER: ResourceKind[] = [
   'negative',
 ]
 
+// ─── Match Type Conversion ──────────────────────────────────
+
+const MATCH_TYPE_TO_ENUM: Record<string, number> = {
+  'EXACT': 2,
+  'PHRASE': 3,
+  'BROAD': 4,
+}
+
+function matchTypeToEnum(matchType: unknown): number {
+  if (typeof matchType === 'number') return matchType
+  return MATCH_TYPE_TO_ENUM[String(matchType)] ?? 4 // default BROAD
+}
+
 // ─── Micros Conversion ──────────────────────────────────────
 
 function toMicros(amount: number): number {
@@ -46,6 +59,12 @@ function extractCampaignPath(path: string): string {
 function extractAdGroupPath(path: string): string {
   const parts = path.split('/')
   return `${parts[0]}/${parts[1]}`
+}
+
+/** Resolve a platform ID to a full resource name. If it's already a full path, use as-is. */
+function resolveResourceName(customerId: string, type: string, platformId: string): string {
+  if (platformId.startsWith('customers/')) return platformId
+  return `customers/${customerId}/${type}/${platformId}`
 }
 
 // ─── Mutation Builders ──────────────────────────────────────
@@ -203,7 +222,7 @@ function buildKeywordCreate(
       status: 2, // ENABLED
       keyword: {
         text: props.text,
-        match_type: props.matchType,
+        match_type: matchTypeToEnum(props.matchType),
       },
     },
   }
@@ -223,7 +242,7 @@ function buildNegativeCreate(
       negative: true,
       keyword: {
         text: props.text,
-        match_type: props.matchType,
+        match_type: matchTypeToEnum(props.matchType),
       },
     },
   }
@@ -441,7 +460,7 @@ function buildCreateMutations(
       const campaignPath = extractCampaignPath(resource.path)
       const campaignPlatformId = resourceMap.get(campaignPath)
       const campaignResourceName = campaignPlatformId
-        ? `customers/${customerId}/campaigns/${campaignPlatformId}`
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
       const tempId = `-${Date.now()}`
       ops.push(buildAdGroupCreate(customerId, tempId, campaignResourceName, resource))
@@ -452,7 +471,7 @@ function buildCreateMutations(
       const adGroupPath = extractAdGroupPath(resource.path)
       const adGroupPlatformId = resourceMap.get(adGroupPath)
       const adGroupResourceName = adGroupPlatformId
-        ? `customers/${customerId}/adGroups/${adGroupPlatformId}`
+        ? resolveResourceName(customerId, 'adGroups', adGroupPlatformId)
         : `customers/${customerId}/adGroups/-1`
       ops.push(buildKeywordCreate(customerId, adGroupResourceName, resource))
       break
@@ -462,7 +481,7 @@ function buildCreateMutations(
       const adGroupPath = extractAdGroupPath(resource.path)
       const adGroupPlatformId = resourceMap.get(adGroupPath)
       const adGroupResourceName = adGroupPlatformId
-        ? `customers/${customerId}/adGroups/${adGroupPlatformId}`
+        ? resolveResourceName(customerId, 'adGroups', adGroupPlatformId)
         : `customers/${customerId}/adGroups/-1`
       ops.push(buildAdCreate(customerId, adGroupResourceName, resource))
       break
@@ -472,7 +491,7 @@ function buildCreateMutations(
       const campaignPath = extractCampaignPath(resource.path)
       const campaignPlatformId = resourceMap.get(campaignPath)
       const campaignResourceName = campaignPlatformId
-        ? `customers/${customerId}/campaigns/${campaignPlatformId}`
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
       ops.push(buildSitelinkCreate(customerId, campaignResourceName, resource))
       break
@@ -482,7 +501,7 @@ function buildCreateMutations(
       const campaignPath = extractCampaignPath(resource.path)
       const campaignPlatformId = resourceMap.get(campaignPath)
       const campaignResourceName = campaignPlatformId
-        ? `customers/${customerId}/campaigns/${campaignPlatformId}`
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
       ops.push(buildCalloutCreate(customerId, campaignResourceName, resource))
       break
@@ -492,7 +511,7 @@ function buildCreateMutations(
       const campaignPath = extractCampaignPath(resource.path)
       const campaignPlatformId = resourceMap.get(campaignPath)
       const campaignResourceName = campaignPlatformId
-        ? `customers/${customerId}/campaigns/${campaignPlatformId}`
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
         : `customers/${customerId}/campaigns/-1`
       ops.push(buildNegativeCreate(customerId, campaignResourceName, resource))
       break

@@ -157,6 +157,7 @@ type ApplyOptions = {
   yes?: boolean
   dryRun?: boolean
   reconcile?: boolean
+  verbose?: boolean
 }
 
 export async function runApply(rootDir: string, options: ApplyOptions = {}): Promise<void> {
@@ -262,13 +263,50 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     console.log()
   }
 
-  // 11. Dry run — stop here
+  // 11. Dry run — stop here. With --verbose, dump actual API mutations.
   if (options.dryRun) {
+    if (options.verbose) {
+      console.log('\n=== API Mutations (what would be sent to Google Ads) ===\n')
+      try {
+        const applyModulePath = ['..', 'src', 'google', 'apply.ts'].join('/')
+        const applyModule = await import(applyModulePath) as Record<string, unknown>
+        const changeToMutationsFn = applyModule['changeToMutations'] as
+          ((change: Change, customerId: string, resourceMap: Map<string, string>) => unknown[]) | undefined
+
+        if (changeToMutationsFn) {
+          const resourceMap = new Map<string, string>()
+          for (const row of cache.getResourceMap('default')) {
+            if (row.platformId) resourceMap.set(row.path, row.platformId)
+          }
+
+          const allChanges = [
+            ...changeset.creates.map(c => ({ ...c, _phase: 'CREATE' })),
+            ...changeset.updates.map(c => ({ ...c, _phase: 'UPDATE' })),
+            ...changeset.deletes.map(c => ({ ...c, _phase: 'DELETE' })),
+          ]
+
+          for (const change of allChanges) {
+            const { _phase, ...cleanChange } = change
+            const mutations = changeToMutationsFn(cleanChange as Change, client.customerId, resourceMap)
+            for (const mut of mutations) {
+              const m = mut as Record<string, unknown>
+              console.log(`[${_phase}] ${(m.op as string ?? '').toUpperCase()} ${m.operation}`)
+              console.log(JSON.stringify(m.resource, null, 2))
+              console.log()
+            }
+          }
+        }
+      } catch {
+        console.log('(could not generate mutation preview — apply module not available)')
+      }
+    }
+
     if (options.json) {
       console.log(JSON.stringify({ status: 'dry_run', changeset }, null, 2))
-    } else {
+    } else if (!options.verbose) {
       console.log('Dry run — no changes applied.')
     }
+    console.log('Dry run — no changes applied.')
     cache.close()
     return
   }
@@ -405,5 +443,6 @@ export async function runApplyCommand(args: string[], flags: GlobalFlags): Promi
     yes: args.includes('--yes') || args.includes('-y'),
     dryRun: args.includes('--dry-run'),
     reconcile: args.includes('--reconcile'),
+    verbose: args.includes('--verbose') || args.includes('-v'),
   })
 }
