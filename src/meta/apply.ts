@@ -243,6 +243,7 @@ function buildCreativeCreateParams(
   config: MetaProviderConfig,
 ): Record<string, string> {
   const props = resource.properties
+  const meta = resource.meta ?? {}
   const format = props.format as string
 
   const params: Record<string, string> = {
@@ -251,7 +252,7 @@ function buildCreativeCreateParams(
 
   if (format === 'image') {
     const linkData: Record<string, unknown> = {
-      image_hash: props.imageHash as string,
+      image_hash: meta.imageHash as string,
       name: props.headline as string,
       message: props.primaryText as string,
       link: props.url as string,
@@ -270,7 +271,7 @@ function buildCreativeCreateParams(
     })
   } else if (format === 'video') {
     const videoData: Record<string, unknown> = {
-      video_id: props.videoId as string,
+      video_id: meta.videoId as string,
       title: props.headline as string,
       message: props.primaryText as string,
       link: props.url as string,
@@ -409,19 +410,23 @@ async function uploadPendingImages(
     if (change.resource.kind !== 'creative') continue
     const props = change.resource.properties
 
-    if (props.pendingUpload && props.image) {
+    const meta = change.resource.meta
+    const imagePath = meta?.imagePath as string | undefined
+    const pendingUpload = meta?.pendingUpload as boolean | undefined
+
+    if (pendingUpload && imagePath) {
       try {
         const result = await uploadImage(
-          props.image as string,
+          imagePath,
           accountId,
           client.graphPost as any,
           cache,
         )
-        // Store the image hash on the resource for the creative create step.
+        // Store the image hash on the resource meta for the creative create step.
         // We use a mutable cast because the Resource type is readonly,
         // but we need to inject the uploaded hash before the create call.
-        ;(props as Record<string, unknown>)['imageHash'] = result.imageHash
-        ;(props as Record<string, unknown>)['pendingUpload'] = false
+        ;(meta as Record<string, unknown>)['imageHash'] = result.imageHash
+        ;(meta as Record<string, unknown>)['pendingUpload'] = false
       } catch (err) {
         errors.push({
           change,

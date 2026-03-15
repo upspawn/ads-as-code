@@ -138,11 +138,10 @@ function describeResource(resource: Resource, allResources: Resource[]): string 
 
 /**
  * Format default annotations for a create operation.
- * Reads `_defaults` from resource properties -- an array of objects
- * describing which fields were resolved from defaults and their source.
+ * Reads `_defaults` from resource.meta (SDK-internal data).
  */
 function formatDefaultAnnotations(resource: Resource): string[] {
-  const defaults = resource.properties['_defaults'] as
+  const defaults = resource.meta?.['_defaults'] as
     | Array<{ field: string; value: unknown; source?: string }>
     | undefined
   if (!defaults || defaults.length === 0) return []
