@@ -1,8 +1,9 @@
-import type { Resource, ResourceKind } from '../core/types.ts'
+import type { Resource, ResourceKind, AudienceTarget } from '../core/types.ts'
 import type { GoogleAdsClient, GoogleAdsRow, BiddingStrategy } from './types.ts'
 import type { Cache } from '../core/cache.ts'
 import { slugify } from '../core/flatten.ts'
 import { GEO_TARGETS_REVERSE, LANGUAGE_CRITERIA_REVERSE } from './constants.ts'
+import { fetchDemographicTargeting, fetchAudienceTargeting } from './fetch-targeting.ts'
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -631,6 +632,8 @@ type CampaignTargeting = {
   geo: string[]
   languages: string[]
   schedule: { days: string[]; startHour?: number; endHour?: number } | null
+  geoBidAdjustments: Record<string, number>
+  scheduleBids: Array<{ day: string; startHour: number; endHour: number; bidAdjustment: number }>
 }
 
 // Day of week from gRPC is numeric: 2=MON, 3=TUE, 4=WED, 5=THU, 6=FRI, 7=SAT, 8=SUN
@@ -670,13 +673,14 @@ export async function fetchCampaignTargeting(
     langReverse[`languageConstants/${id}`] = code
   }
 
-  // Fetch geo + language criteria
+  // Fetch geo + language criteria (includes bid_modifier for location bid adjustments)
   let geoLangQuery = `
 SELECT
   campaign.id,
   campaign_criterion.type,
   campaign_criterion.location.geo_target_constant,
-  campaign_criterion.language.language_constant
+  campaign_criterion.language.language_constant,
+  campaign_criterion.bid_modifier
 FROM campaign_criterion
 WHERE campaign_criterion.type IN ('LOCATION', 'LANGUAGE')
   AND campaign_criterion.negative = FALSE
@@ -686,13 +690,14 @@ WHERE campaign_criterion.type IN ('LOCATION', 'LANGUAGE')
     geoLangQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
   }
 
-  // Fetch ad schedule criteria
+  // Fetch ad schedule criteria (includes bid_modifier for schedule bid adjustments)
   let scheduleQuery = `
 SELECT
   campaign.id,
   campaign_criterion.ad_schedule.day_of_week,
   campaign_criterion.ad_schedule.start_hour,
-  campaign_criterion.ad_schedule.end_hour
+  campaign_criterion.ad_schedule.end_hour,
+  campaign_criterion.bid_modifier
 FROM campaign_criterion
 WHERE campaign_criterion.type = 'AD_SCHEDULE'
   AND campaign.status != 'REMOVED'`.trim()
@@ -711,7 +716,7 @@ WHERE campaign_criterion.type = 'AD_SCHEDULE'
 
   function ensure(campaignId: string): CampaignTargeting {
     if (!result.has(campaignId)) {
-      result.set(campaignId, { geo: [], languages: [], schedule: null })
+      result.set(campaignId, { geo: [], languages: [], schedule: null, geoBidAdjustments: {}, scheduleBids: [] })
     }
     return result.get(campaignId)!
   }
@@ -727,7 +732,16 @@ WHERE campaign_criterion.type = 'AD_SCHEDULE'
       const location = criterion.location as Record<string, unknown>
       const geoConstant = (location?.geoTargetConstant ?? location?.geo_target_constant) as string
       const code = geoReverse[geoConstant] ?? geoConstant
-      ensure(campaignId).geo.push(code)
+      const t = ensure(campaignId)
+      t.geo.push(code)
+      // Capture bid modifier for location bid adjustments
+      const bidMod = criterion?.bid_modifier ?? criterion?.bidModifier
+      if (bidMod !== undefined && bidMod !== null) {
+        const bidAdjustment = Number(bidMod) - 1.0
+        if (Math.abs(bidAdjustment) >= 1e-9) {
+          t.geoBidAdjustments[code] = Math.round(bidAdjustment * 1e10) / 1e10
+        }
+      }
     } else if (type === 'LANGUAGE') {
       const language = criterion.language as Record<string, unknown>
       const langConstant = (language?.languageConstant ?? language?.language_constant) as string
@@ -748,16 +762,34 @@ WHERE campaign_criterion.type = 'AD_SCHEDULE'
     const startHour = Number(adSchedule.start_hour ?? adSchedule.startHour ?? 0)
     const endHour = Number(adSchedule.end_hour ?? adSchedule.endHour ?? 24)
 
+    // Check if this schedule entry has a bid modifier
+    const bidMod = criterion?.bid_modifier ?? criterion?.bidModifier
+    const bidModNum = bidMod !== undefined && bidMod !== null ? Number(bidMod) : 1.0
+    const bidAdjustment = bidModNum - 1.0
+    const hasBidAdjustment = Math.abs(bidAdjustment) >= 1e-9
+
     const t = ensure(campaignId)
-    if (!t.schedule) {
-      t.schedule = { days: [] }
-    }
-    if (day) {
-      t.schedule.days.push(day)
-    }
-    if (startHour !== 0 || endHour !== 24) {
-      t.schedule.startHour = startHour
-      t.schedule.endHour = endHour
+
+    if (hasBidAdjustment && day) {
+      // Schedule with bid adjustment → schedule-bid rule (separate from basic schedule)
+      t.scheduleBids.push({
+        day,
+        startHour,
+        endHour,
+        bidAdjustment: Math.round(bidAdjustment * 1e10) / 1e10,
+      })
+    } else {
+      // Basic schedule (no bid adjustment)
+      if (!t.schedule) {
+        t.schedule = { days: [] }
+      }
+      if (day) {
+        t.schedule.days.push(day)
+      }
+      if (startHour !== 0 || endHour !== 24) {
+        t.schedule.startHour = startHour
+        t.schedule.endHour = endHour
+      }
     }
   }
 
@@ -788,7 +820,11 @@ function mergeTargetingIntoCampaigns(
 
     const rules: Array<Record<string, unknown>> = []
     if (targeting.geo.length > 0) {
-      rules.push({ type: 'geo', countries: targeting.geo })
+      const geoRule: Record<string, unknown> = { type: 'geo', countries: targeting.geo }
+      if (Object.keys(targeting.geoBidAdjustments).length > 0) {
+        geoRule.bidAdjustments = targeting.geoBidAdjustments
+      }
+      rules.push(geoRule)
     }
     if (targeting.languages.length > 0) {
       rules.push({ type: 'language', languages: targeting.languages })
@@ -805,6 +841,16 @@ function mergeTargetingIntoCampaigns(
         scheduleRule.endHour = targeting.schedule.endHour
       }
       rules.push(scheduleRule)
+    }
+    // Schedule bid adjustments (separate from basic schedule)
+    for (const sb of targeting.scheduleBids) {
+      rules.push({
+        type: 'schedule-bid',
+        day: sb.day,
+        startHour: sb.startHour,
+        endHour: sb.endHour,
+        bidAdjustment: sb.bidAdjustment,
+      })
     }
 
     if (rules.length === 0) return c
@@ -902,6 +948,69 @@ function mergeDevicesIntoCampaigns(
   })
 }
 
+/**
+ * Merge demographic targeting data into campaign Resources as targeting rules.
+ */
+function mergeDemographicsIntoCampaigns(
+  campaigns: Resource[],
+  demographicMap: Map<string, { ageRanges: string[]; genders: string[]; incomes: string[]; parentalStatuses: string[] }>,
+): Resource[] {
+  return campaigns.map(c => {
+    if (c.kind !== 'campaign' || !c.platformId) return c
+
+    const demo = demographicMap.get(c.platformId)
+    if (!demo) return c
+
+    // Only create a rule if there are actual demographic restrictions
+    const hasData = demo.ageRanges.length > 0 || demo.genders.length > 0 || demo.incomes.length > 0 || demo.parentalStatuses.length > 0
+    if (!hasData) return c
+
+    const demoRule: Record<string, unknown> = { type: 'demographic' }
+    if (demo.ageRanges.length > 0) demoRule.ageRanges = demo.ageRanges
+    if (demo.genders.length > 0) demoRule.genders = demo.genders
+    if (demo.incomes.length > 0) demoRule.incomes = demo.incomes
+    if (demo.parentalStatuses.length > 0) demoRule.parentalStatuses = demo.parentalStatuses
+
+    const existingTargeting = c.properties.targeting as { rules: Array<Record<string, unknown>> } | undefined
+    const existingRules = existingTargeting?.rules ?? []
+
+    return {
+      ...c,
+      properties: {
+        ...c.properties,
+        targeting: { rules: [...existingRules, demoRule] },
+      },
+    }
+  })
+}
+
+/**
+ * Merge audience targeting data into ad group Resources as targeting rules.
+ * Audiences operate at the ad group level, not campaign level.
+ */
+function mergeAudiencesIntoAdGroups(
+  adGroups: Resource[],
+  audienceMap: Map<string, AudienceTarget>,
+): Resource[] {
+  return adGroups.map(ag => {
+    if (ag.kind !== 'adGroup' || !ag.platformId) return ag
+
+    const audience = audienceMap.get(ag.platformId)
+    if (!audience || audience.audiences.length === 0) return ag
+
+    const existingTargeting = ag.properties.targeting as { rules: Array<Record<string, unknown>> } | undefined
+    const existingRules = existingTargeting?.rules ?? []
+
+    return {
+      ...ag,
+      properties: {
+        ...ag.properties,
+        targeting: { rules: [...existingRules, audience] },
+      },
+    }
+  })
+}
+
 // ─── Orchestrators ──────────────────────────────────────────
 
 export async function fetchAllState(
@@ -924,19 +1033,25 @@ export async function fetchAllState(
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
   ])
 
-  // Step 4: Extensions + negative keywords + targeting + devices (scoped to campaigns) — can run in parallel
-  const [extensions, negatives, targetingMap, deviceMap] = await Promise.all([
+  // Step 4: Extensions + negative keywords + targeting + devices + demographics + audiences — can run in parallel
+  const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
     fetchExtensions(client, campaignIds),
     fetchNegativeKeywords(client, campaignIds),
     fetchCampaignTargeting(client, campaignIds),
     fetchDeviceBidModifiers(client, campaignIds),
+    fetchDemographicTargeting(client, campaignIds),
+    fetchAudienceTargeting(client, campaignIds),
   ])
 
-  // Merge targeting and device bid adjustments into campaign resources
+  // Merge targeting data into campaign resources (order matters: base → devices → demographics)
   const campaignsWithTargeting = mergeTargetingIntoCampaigns(campaigns, targetingMap)
   const campaignsWithDevices = mergeDevicesIntoCampaigns(campaignsWithTargeting, deviceMap)
+  const campaignsWithDemographics = mergeDemographicsIntoCampaigns(campaignsWithDevices, demographicMap)
 
-  return [...campaignsWithDevices, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+  // Merge audience targeting into ad group resources
+  const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
+
+  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -969,17 +1084,21 @@ export async function fetchKnownState(
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     ])
-    const [extensions, negatives, targetingMap, deviceMap] = await Promise.all([
+    const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
       fetchExtensions(client, knownCampaignIds),
       fetchNegativeKeywords(client, knownCampaignIds),
       fetchCampaignTargeting(client, knownCampaignIds),
       fetchDeviceBidModifiers(client, knownCampaignIds),
+      fetchDemographicTargeting(client, knownCampaignIds),
+      fetchAudienceTargeting(client, knownCampaignIds),
     ])
 
     const campaignsWithTargeting = mergeTargetingIntoCampaigns(knownCampaigns, targetingMap)
     const campaignsWithDevices = mergeDevicesIntoCampaigns(campaignsWithTargeting, deviceMap)
+    const campaignsWithDemographics = mergeDemographicsIntoCampaigns(campaignsWithDevices, demographicMap)
+    const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-    return [...campaignsWithDevices, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything
