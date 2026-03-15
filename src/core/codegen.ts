@@ -284,8 +284,23 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     for (const [matchType, kws] of Object.entries(kwByMatchType)) {
       const helper = matchTypeHelper(matchType)
       imports.add(helper)
-      const texts = kws.map((k) => k.properties.text as string)
-      keywordParts.push(`...${helper}(${formatStringList(texts)})`)
+
+      // Check if any keyword in this match type group has extra options
+      const hasOptions = kws.some(k => k.properties.bid || k.properties.finalUrl || k.properties.status)
+
+      if (hasOptions) {
+        const kwObjects = kws.map(k => {
+          const opts: string[] = [`text: ${quote(k.properties.text as string)}`]
+          if (k.properties.bid) opts.push(`bid: ${k.properties.bid}`)
+          if (k.properties.finalUrl) opts.push(`finalUrl: ${quote(k.properties.finalUrl as string)}`)
+          if (k.properties.status === 'paused') opts.push(`status: 'paused'`)
+          return `{ ${opts.join(', ')} }`
+        })
+        keywordParts.push(`...${helper}(\n    ${kwObjects.join(',\n    ')},\n  )`)
+      } else {
+        const texts = kws.map((k) => k.properties.text as string)
+        keywordParts.push(`...${helper}(${formatStringList(texts)})`)
+      }
     }
     const keywordsLine = `keywords: [${keywordParts.join(', ')}],`
 

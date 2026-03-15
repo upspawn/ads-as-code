@@ -259,6 +259,8 @@ SELECT
   ad_group_criterion.status,
   ad_group_criterion.keyword.text,
   ad_group_criterion.keyword.match_type,
+  ad_group_criterion.cpc_bid_micros,
+  ad_group_criterion.final_urls,
   ad_group.id,
   ad_group.name,
   campaign.id,
@@ -293,6 +295,13 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   const adGroupName = str(adGroup?.name)
   const campaignName = str(campaign?.name)
 
+  // Extended keyword fields
+  const kwStatus = mapStatus(criterion?.status)
+  const cpcBidMicros = criterion?.cpc_bid_micros ?? criterion?.cpcBidMicros
+  const bid = cpcBidMicros ? microsToAmount(cpcBidMicros as string | number) : undefined
+  const kwFinalUrls = (criterion?.final_urls ?? criterion?.finalUrls ?? []) as string[]
+  const kwFinalUrl = kwFinalUrls[0] as string | undefined
+
   const campaignPath = slugify(campaignName)
   const groupSlug = slugify(adGroupName)
   const path = `${campaignPath}/${groupSlug}/kw:${text.toLowerCase()}:${matchType}`
@@ -300,6 +309,9 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   return resource('keyword', path, {
     text,
     matchType,
+    ...(kwStatus !== 'enabled' ? { status: kwStatus } : {}),
+    ...(bid !== undefined && bid > 0 ? { bid } : {}),
+    ...(kwFinalUrl ? { finalUrl: kwFinalUrl } : {}),
   }, resourceName || undefined)
 }
 

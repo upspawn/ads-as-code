@@ -219,6 +219,90 @@ describe('fetchKeywords', () => {
   })
 })
 
+// ─── fetchKeywords — extended fields ───────────────────────
+
+describe('fetchKeywords — extended fields', () => {
+  test('includes status, bid, and finalUrl', async () => {
+    const client = createMockClient({
+      keywords: [{
+        ad_group_criterion: {
+          resource_name: 'customers/123/adGroupCriteria/100~200',
+          criterion_id: '200',
+          status: 3, // PAUSED
+          keyword: { text: 'rename pdf', match_type: 2 },
+          cpc_bid_micros: '1500000',
+          final_urls: ['https://renamed.to/pdf'],
+        },
+        ad_group: { id: '100', name: 'PDF' },
+        campaign: { id: '123', name: 'Test' },
+      }],
+    })
+    const resources = await fetchKeywords(client)
+    const kw = resources[0]!
+    expect(kw.properties.status).toBe('paused')
+    expect(kw.properties.bid).toBe(1.5)
+    expect(kw.properties.finalUrl).toBe('https://renamed.to/pdf')
+  })
+
+  test('omits bid and status when defaults', async () => {
+    const client = createMockClient({
+      keywords: [{
+        ad_group_criterion: {
+          resource_name: 'customers/123/adGroupCriteria/100~201',
+          criterion_id: '201',
+          status: 2,
+          keyword: { text: 'batch rename', match_type: 2 },
+        },
+        ad_group: { id: '100', name: 'PDF' },
+        campaign: { id: '123', name: 'Test' },
+      }],
+    })
+    const resources = await fetchKeywords(client)
+    expect(resources[0]!.properties.bid).toBeUndefined()
+    expect(resources[0]!.properties.status).toBeUndefined()
+  })
+
+  test('omits bid when cpc_bid_micros is 0', async () => {
+    const client = createMockClient({
+      keywords: [{
+        ad_group_criterion: {
+          resource_name: 'customers/123/adGroupCriteria/100~202',
+          criterion_id: '202',
+          status: 2,
+          keyword: { text: 'rename files', match_type: 2 },
+          cpc_bid_micros: '0',
+        },
+        ad_group: { id: '100', name: 'PDF' },
+        campaign: { id: '123', name: 'Test' },
+      }],
+    })
+    const resources = await fetchKeywords(client)
+    expect(resources[0]!.properties.bid).toBeUndefined()
+  })
+
+  test('handles camelCase fields from REST API', async () => {
+    const client = createMockClient({
+      keywords: [{
+        adGroupCriterion: {
+          resourceName: 'customers/123/adGroupCriteria/100~203',
+          criterionId: '203',
+          status: 3,
+          keyword: { text: 'auto rename', matchType: 3 },
+          cpcBidMicros: '2000000',
+          finalUrls: ['https://renamed.to/auto'],
+        },
+        adGroup: { id: '100', name: 'Auto' },
+        campaign: { id: '123', name: 'Test' },
+      }],
+    })
+    const resources = await fetchKeywords(client)
+    const kw = resources[0]!
+    expect(kw.properties.bid).toBe(2)
+    expect(kw.properties.finalUrl).toBe('https://renamed.to/auto')
+    expect(kw.properties.status).toBe('paused')
+  })
+})
+
 // ─── fetchAds ───────────────────────────────────────────────
 
 describe('fetchAds', () => {

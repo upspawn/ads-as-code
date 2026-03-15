@@ -272,16 +272,22 @@ function buildKeywordCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
+  const kwStatus = (props.status as string) === 'paused' ? 3 : 2
+  const bid = props.bid as number | undefined
+  const finalUrl = props.finalUrl as string | undefined
+
   return {
     operation: 'ad_group_criterion',
     op: 'create',
     resource: {
       ad_group: adGroupResourceName,
-      status: 2, // ENABLED
+      status: kwStatus,
       keyword: {
         text: props.text,
         match_type: matchTypeToEnum(props.matchType),
       },
+      ...(bid !== undefined ? { cpc_bid_micros: String(toMicros(bid)) } : {}),
+      ...(finalUrl ? { final_urls: [finalUrl] } : {}),
     },
   }
 }

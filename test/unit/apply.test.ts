@@ -864,6 +864,39 @@ describe('extension create — no malformed updateMask', () => {
   })
 })
 
+// ─── Keyword Create — Extended Fields ───────────────────────
+
+describe('keyword create — extended fields', () => {
+  test('sets cpc_bid_micros and paused status', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT', bid: 1.5, status: 'paused',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion')!
+    expect(kwOp.resource.cpc_bid_micros).toBe('1500000')
+    expect(kwOp.resource.status).toBe(3)
+  })
+
+  test('sets final_urls when finalUrl specified', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT', finalUrl: 'https://renamed.to/pdf',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion')!
+    expect(kwOp.resource.final_urls).toEqual(['https://renamed.to/pdf'])
+  })
+
+  test('omits bid and uses ENABLED when no options', () => {
+    const resource = makeResource('keyword', 'test/grp/kw:rename pdf:EXACT', {
+      text: 'rename pdf', matchType: 'EXACT',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const kwOp = mutations.find(m => m.operation === 'ad_group_criterion')!
+    expect(kwOp.resource.cpc_bid_micros).toBeUndefined()
+    expect(kwOp.resource.status).toBe(2)
+  })
+})
+
 // ─── Ad Create — Extended Fields ────────────────────────────
 
 describe('ad create — extended fields', () => {

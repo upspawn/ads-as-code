@@ -797,6 +797,57 @@ describe('generateCampaignFile — campaign status and tracking', () => {
   })
 })
 
+// ─── Keyword Options ────────────────────────────────────
+
+describe('generateCampaignFile — keyword options', () => {
+  test('emits keyword with bid as object form', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT', bid: 1.5 } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain('bid: 1.5')
+    expect(code).toContain("text: 'rename pdf'")
+  })
+
+  test('uses string form when no keyword options', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("'rename pdf'")
+    expect(code).not.toContain('bid:')
+  })
+
+  test('emits keyword finalUrl in object form', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT', finalUrl: 'https://renamed.to/pdf' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("finalUrl: 'https://renamed.to/pdf'")
+  })
+
+  test('emits paused keyword status in object form', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:rename pdf:EXACT', properties: { text: 'rename pdf', matchType: 'EXACT', status: 'paused' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("status: 'paused'")
+    expect(code).toContain("text: 'rename pdf'")
+  })
+})
+
 // ─── Ad Completeness ────────────────────────────────────
 
 describe('generateCampaignFile — ad completeness', () => {
