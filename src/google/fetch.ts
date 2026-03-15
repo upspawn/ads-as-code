@@ -26,6 +26,13 @@ const BIDDING_STRATEGY_MAP: Record<number, string> = {
   15: 'TARGET_IMPRESSION_SHARE',
 }
 
+const CHANNEL_TYPE_MAP: Record<number, string> = {
+  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'SEARCH', 3: 'DISPLAY',
+  4: 'SHOPPING', 5: 'HOTEL', 6: 'VIDEO', 7: 'MULTI_CHANNEL',
+  8: 'LOCAL', 9: 'SMART', 10: 'PERFORMANCE_MAX', 11: 'LOCAL_SERVICES',
+  12: 'DISCOVERY', 13: 'TRAVEL', 14: 'DEMAND_GEN',
+}
+
 const MATCH_TYPE_MAP: Record<number, string> = {
   0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'EXACT', 3: 'PHRASE', 4: 'BROAD',
 }
@@ -134,6 +141,7 @@ SELECT
   campaign.id,
   campaign.name,
   campaign.status,
+  campaign.advertising_channel_type,
   campaign.bidding_strategy_type,
   campaign.network_settings.target_google_search,
   campaign.network_settings.target_search_network,
@@ -176,6 +184,13 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
   const path = slugify(name)
   const budgetResourceName = str(budget?.resource_name ?? budget?.resourceName)
 
+  // Channel type: numeric enum → SDK string (only set for non-Search campaigns)
+  const channelTypeRaw = campaign?.advertising_channel_type ?? campaign?.advertisingChannelType
+  const channelTypeStr = resolveEnum(channelTypeRaw, CHANNEL_TYPE_MAP)
+  const channelType = channelTypeStr === 'DISPLAY' ? 'display'
+    : channelTypeStr === 'PERFORMANCE_MAX' ? 'performance-max'
+    : undefined // Search and other types don't set channelType (preserves existing behavior)
+
   // Network settings: support both snake_case (gRPC) and camelCase (REST)
   const networkSettingsRaw = (campaign?.network_settings ?? campaign?.networkSettings) as Record<string, unknown> | undefined
   const networkSettings = networkSettingsRaw ? {
@@ -199,6 +214,7 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
+    ...(channelType ? { channelType } : {}),
     ...(networkSettings ? { networkSettings } : {}),
     ...(startDate ? { startDate } : {}),
     ...(endDate ? { endDate } : {}),
@@ -523,6 +539,161 @@ export function normalizeDisplayAdRow(row: GoogleAdsRow): Resource {
     ...(accentColor ? { accentColor } : {}),
     ...(callToAction ? { callToAction } : {}),
   }, adId)
+}
+
+// ─── Asset Group Fetcher (PMax) ──────────────────────────────
+
+const ASSET_GROUP_QUERY = `
+SELECT
+  asset_group.id,
+  asset_group.name,
+  asset_group.status,
+  asset_group.campaign,
+  asset_group.final_urls,
+  asset_group.final_mobile_urls,
+  asset_group.path1,
+  asset_group.path2,
+  campaign.id,
+  campaign.name
+FROM asset_group
+WHERE asset_group.status != 'REMOVED'
+  AND campaign.status != 'REMOVED'
+`.trim()
+
+const ASSET_GROUP_ASSET_QUERY = `
+SELECT
+  asset_group.id,
+  asset_group_asset.field_type,
+  asset.id,
+  asset.name,
+  asset.text_asset.text,
+  asset.image_asset.full_size.url,
+  asset.youtube_video_asset.youtube_video_id
+FROM asset_group_asset
+WHERE asset_group.status != 'REMOVED'
+`.trim()
+
+export async function fetchAssetGroups(
+  client: GoogleAdsClient,
+  campaignIds?: string[],
+): Promise<{ groups: GoogleAdsRow[]; assets: GoogleAdsRow[] }> {
+  let groupQuery = ASSET_GROUP_QUERY
+  let assetQuery = ASSET_GROUP_ASSET_QUERY
+  if (campaignIds?.length) {
+    groupQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+    assetQuery += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+
+  const [groups, assets] = await Promise.all([
+    client.query(groupQuery),
+    client.query(assetQuery),
+  ])
+
+  return { groups, assets }
+}
+
+/**
+ * Normalize asset group rows + their text/image/video assets into Resource objects.
+ * Exported for testing — called internally by fetchAllState.
+ */
+export function normalizeAssetGroupData(
+  assetGroupRows: GoogleAdsRow[],
+  assetRows: GoogleAdsRow[],
+  campaignPath: string,
+): Resource[] {
+  // Group asset rows by asset_group.id
+  const assetsByGroupId = new Map<string, GoogleAdsRow[]>()
+  for (const row of assetRows) {
+    const ag = (row.asset_group ?? row.assetGroup) as Record<string, unknown> | undefined
+    const id = str(ag?.id)
+    if (!id) continue
+    const existing = assetsByGroupId.get(id) ?? []
+    existing.push(row)
+    assetsByGroupId.set(id, existing)
+  }
+
+  const resources: Resource[] = []
+
+  for (const row of assetGroupRows) {
+    const ag = (row.asset_group ?? row.assetGroup) as Record<string, unknown> | undefined
+
+    const id = str(ag?.id)
+    const name = str(ag?.name)
+    const status = mapStatus(ag?.status)
+    const finalUrls = (ag?.final_urls ?? ag?.finalUrls ?? []) as string[]
+    const finalMobileUrls = (ag?.final_mobile_urls ?? ag?.finalMobileUrls ?? []) as string[]
+    const path1 = str(ag?.path1) || undefined
+    const path2 = str(ag?.path2) || undefined
+
+    const groupSlug = slugify(name)
+    const path = `${campaignPath}/${groupSlug}`
+
+    // Collect text assets by field type
+    const groupAssets = assetsByGroupId.get(id) ?? []
+    const headlines: string[] = []
+    const longHeadlines: string[] = []
+    const descriptions: string[] = []
+    let businessName = ''
+    const images: string[] = []
+    const videos: string[] = []
+
+    for (const assetRow of groupAssets) {
+      const aga = (assetRow.asset_group_asset ?? assetRow.assetGroupAsset) as Record<string, unknown> | undefined
+      const asset = assetRow.asset as Record<string, unknown> | undefined
+      const fieldType = str(aga?.field_type ?? aga?.fieldType)
+      const textAsset = (asset?.text_asset ?? asset?.textAsset) as Record<string, unknown> | undefined
+      const imageAsset = (asset?.image_asset ?? asset?.imageAsset) as Record<string, unknown> | undefined
+      const videoAsset = (asset?.youtube_video_asset ?? asset?.youtubeVideoAsset) as Record<string, unknown> | undefined
+
+      const text = str(textAsset?.text)
+
+      switch (fieldType) {
+        case 'HEADLINE':
+          if (text) headlines.push(text)
+          break
+        case 'LONG_HEADLINE':
+          if (text) longHeadlines.push(text)
+          break
+        case 'DESCRIPTION':
+          if (text) descriptions.push(text)
+          break
+        case 'BUSINESS_NAME':
+          if (text) businessName = text
+          break
+        case 'MARKETING_IMAGE':
+        case 'SQUARE_MARKETING_IMAGE':
+        case 'PORTRAIT_MARKETING_IMAGE':
+        case 'LOGO': {
+          const fullSize = (imageAsset?.full_size ?? imageAsset?.fullSize) as Record<string, unknown> | undefined
+          const imageUrl = str(fullSize?.url)
+          if (imageUrl) images.push(imageUrl)
+          break
+        }
+        case 'YOUTUBE_VIDEO': {
+          const videoId = str(videoAsset?.youtube_video_id ?? videoAsset?.youtubeVideoId)
+          if (videoId) videos.push(`https://youtube.com/watch?v=${videoId}`)
+          break
+        }
+      }
+    }
+
+    resources.push(resource('assetGroup', path, {
+      name,
+      status,
+      finalUrls,
+      ...(finalMobileUrls.length > 0 ? { finalMobileUrls } : {}),
+      headlines,
+      longHeadlines,
+      descriptions,
+      businessName,
+      ...(path1 ? { path1 } : {}),
+      ...(path2 ? { path2 } : {}),
+      ...(images.length > 0 ? { images } : {}),
+      ...(videos.length > 0 ? { videos } : {}),
+    }, id))
+  }
+
+  return resources
 }
 
 // ─── Negative Keyword Fetcher ───────────────────────────────
@@ -1134,16 +1305,44 @@ export async function fetchAllState(
 
   if (campaignIds.length === 0) return campaigns
 
-  // Step 2: Ad groups (scoped to fetched campaigns)
-  const adGroups = await fetchAdGroups(client, campaignIds)
+  // Separate PMax campaigns (use asset groups) from Search/Display (use ad groups)
+  const pmaxCampaignIds = campaigns
+    .filter(c => c.properties.channelType === 'performance-max')
+    .map(c => c.platformId!)
+    .filter(Boolean)
+  const nonPmaxCampaignIds = campaignIds.filter(id => !pmaxCampaignIds.includes(id))
+
+  // Step 2: Ad groups (scoped to non-PMax campaigns)
+  const adGroups = nonPmaxCampaignIds.length > 0
+    ? await fetchAdGroups(client, nonPmaxCampaignIds)
+    : []
   const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-  // Step 3: Keywords + ads + display ads (scoped to ad groups) — can run in parallel
-  const [keywords, ads, displayAds] = await Promise.all([
+  // Step 3: Keywords + ads + display ads + asset groups — can run in parallel
+  const [keywords, ads, displayAds, assetGroupData] = await Promise.all([
     adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
+    pmaxCampaignIds.length > 0 ? fetchAssetGroups(client, pmaxCampaignIds) : Promise.resolve({ groups: [], assets: [] }),
   ])
+
+  // Normalize PMax asset groups into resources
+  const assetGroupResources: Resource[] = []
+  if (assetGroupData.groups.length > 0) {
+    // Group asset groups by campaign path for correct path construction
+    const groupsByCampaign = new Map<string, GoogleAdsRow[]>()
+    for (const row of assetGroupData.groups) {
+      const campaignObj = row.campaign as Record<string, unknown> | undefined
+      const campaignName = str(campaignObj?.name)
+      const campaignPath = slugify(campaignName)
+      const existing = groupsByCampaign.get(campaignPath) ?? []
+      existing.push(row)
+      groupsByCampaign.set(campaignPath, existing)
+    }
+    for (const [campaignPath, rows] of groupsByCampaign) {
+      assetGroupResources.push(...normalizeAssetGroupData(rows, assetGroupData.assets, campaignPath))
+    }
+  }
 
   // Step 4: Extensions + negative keywords + targeting + devices + demographics + audiences — can run in parallel
   const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
@@ -1163,7 +1362,7 @@ export async function fetchAllState(
   // Merge audience targeting into ad group resources
   const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
+  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -1189,14 +1388,42 @@ export async function fetchKnownState(
 
     if (knownCampaignIds.length === 0) return []
 
-    const adGroups = await fetchAdGroups(client, knownCampaignIds)
+    // Separate PMax from non-PMax campaigns
+    const pmaxIds = knownCampaigns
+      .filter(c => c.properties.channelType === 'performance-max')
+      .map(c => c.platformId!)
+      .filter(Boolean)
+    const nonPmaxIds = knownCampaignIds.filter(id => !pmaxIds.includes(id))
+
+    const adGroups = nonPmaxIds.length > 0
+      ? await fetchAdGroups(client, nonPmaxIds)
+      : []
     const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-    const [keywords, ads, displayAds] = await Promise.all([
+    const [keywords, ads, displayAds, assetGroupData] = await Promise.all([
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
+      pmaxIds.length > 0 ? fetchAssetGroups(client, pmaxIds) : Promise.resolve({ groups: [], assets: [] }),
     ])
+
+    // Normalize PMax asset groups
+    const assetGroupResources: Resource[] = []
+    if (assetGroupData.groups.length > 0) {
+      const groupsByCampaign = new Map<string, GoogleAdsRow[]>()
+      for (const row of assetGroupData.groups) {
+        const campaignObj = row.campaign as Record<string, unknown> | undefined
+        const campaignName = str(campaignObj?.name)
+        const campaignPath = slugify(campaignName)
+        const existing = groupsByCampaign.get(campaignPath) ?? []
+        existing.push(row)
+        groupsByCampaign.set(campaignPath, existing)
+      }
+      for (const [cPath, rows] of groupsByCampaign) {
+        assetGroupResources.push(...normalizeAssetGroupData(rows, assetGroupData.assets, cPath))
+      }
+    }
+
     const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
       fetchExtensions(client, knownCampaignIds),
       fetchNegativeKeywords(client, knownCampaignIds),
@@ -1211,7 +1438,7 @@ export async function fetchKnownState(
     const campaignsWithDemographics = mergeDemographicsIntoCampaigns(campaignsWithDevices, demographicMap)
     const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
+    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything

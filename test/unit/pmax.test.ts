@@ -1,10 +1,11 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test, mock } from 'bun:test'
 import { google } from '../../src/google/index.ts'
 import { flattenPMax, flattenAll } from '../../src/google/flatten.ts'
 import { changeToMutations } from '../../src/google/apply.ts'
 import { generateCampaignFile } from '../../src/core/codegen.ts'
+import { fetchCampaigns, normalizeAssetGroupData } from '../../src/google/fetch.ts'
 import type { Budget, Targeting, Resource } from '../../src/core/types.ts'
-import type { GooglePMaxCampaign, AssetGroupInput } from '../../src/google/types.ts'
+import type { GooglePMaxCampaign, AssetGroupInput, GoogleAdsClient, GoogleAdsRow } from '../../src/google/types.ts'
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -628,5 +629,256 @@ describe('apply: CREATION_ORDER', () => {
     const mutations = changeToMutations(change, '1234567890', new Map())
     // Should produce operations, not empty array
     expect(mutations.length).toBeGreaterThan(0)
+  })
+})
+
+// ─── Fetch: campaign.advertising_channel_type ───────────────
+
+function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsClient {
+  const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
+    if (gaql.includes('FROM asset_group_asset')) return Promise.resolve(responses.assetGroupAssets ?? [])
+    if (gaql.includes('FROM asset_group')) return Promise.resolve(responses.assetGroups ?? [])
+    if (gaql.includes('FROM campaign')) return Promise.resolve(responses.campaigns ?? [])
+    return Promise.resolve([])
+  })
+
+  return {
+    query: queryFn,
+    mutate: mock(() => Promise.resolve([])),
+    customerId: '7300967494',
+  }
+}
+
+describe('fetchCampaigns: PMax channel type', () => {
+  test('sets channelType: performance-max for advertising_channel_type = 10', async () => {
+    const client = createMockClient({
+      campaigns: [{
+        campaign: {
+          id: '99999',
+          name: 'PMax - Test',
+          status: 2,
+          bidding_strategy_type: 6,
+          advertising_channel_type: 10, // PERFORMANCE_MAX
+          network_settings: {},
+        },
+        campaign_budget: {
+          id: '88888',
+          resource_name: 'customers/7300967494/campaignBudgets/88888',
+          amount_micros: '15000000',
+        },
+      }],
+    })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+    expect(resources).toHaveLength(1)
+    const c = resources[0]!
+    expect(c.properties.channelType).toBe('performance-max')
+  })
+
+  test('sets channelType: display for advertising_channel_type = 3', async () => {
+    const client = createMockClient({
+      campaigns: [{
+        campaign: {
+          id: '77777',
+          name: 'Display - Test',
+          status: 2,
+          bidding_strategy_type: 6,
+          advertising_channel_type: 3, // DISPLAY
+          network_settings: {},
+        },
+        campaign_budget: {
+          id: '66666',
+          resource_name: 'customers/7300967494/campaignBudgets/66666',
+          amount_micros: '10000000',
+        },
+      }],
+    })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+    const c = resources[0]!
+    expect(c.properties.channelType).toBe('display')
+  })
+
+  test('omits channelType for advertising_channel_type = 2 (Search)', async () => {
+    const client = createMockClient({
+      campaigns: [{
+        campaign: {
+          id: '55555',
+          name: 'Search - Test',
+          status: 2,
+          bidding_strategy_type: 6,
+          advertising_channel_type: 2, // SEARCH
+          network_settings: {},
+        },
+        campaign_budget: {
+          id: '44444',
+          resource_name: 'customers/7300967494/campaignBudgets/44444',
+          amount_micros: '10000000',
+        },
+      }],
+    })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+    const c = resources[0]!
+    // Search campaigns don't have channelType (existing behavior preserved)
+    expect(c.properties).not.toHaveProperty('channelType')
+  })
+})
+
+// ─── Fetch: normalizeAssetGroupData ─────────────────────────
+
+describe('normalizeAssetGroupData', () => {
+  test('normalizes asset group rows with text assets into Resource objects', () => {
+    const assetGroupRows: GoogleAdsRow[] = [{
+      asset_group: {
+        id: '100',
+        name: 'main',
+        status: 2,
+        campaign: 'customers/7300967494/campaigns/99999',
+        final_urls: ['https://renamed.to'],
+        path1: 'rename',
+        path2: 'files',
+      },
+      campaign: { id: '99999', name: 'PMax - Test' },
+    }]
+
+    const assetRows: GoogleAdsRow[] = [
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '201', text_asset: { text: 'Rename Fast' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '202', text_asset: { text: 'AI Powered' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '203', text_asset: { text: 'Try Now' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'LONG_HEADLINE' }, asset: { id: '204', text_asset: { text: 'Rename All Files with AI' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '205', text_asset: { text: 'Try free' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '206', text_asset: { text: 'No credit card' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'BUSINESS_NAME' }, asset: { id: '207', text_asset: { text: 'renamed.to' } } },
+    ]
+
+    const resources = normalizeAssetGroupData(assetGroupRows, assetRows, 'pmax-test')
+
+    expect(resources).toHaveLength(1)
+    const ag = resources[0]!
+    expect(ag.kind).toBe('assetGroup')
+    expect(ag.path).toBe('pmax-test/main')
+    expect(ag.platformId).toBe('100')
+
+    expect(ag.properties.name).toBe('main')
+    expect(ag.properties.status).toBe('enabled')
+    expect(ag.properties.finalUrls).toEqual(['https://renamed.to'])
+    expect(ag.properties.path1).toBe('rename')
+    expect(ag.properties.path2).toBe('files')
+
+    // Text assets grouped by field type
+    const headlines = ag.properties.headlines as string[]
+    expect(headlines).toHaveLength(3)
+    expect(headlines).toContain('Rename Fast')
+    expect(headlines).toContain('AI Powered')
+    expect(headlines).toContain('Try Now')
+
+    const longHeadlines = ag.properties.longHeadlines as string[]
+    expect(longHeadlines).toEqual(['Rename All Files with AI'])
+
+    const descriptions = ag.properties.descriptions as string[]
+    expect(descriptions).toHaveLength(2)
+
+    expect(ag.properties.businessName).toBe('renamed.to')
+  })
+
+  test('handles paused asset group status', () => {
+    const assetGroupRows: GoogleAdsRow[] = [{
+      asset_group: {
+        id: '100',
+        name: 'paused-ag',
+        status: 3, // PAUSED
+        campaign: 'customers/7300967494/campaigns/99999',
+        final_urls: ['https://renamed.to'],
+      },
+      campaign: { id: '99999', name: 'PMax - Test' },
+    }]
+
+    const assetRows: GoogleAdsRow[] = [
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '201', text_asset: { text: 'H1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '202', text_asset: { text: 'H2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '203', text_asset: { text: 'H3' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'LONG_HEADLINE' }, asset: { id: '204', text_asset: { text: 'Long H' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '205', text_asset: { text: 'D1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '206', text_asset: { text: 'D2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'BUSINESS_NAME' }, asset: { id: '207', text_asset: { text: 'renamed.to' } } },
+    ]
+
+    const resources = normalizeAssetGroupData(assetGroupRows, assetRows, 'pmax-test')
+    expect(resources[0]!.properties.status).toBe('paused')
+  })
+
+  test('handles image and video assets', () => {
+    const assetGroupRows: GoogleAdsRow[] = [{
+      asset_group: {
+        id: '100',
+        name: 'main',
+        status: 2,
+        campaign: 'customers/7300967494/campaigns/99999',
+        final_urls: ['https://renamed.to'],
+      },
+      campaign: { id: '99999', name: 'PMax - Test' },
+    }]
+
+    const assetRows: GoogleAdsRow[] = [
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '201', text_asset: { text: 'H1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '202', text_asset: { text: 'H2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '203', text_asset: { text: 'H3' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'LONG_HEADLINE' }, asset: { id: '204', text_asset: { text: 'Long H' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '205', text_asset: { text: 'D1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '206', text_asset: { text: 'D2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'BUSINESS_NAME' }, asset: { id: '207', text_asset: { text: 'renamed.to' } } },
+      // Image asset
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'MARKETING_IMAGE' }, asset: { id: '301', image_asset: { full_size: { url: 'https://tpc.googlesyndication.com/img1.jpg' } } } },
+      // YouTube video asset
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'YOUTUBE_VIDEO' }, asset: { id: '401', youtube_video_asset: { youtube_video_id: 'abc123' } } },
+    ]
+
+    const resources = normalizeAssetGroupData(assetGroupRows, assetRows, 'pmax-test')
+    const ag = resources[0]!
+
+    // Images stored as URLs
+    const images = ag.properties.images as string[] | undefined
+    expect(images).toBeDefined()
+    expect(images).toContain('https://tpc.googlesyndication.com/img1.jpg')
+
+    // Videos stored as YouTube URLs
+    const videos = ag.properties.videos as string[] | undefined
+    expect(videos).toBeDefined()
+    expect(videos).toContain('https://youtube.com/watch?v=abc123')
+  })
+
+  test('handles multiple asset groups for the same campaign', () => {
+    const assetGroupRows: GoogleAdsRow[] = [
+      {
+        asset_group: { id: '100', name: 'main', status: 2, campaign: 'customers/7300967494/campaigns/99999', final_urls: ['https://renamed.to'] },
+        campaign: { id: '99999', name: 'PMax - Test' },
+      },
+      {
+        asset_group: { id: '200', name: 'construction', status: 2, campaign: 'customers/7300967494/campaigns/99999', final_urls: ['https://renamed.to/construction'] },
+        campaign: { id: '99999', name: 'PMax - Test' },
+      },
+    ]
+
+    const assetRows: GoogleAdsRow[] = [
+      // Assets for group 100
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '201', text_asset: { text: 'H1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '202', text_asset: { text: 'H2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '203', text_asset: { text: 'H3' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'LONG_HEADLINE' }, asset: { id: '204', text_asset: { text: 'Long' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '205', text_asset: { text: 'D1' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '206', text_asset: { text: 'D2' } } },
+      { asset_group: { id: '100' }, asset_group_asset: { field_type: 'BUSINESS_NAME' }, asset: { id: '207', text_asset: { text: 'renamed.to' } } },
+      // Assets for group 200
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '301', text_asset: { text: 'Construction H1' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '302', text_asset: { text: 'Construction H2' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'HEADLINE' }, asset: { id: '303', text_asset: { text: 'Construction H3' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'LONG_HEADLINE' }, asset: { id: '304', text_asset: { text: 'Construction Long' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '305', text_asset: { text: 'CD1' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'DESCRIPTION' }, asset: { id: '306', text_asset: { text: 'CD2' } } },
+      { asset_group: { id: '200' }, asset_group_asset: { field_type: 'BUSINESS_NAME' }, asset: { id: '307', text_asset: { text: 'renamed.to' } } },
+    ]
+
+    const resources = normalizeAssetGroupData(assetGroupRows, assetRows, 'pmax-test')
+    expect(resources).toHaveLength(2)
+    expect(resources[0]!.path).toBe('pmax-test/main')
+    expect(resources[1]!.path).toBe('pmax-test/construction')
   })
 })
