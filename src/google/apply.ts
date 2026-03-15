@@ -407,7 +407,7 @@ function buildUpdateOperations(
       // Budget update — separate campaign_budget resource
       const budgetChange = change.changes.find(c => c.field === 'budget')
       if (budgetChange) {
-        const newBudget = budgetChange.to as { amount: number; period?: string } | undefined
+        const newBudget = budgetChange.to as { amount: number; period: string } | undefined
         if (newBudget) {
           // Get budget resource name from the budgetResourceName change (from=actual value)
           // or from the resource properties (if available from fetched state)
@@ -565,6 +565,10 @@ function buildCreateMutations(
       ops.push(buildNegativeCreate(customerId, campaignResourceName, resource))
       break
     }
+
+    default:
+      // Other providers (Meta) handle their own resource kinds — skip silently
+      break
   }
 
   return ops

@@ -8,7 +8,8 @@ export type CalloutText = string & { readonly __brand: 'Callout' }
 
 export type DailyBudget = { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'daily' }
 export type MonthlyBudget = { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'monthly' }
-export type Budget = DailyBudget | MonthlyBudget
+export type LifetimeBudget = { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'lifetime'; readonly endTime: string }
+export type Budget = DailyBudget | MonthlyBudget | LifetimeBudget
 
 // === Keywords ===
 
@@ -104,7 +105,7 @@ export type UTMParams = {
 
 // === Diff Engine: Resource Model ===
 
-export type ResourceKind = 'campaign' | 'adGroup' | 'keyword' | 'ad' | 'sitelink' | 'callout' | 'negative'
+export type ResourceKind = 'campaign' | 'adGroup' | 'adSet' | 'keyword' | 'ad' | 'creative' | 'sitelink' | 'callout' | 'negative'
 
 export type Resource = {
   readonly kind: ResourceKind
@@ -151,6 +152,10 @@ export type GoogleProviderConfig = {
 
 export type MetaProviderConfig = {
   readonly accountId: string
+  readonly pageId: string
+  readonly pixelId?: string
+  readonly apiVersion?: string
+  readonly dsa?: { readonly beneficiary: string; readonly payor: string }
   readonly credentials?: string
 }
 

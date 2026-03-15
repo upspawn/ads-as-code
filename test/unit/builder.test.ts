@@ -618,7 +618,7 @@ describe('defineConfig()', () => {
 
   test('works with meta provider config', () => {
     const config = {
-      meta: { accountId: 'act_12345' },
+      meta: { accountId: 'act_12345', pageId: '772782699246452' },
     }
     const result = defineConfig(config)
     expect(result).toEqual(config)

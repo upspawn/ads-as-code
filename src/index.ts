@@ -8,6 +8,7 @@ export type {
   Budget,
   DailyBudget,
   MonthlyBudget,
+  LifetimeBudget,
   Keyword,
   ExactKeyword,
   PhraseKeyword,
