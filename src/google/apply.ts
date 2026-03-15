@@ -324,30 +324,39 @@ function buildDeleteOperation(
 ): MutateOperation | null {
   if (!resource.platformId) return null
 
+  // platformId may already be a full resource name (e.g., "customers/123/adGroupCriteria/456~789")
+  const id = resource.platformId
+
   switch (resource.kind) {
     case 'campaign':
       return {
         operation: 'campaign',
         op: 'remove',
-        resource: { resource_name: `customers/${customerId}/campaigns/${resource.platformId}` },
+        resource: { resource_name: resolveResourceName(customerId, 'campaigns', id) },
       }
     case 'adGroup':
       return {
         operation: 'ad_group',
         op: 'remove',
-        resource: { resource_name: `customers/${customerId}/adGroups/${resource.platformId}` },
+        resource: { resource_name: resolveResourceName(customerId, 'adGroups', id) },
       }
     case 'keyword':
       return {
         operation: 'ad_group_criterion',
         op: 'remove',
-        resource: { resource_name: `customers/${customerId}/adGroupCriteria/${resource.platformId}` },
+        resource: { resource_name: resolveResourceName(customerId, 'adGroupCriteria', id) },
       }
     case 'ad':
       return {
         operation: 'ad_group_ad',
         op: 'remove',
-        resource: { resource_name: `customers/${customerId}/adGroupAds/${resource.platformId}` },
+        resource: { resource_name: resolveResourceName(customerId, 'adGroupAds', id) },
+      }
+    case 'negative':
+      return {
+        operation: 'campaign_criterion',
+        op: 'remove',
+        resource: { resource_name: resolveResourceName(customerId, 'campaignCriteria', id) },
       }
     default:
       return null

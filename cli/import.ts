@@ -133,6 +133,7 @@ async function fetchAllCampaigns(
     SELECT
       campaign.name,
       ad_group.name,
+      ad_group_criterion.resource_name,
       ad_group_criterion.keyword.text,
       ad_group_criterion.keyword.match_type,
       ad_group_criterion.status
@@ -165,9 +166,12 @@ async function fetchAllCampaigns(
     const rawMatchType = keyword.match_type ?? keyword.matchType
     const matchType = MATCH_TYPE_MAP[rawMatchType as number | string] ?? 'BROAD'
 
+    const criterionResourceName = (criterion.resource_name ?? criterion.resourceName) as string | undefined
+
     entry.resources.push({
       kind: 'keyword',
       path: `${campaignPath}/${groupKey}/kw:${text.toLowerCase()}:${matchType}`,
+      platformId: criterionResourceName ?? undefined,
       properties: {
         text,
         matchType,
@@ -232,6 +236,7 @@ async function fetchAllCampaigns(
     SELECT
       campaign.name,
       campaign.status,
+      campaign_criterion.resource_name,
       campaign_criterion.keyword.text,
       campaign_criterion.keyword.match_type
     FROM campaign_criterion
@@ -252,10 +257,12 @@ async function fetchAllCampaigns(
     const text = keyword.text as string
     const rawMatchType = keyword.match_type ?? keyword.matchType
     const matchType = MATCH_TYPE_MAP[rawMatchType as number | string] ?? 'BROAD'
+    const negResourceName = (criterion.resource_name ?? criterion.resourceName) as string | undefined
 
     entry.resources.push({
       kind: 'negative',
       path: `${campaignPath}/neg:${text.toLowerCase()}:${matchType}`,
+      platformId: negResourceName ?? undefined,
       properties: {
         text,
         matchType,
@@ -642,6 +649,10 @@ export async function runImport(args: string[], flags: GlobalFlags) {
         const finalUrl = (r.properties.finalUrl as string) ?? ''
         const pathPrefix = r.path.split('/').slice(0, 2).join('/')
         platformIdByKey.set(`ad:${pathPrefix}:${headlines}:${descriptions}:${finalUrl}`, r.platformId)
+      } else if (r.kind === 'negative') {
+        const text = (r.properties.text as string)?.toLowerCase() ?? ''
+        const matchType = (r.properties.matchType as string) ?? ''
+        platformIdByKey.set(`negative:${r.path.split('/')[0]}:${text}:${matchType}`, r.platformId)
       } else if (r.kind === 'sitelink') {
         const text = (r.properties.text as string)?.toLowerCase() ?? ''
         platformIdByKey.set(`sitelink:${r.path.split('/')[0]}:${text}`, r.platformId)
@@ -679,6 +690,10 @@ export async function runImport(args: string[], flags: GlobalFlags) {
       const finalUrl = (r.properties.finalUrl as string) ?? ''
       const pathPrefix = r.path.split('/').slice(0, 2).join('/')
       platformId = platformIdByKey.get(`ad:${pathPrefix}:${headlines}:${descriptions}:${finalUrl}`) ?? null
+    } else if (r.kind === 'negative') {
+      const text = (r.properties.text as string)?.toLowerCase() ?? ''
+      const matchType = (r.properties.matchType as string) ?? ''
+      platformId = platformIdByKey.get(`negative:${r.path.split('/')[0]}:${text}:${matchType}`) ?? null
     } else if (r.kind === 'sitelink') {
       const text = (r.properties.text as string)?.toLowerCase() ?? ''
       platformId = platformIdByKey.get(`sitelink:${r.path.split('/')[0]}:${text}`) ?? null
