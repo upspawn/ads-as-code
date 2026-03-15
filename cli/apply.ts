@@ -276,6 +276,14 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
       }
     }
 
+    // Seed cache with platform IDs from live state — ensures apply can
+    // resolve parent IDs even if import didn't seed the cache properly
+    for (const r of actual) {
+      if (r.platformId) {
+        cache.setResource('default', r.path, r.platformId)
+      }
+    }
+
     // Get managed paths and platformId mapping from cache
     const resourceMap = cache.getResourceMap('default')
     const managedPaths = new Set(resourceMap.map(r => r.path))
