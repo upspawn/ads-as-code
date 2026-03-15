@@ -117,6 +117,7 @@ export type ImageAd = {
   readonly url?: string
   readonly urlParameters?: string
   readonly displayLink?: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 export type VideoAd = {
@@ -130,6 +131,7 @@ export type VideoAd = {
   readonly cta?: MetaCTA
   readonly url?: string
   readonly urlParameters?: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 export type CarouselCard = {
@@ -148,6 +150,7 @@ export type CarouselAd = {
   readonly cta?: MetaCTA
   readonly url?: string
   readonly endCard?: 'website' | 'none'
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 export type CollectionAd = {
@@ -158,12 +161,14 @@ export type CollectionAd = {
   readonly instantExperience: string
   readonly headline: string
   readonly primaryText: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 /** A boosted post — an existing page post promoted as an ad. No standard ad copy fields. */
 export type BoostedPostAd = {
   readonly format: 'boostedPost'
   readonly name?: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 export type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd | BoostedPostAd

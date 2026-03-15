@@ -79,10 +79,18 @@ export function deduplicateResourceSlugs(resources: Resource[]): Resource[] {
       const originalSlug = r.path.split('/')[0]!
       const newPath = activeRename + r.path.slice(originalSlug.length)
 
-      if (r.kind === 'ad' && typeof r.properties.creativePath === 'string') {
-        const cp = r.properties.creativePath as string
-        const newCreativePath = activeRename + cp.slice(originalSlug.length)
-        result.push({ ...r, path: newPath, properties: { ...r.properties, creativePath: newCreativePath } })
+      if (r.kind === 'ad') {
+        // Rewrite creativePath in both properties and meta — Google uses properties,
+        // Meta uses meta. Handle whichever is present.
+        const cpProp = r.properties.creativePath as string | undefined
+        const cpMeta = r.meta?.creativePath as string | undefined
+        const newProps = cpProp
+          ? { ...r.properties, creativePath: activeRename + cpProp.slice(originalSlug.length) }
+          : r.properties
+        const newMeta = cpMeta
+          ? { ...r.meta, creativePath: activeRename + cpMeta.slice(originalSlug.length) }
+          : r.meta
+        result.push({ ...r, path: newPath, properties: newProps, ...(newMeta ? { meta: newMeta } : {}) })
       } else {
         result.push({ ...r, path: newPath })
       }

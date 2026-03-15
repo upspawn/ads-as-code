@@ -341,6 +341,34 @@ type ProviderPlanResult = {
   campaignNames: Map<string, string>
 }
 
+/**
+ * Sort campaigns so that base files come before their dedup variants.
+ * ASCII sorts "foo-2.ts" before "foo.ts" because '-' < '.', but the
+ * dedup logic needs "foo.ts" (no suffix) first to assign the plain slug.
+ *
+ * Extracts the filename stem, separates the dedup suffix (e.g., "-2"),
+ * and sorts: first by stem, then by suffix number (0 for no suffix).
+ */
+function sortCampaignsByFile(campaigns: DiscoveredCampaign[]): DiscoveredCampaign[] {
+  return [...campaigns].sort((a, b) => {
+    const nameA = a.file.split('/').pop()?.replace(/\.ts$/, '') ?? ''
+    const nameB = b.file.split('/').pop()?.replace(/\.ts$/, '') ?? ''
+
+    // Extract dedup suffix: "retargeting-website-visitors-2" -> stem="retargeting-website-visitors", num=2
+    const matchA = nameA.match(/^(.+)-(\d+)$/)
+    const matchB = nameB.match(/^(.+)-(\d+)$/)
+
+    const stemA = matchA ? matchA[1]! : nameA
+    const stemB = matchB ? matchB[1]! : nameB
+    const numA = matchA ? parseInt(matchA[2]!, 10) : 0
+    const numB = matchB ? parseInt(matchB[2]!, 10) : 0
+
+    // Sort by stem first, then by suffix number (0 = no suffix = first)
+    const stemCmp = stemA.localeCompare(stemB)
+    return stemCmp !== 0 ? stemCmp : numA - numB
+  })
+}
+
 async function planForProvider(
   provider: string,
   campaigns: DiscoveredCampaign[],
@@ -349,12 +377,17 @@ async function planForProvider(
   _rootDir: string,
   cache: Cache,
 ): Promise<ProviderPlanResult> {
+  // 0. Sort campaigns so base files come before dedup variants (-2, -3, etc.)
+  //    This ensures the flatten-side dedup assigns the same suffixes as the
+  //    fetch side (which sorts by platform ID, and import writes base slug first).
+  const sortedCampaigns = sortCampaignsByFile(campaigns)
+
   // 1. Pre-process campaigns (provider-specific marker resolution)
   let campaignObjects: unknown[]
   if (provider === 'google') {
-    campaignObjects = await preprocessGoogle(campaigns)
+    campaignObjects = await preprocessGoogle(sortedCampaigns)
   } else {
-    campaignObjects = campaigns.map(c => c.campaign)
+    campaignObjects = sortedCampaigns.map(c => c.campaign)
   }
 
   // 2. Flatten desired state

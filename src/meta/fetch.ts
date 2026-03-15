@@ -430,10 +430,17 @@ export async function fetchMetaAll(config: MetaProviderConfig, client?: MetaClie
     metaClient.graphGetAll<MetaApiAd>(`${accountId}/ads`, { fields: AD_FIELDS }),
   ])
 
+  // Sort campaigns by ID before deduplicating — ensures deterministic slug
+  // assignment when multiple campaigns share the same name. The oldest campaign
+  // (lowest ID) gets the plain slug; newer duplicates get -2, -3, etc.
+  // This matches the flatten side where file discovery order (alphabetical)
+  // produces the same assignment: base file first, -2 file second.
+  const sortedCampaigns = [...rawCampaigns].sort((a, b) => a.id.localeCompare(b.id))
+
   // Normalize campaigns and build ID -> slug map, deduplicating collisions
   const slugCounts = new Map<string, number>()
   const campaignSlugs: CampaignSlugMap = new Map()
-  for (const c of rawCampaigns) {
+  for (const c of sortedCampaigns) {
     let slug = slugify(c.name)
     const count = slugCounts.get(slug) ?? 0
     slugCounts.set(slug, count + 1)

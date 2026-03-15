@@ -36,6 +36,7 @@ type ImageAdConfig = {
   readonly url?: string
   readonly urlParameters?: string
   readonly displayLink?: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 type VideoAdConfig = {
@@ -47,6 +48,7 @@ type VideoAdConfig = {
   readonly cta?: MetaCTA
   readonly url?: string
   readonly urlParameters?: string
+  readonly status?: 'ACTIVE' | 'PAUSED'
 }
 
 type CarouselAdConfig = {
@@ -90,6 +92,7 @@ export function image(filePath: string, config?: Partial<ImageAdConfig>): ImageA
     ...(config?.url !== undefined && { url: config.url }),
     ...(config?.urlParameters !== undefined && { urlParameters: config.urlParameters }),
     ...(config?.displayLink !== undefined && { displayLink: config.displayLink }),
+    ...(config?.status !== undefined && { status: config.status }),
   }
 }
 
@@ -124,6 +127,7 @@ export function video(filePath: string, config?: Partial<VideoAdConfig>): VideoA
     ...(config?.cta !== undefined && { cta: config.cta }),
     ...(config?.url !== undefined && { url: config.url }),
     ...(config?.urlParameters !== undefined && { urlParameters: config.urlParameters }),
+    ...(config?.status !== undefined && { status: config.status }),
   }
 }
 
