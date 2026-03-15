@@ -171,6 +171,12 @@ function extractGrpcErrorMessage(err: unknown): string {
 export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAdsClient> {
   const creds = await resolveCredentials(config)
 
+  // Suppress GCE metadata server detection — we're not running on Google Cloud.
+  // Without this, google-auth-library probes the metadata endpoint and emits a noisy warning.
+  if (!process.env['METADATA_SERVER_DETECTION']) {
+    process.env['METADATA_SERVER_DETECTION'] = 'none'
+  }
+
   // Dynamically import to avoid issues in test environments
   const { GoogleAdsApi } = await import('google-ads-api')
 
