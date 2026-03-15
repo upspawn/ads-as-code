@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { flatten, flattenAll, slugify } from '../../src/core/flatten.ts'
+import { slugify } from '../../src/core/flatten.ts'
+import { flatten, flattenAll } from '../../src/google/flatten.ts'
 import type { GoogleSearchCampaign } from '../../src/google/types.ts'
 import type { Headline, Description, CalloutText } from '../../src/core/types.ts'
 
