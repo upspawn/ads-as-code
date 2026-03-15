@@ -30,6 +30,17 @@ export type ProviderModule = {
 
   /** Generate TypeScript campaign file source from fetched Resource[]. */
   readonly codegen: (resources: Resource[], campaignName: string) => string
+
+  /**
+   * Optional post-fetch hook for import. Called after fetchAll, before codegen.
+   * Allows providers to download assets, transform resources, etc.
+   * Returns the (possibly modified) resources.
+   */
+  readonly postImportFetch?: (
+    resources: Resource[],
+    rootDir: string,
+    cache: Cache | null,
+  ) => Promise<{ resources: Resource[]; summary?: string }>
 }
 
 // ─── Provider Registry ─────────────────────────────────────

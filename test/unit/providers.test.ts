@@ -39,12 +39,13 @@ describe('getProvider()', () => {
     expect(typeof provider.codegen).toBe('function')
   })
 
-  test('meta stub methods throw "not implemented"', async () => {
+  test('meta stub methods throw "not implemented" (except codegen)', async () => {
     const provider = await getProvider('meta')
     expect(() => provider.flatten([])).toThrow('not implemented')
     await expect(provider.fetchAll({} as never, {} as never)).rejects.toThrow('not implemented')
     await expect(provider.applyChangeset({} as never, {} as never, {} as never, '')).rejects.toThrow('not implemented')
-    expect(() => provider.codegen([], '')).toThrow('not implemented')
+    // codegen is now implemented — delegates to codegenMeta
+    expect(typeof provider.codegen).toBe('function')
   })
 
   test('throws for unknown provider', async () => {
