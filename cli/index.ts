@@ -111,6 +111,7 @@ async function main() {
       await runStatus(process.cwd(), {
         json: flags.json,
         filter: getFlag(args, '--filter'),
+        provider: flags.provider,
       })
       break
     }
