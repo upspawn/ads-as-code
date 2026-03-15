@@ -1,6 +1,7 @@
 import type { Resource, ResourceKind, Budget } from '../core/types.ts'
 import { slugify } from '../core/flatten.ts'
 import { DEFAULT_OPTIMIZATION, OBJECTIVE_MAP } from './constants.ts'
+import type { MetaCampaign } from './index.ts'
 import type {
   Objective,
   BidStrategy,
@@ -17,25 +18,6 @@ import type {
   PromotedObject,
   SpecialAdCategory,
 } from './types.ts'
-
-// ─── MetaCampaign ─────────────────────────────────────────
-// The shape produced by the builder's `.build()` (Task 7).
-// Defined here until the builder is implemented, at which point
-// this type should move to or be re-exported from `src/meta/index.ts`.
-
-export type MetaAdSet<T extends Objective = Objective> = {
-  readonly name: string
-  readonly config: AdSetConfig<T>
-  readonly content: AdSetContent
-}
-
-export type MetaCampaign<T extends Objective = Objective> = {
-  readonly provider: 'meta'
-  readonly kind: T
-  readonly name: string
-  readonly config: MetaCampaignConfig
-  readonly adSets: readonly MetaAdSet<T>[]
-}
 
 // ─── Helpers ──────────────────────────────────────────────
 
