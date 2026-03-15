@@ -289,6 +289,79 @@ describe('fetchMetaAll() ad set normalization', () => {
     const adSet = resources.find(r => r.kind === 'adSet')!
     expect(adSet.properties.bidding).toEqual({ type: 'LOWEST_COST_WITHOUT_CAP' })
   })
+
+  test('captures behaviors and demographics from flexible_spec', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet({
+        targeting: {
+          geo_locations: { countries: ['US'] },
+          flexible_spec: [
+            {
+              behaviors: [{ id: '123', name: 'Small Business Owners' }],
+              demographics: [{ id: '456', name: 'College Educated' }],
+            },
+          ],
+        },
+      })],
+      ads: [],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const adSet = resources.find(r => r.kind === 'adSet')!
+    const targeting = adSet.properties.targeting as Record<string, unknown>
+
+    expect(targeting.behaviors).toEqual([{ id: '123', name: 'Small Business Owners' }])
+    expect(targeting.demographics).toEqual([{ id: '456', name: 'College Educated' }])
+  })
+
+  test('captures genders, locales, and connections', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet({
+        targeting: {
+          geo_locations: { countries: ['US'] },
+          genders: [2],
+          locales: [6, 24],
+          connections: [{ id: 'page_123' }],
+          excluded_connections: [{ id: 'page_456' }],
+        },
+      })],
+      ads: [],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const adSet = resources.find(r => r.kind === 'adSet')!
+    const targeting = adSet.properties.targeting as Record<string, unknown>
+
+    expect(targeting.genders).toEqual(['female'])
+    expect(targeting.locales).toEqual([6, 24])
+    expect(targeting.connections).toEqual([{ type: 'page', id: 'page_123' }])
+    expect(targeting.excludedConnections).toEqual([{ type: 'page', id: 'page_456' }])
+  })
+
+  test('captures excluded interests and behaviors from exclusions', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet({
+        targeting: {
+          geo_locations: { countries: ['US'] },
+          exclusions: {
+            interests: [{ id: '111', name: 'Competitors' }],
+            behaviors: [{ id: '222', name: 'Budget Shoppers' }],
+          },
+        },
+      })],
+      ads: [],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const adSet = resources.find(r => r.kind === 'adSet')!
+    const targeting = adSet.properties.targeting as Record<string, unknown>
+
+    expect(targeting.excludedInterests).toEqual([{ id: '111', name: 'Competitors' }])
+    expect(targeting.excludedBehaviors).toEqual([{ id: '222', name: 'Budget Shoppers' }])
+  })
 })
 
 // ─── Ad + Creative Normalization ────────────────────────────

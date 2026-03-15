@@ -242,6 +242,75 @@ function formatMetaTargeting(targeting: Record<string, unknown>, imports: Set<st
     }
   }
 
+  // Behaviors
+  const behaviors = targeting.behaviors as Array<{ id: string; name: string }> | undefined
+  if (behaviors && behaviors.length > 0) {
+    const args = behaviors.map((b) => `{ id: ${quote(b.id)}, name: ${quote(b.name)} }`)
+    parts.push(`behaviors: [${args.join(', ')}]`)
+  }
+
+  // Demographics
+  const demographics = targeting.demographics as Array<{ id: string; name: string }> | undefined
+  if (demographics && demographics.length > 0) {
+    const args = demographics.map((d) => `{ id: ${quote(d.id)}, name: ${quote(d.name)} }`)
+    parts.push(`demographics: [${args.join(', ')}]`)
+  }
+
+  // Excluded interests
+  const excludedInterests = targeting.excludedInterests as Array<{ id: string; name: string }> | undefined
+  if (excludedInterests && excludedInterests.length > 0) {
+    const args = excludedInterests.map((i) => `{ id: ${quote(i.id)}, name: ${quote(i.name)} }`)
+    parts.push(`excludedInterests: [${args.join(', ')}]`)
+  }
+
+  // Excluded behaviors
+  const excludedBehaviors = targeting.excludedBehaviors as Array<{ id: string; name: string }> | undefined
+  if (excludedBehaviors && excludedBehaviors.length > 0) {
+    const args = excludedBehaviors.map((b) => `{ id: ${quote(b.id)}, name: ${quote(b.name)} }`)
+    parts.push(`excludedBehaviors: [${args.join(', ')}]`)
+  }
+
+  // Genders
+  const genders = targeting.genders as string[] | undefined
+  if (genders && genders.length > 0) {
+    parts.push(`genders: [${genders.map(quote).join(', ')}]`)
+  }
+
+  // Locales
+  const locales = targeting.locales as number[] | undefined
+  if (locales && locales.length > 0) {
+    parts.push(`locales: [${locales.join(', ')}]`)
+  }
+
+  // Connections
+  const connections = targeting.connections as Array<{ type: string; id: string }> | undefined
+  if (connections && connections.length > 0) {
+    const args = connections.map((c) => `{ type: ${quote(c.type)}, id: ${quote(c.id)} }`)
+    parts.push(`connections: [${args.join(', ')}]`)
+  }
+
+  // Excluded connections
+  const excludedConnections = targeting.excludedConnections as Array<{ type: string; id: string }> | undefined
+  if (excludedConnections && excludedConnections.length > 0) {
+    const args = excludedConnections.map((c) => `{ type: ${quote(c.type)}, id: ${quote(c.id)} }`)
+    parts.push(`excludedConnections: [${args.join(', ')}]`)
+  }
+
+  // Friends of connections
+  const friendsOfConnections = targeting.friendsOfConnections as Array<{ type: string; id: string }> | undefined
+  if (friendsOfConnections && friendsOfConnections.length > 0) {
+    const args = friendsOfConnections.map((c) => `{ type: ${quote(c.type)}, id: ${quote(c.id)} }`)
+    parts.push(`friendsOfConnections: [${args.join(', ')}]`)
+  }
+
+  // Advantage+ flags
+  if (targeting.advantageAudience === true) {
+    parts.push(`advantageAudience: true`)
+  }
+  if (targeting.advantageDetailedTargeting === true) {
+    parts.push(`advantageDetailedTargeting: true`)
+  }
+
   if (parts.length === 0) {
     // Fallback: at least geo is required
     imports.add('geo')

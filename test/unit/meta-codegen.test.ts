@@ -672,4 +672,86 @@ describe('codegenMeta', () => {
     expect(importLine).toContain('audience')
     expect(importLine).toContain('excludeAudience')
   })
+
+  test('behaviors and demographics in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          behaviors: [{ id: '123', name: 'Small Business Owners' }],
+          demographics: [{ id: '456', name: 'College Educated' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("behaviors: [{ id: '123', name: 'Small Business Owners' }]")
+    expect(code).toContain("demographics: [{ id: '456', name: 'College Educated' }]")
+  })
+
+  test('genders, locales, and advantage flags in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          genders: ['female'],
+          locales: [6, 24],
+          advantageAudience: true,
+          advantageDetailedTargeting: true,
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("genders: ['female']")
+    expect(code).toContain('locales: [6, 24]')
+    expect(code).toContain('advantageAudience: true')
+    expect(code).toContain('advantageDetailedTargeting: true')
+  })
+
+  test('connections and excluded connections in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          connections: [{ type: 'page', id: 'page_123' }],
+          excludedConnections: [{ type: 'page', id: 'page_456' }],
+          friendsOfConnections: [{ type: 'page', id: 'page_789' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("connections: [{ type: 'page', id: 'page_123' }]")
+    expect(code).toContain("excludedConnections: [{ type: 'page', id: 'page_456' }]")
+    expect(code).toContain("friendsOfConnections: [{ type: 'page', id: 'page_789' }]")
+  })
+
+  test('excluded interests and behaviors in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          excludedInterests: [{ id: '111', name: 'Competitors' }],
+          excludedBehaviors: [{ id: '222', name: 'Budget Shoppers' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("excludedInterests: [{ id: '111', name: 'Competitors' }]")
+    expect(code).toContain("excludedBehaviors: [{ id: '222', name: 'Budget Shoppers' }]")
+  })
 })

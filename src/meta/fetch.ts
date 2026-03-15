@@ -253,6 +253,87 @@ function normalizeTargeting(raw: Record<string, unknown>): Record<string, unknow
     if (allInterests.length > 0) {
       targeting.interests = allInterests
     }
+
+    // Behaviors (from flexible_spec)
+    const allBehaviors: Array<{ id: string; name: string }> = []
+    for (const spec of flexibleSpec) {
+      const behaviors = spec.behaviors as Array<{ id: string; name: string }> | undefined
+      if (behaviors) allBehaviors.push(...behaviors)
+    }
+    if (allBehaviors.length > 0) {
+      targeting.behaviors = allBehaviors
+    }
+
+    // Demographics (from flexible_spec)
+    const allDemographics: Array<{ id: string; name: string }> = []
+    for (const spec of flexibleSpec) {
+      const demographics = spec.demographics as Array<{ id: string; name: string }> | undefined
+      if (demographics) allDemographics.push(...demographics)
+    }
+    if (allDemographics.length > 0) {
+      targeting.demographics = allDemographics
+    }
+  }
+
+  // Exclusions (from exclusions spec — separate from flexible_spec)
+  const exclusions = raw.exclusions as Record<string, unknown> | undefined
+  if (exclusions) {
+    const excludedInterests = exclusions.interests as Array<{ id: string; name: string }> | undefined
+    if (excludedInterests && excludedInterests.length > 0) {
+      targeting.excludedInterests = excludedInterests
+    }
+    const excludedBehaviors = exclusions.behaviors as Array<{ id: string; name: string }> | undefined
+    if (excludedBehaviors && excludedBehaviors.length > 0) {
+      targeting.excludedBehaviors = excludedBehaviors
+    }
+  }
+
+  // Genders (Meta API: 1=male, 2=female; absence or [0]=all)
+  const genders = raw.genders as number[] | undefined
+  if (genders && genders.length > 0) {
+    const mapped = genders.map((g) => g === 1 ? 'male' as const : g === 2 ? 'female' as const : 'all' as const)
+    if (!mapped.includes('all')) {
+      targeting.genders = mapped
+    }
+  }
+
+  // Locales
+  const locales = raw.locales as number[] | undefined
+  if (locales && locales.length > 0) {
+    targeting.locales = locales
+  }
+
+  // Connections
+  const connections = raw.connections as Array<{ id: string }> | undefined
+  if (connections && connections.length > 0) {
+    targeting.connections = connections.map((c) => ({ type: 'page' as const, id: c.id }))
+  }
+
+  // Excluded connections
+  const excludedConnections = raw.excluded_connections as Array<{ id: string }> | undefined
+  if (excludedConnections && excludedConnections.length > 0) {
+    targeting.excludedConnections = excludedConnections.map((c) => ({ type: 'page' as const, id: c.id }))
+  }
+
+  // Friends of connections
+  const friendsOfConnections = raw.friends_of_connections as Array<{ id: string }> | undefined
+  if (friendsOfConnections && friendsOfConnections.length > 0) {
+    targeting.friendsOfConnections = friendsOfConnections.map((c) => ({ type: 'page' as const, id: c.id }))
+  }
+
+  // Advantage+ audience expansion
+  const targetingOptimization = raw.targeting_optimization as string | undefined
+  if (targetingOptimization === 'expansion_all') {
+    targeting.advantageAudience = true
+  }
+
+  // Advantage+ detailed targeting
+  const targetingRelaxation = raw.targeting_relaxation as Record<string, unknown> | undefined
+  if (targetingRelaxation) {
+    const lookalikeExpansion = targetingRelaxation.lookalike as number | undefined
+    if (lookalikeExpansion === 1) {
+      targeting.advantageDetailedTargeting = true
+    }
   }
 
   return targeting
