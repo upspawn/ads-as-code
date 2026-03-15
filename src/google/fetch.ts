@@ -194,6 +194,7 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
   const channelType = channelTypeStr === 'DISPLAY' ? 'display'
     : channelTypeStr === 'PERFORMANCE_MAX' ? 'performance-max'
     : channelTypeStr === 'SHOPPING' ? 'shopping'
+    : channelTypeStr === 'DEMAND_GEN' ? 'demand-gen'
     : undefined // Search and other types don't set channelType (preserves existing behavior)
 
   // Network settings: support both snake_case (gRPC) and camelCase (REST)
@@ -560,6 +561,154 @@ export function normalizeDisplayAdRow(row: GoogleAdsRow): Resource {
     ...(callToAction ? { callToAction } : {}),
   }, adId)
 }
+
+// ─── Demand Gen Ad Fetcher ───────────────────────────────────
+
+const DEMAND_GEN_AD_QUERY = `
+SELECT
+  ad_group_ad.ad.id,
+  ad_group_ad.ad.type,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.headlines,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.descriptions,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.business_name,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.call_to_action_text,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.marketing_images,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.square_marketing_images,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.portrait_marketing_images,
+  ad_group_ad.ad.demand_gen_multi_asset_ad.logo_images,
+  ad_group_ad.ad.demand_gen_carousel_ad.headline,
+  ad_group_ad.ad.demand_gen_carousel_ad.description,
+  ad_group_ad.ad.demand_gen_carousel_ad.business_name,
+  ad_group_ad.ad.demand_gen_carousel_ad.call_to_action_text,
+  ad_group_ad.ad.demand_gen_carousel_ad.logo_image,
+  ad_group_ad.ad.demand_gen_carousel_ad.carousel_cards,
+  ad_group_ad.ad.final_urls,
+  ad_group_ad.status,
+  ad_group.id,
+  ad_group.name,
+  campaign.id,
+  campaign.name
+FROM ad_group_ad
+WHERE ad_group_ad.ad.type IN ('DEMAND_GEN_MULTI_ASSET_AD', 'DEMAND_GEN_CAROUSEL_AD')
+  AND ad_group_ad.status != 'REMOVED'
+`.trim()
+
+export async function fetchDemandGenAds(
+  client: GoogleAdsClient,
+  adGroupIds?: string[],
+): Promise<Resource[]> {
+  let query = DEMAND_GEN_AD_QUERY
+  if (adGroupIds?.length) {
+    query += `\n  AND ad_group.id IN (${adGroupIds.join(', ')})`
+  }
+  const rows = await client.query(query)
+  return rows.map(normalizeDemandGenAdRow)
+}
+
+export function normalizeDemandGenAdRow(row: GoogleAdsRow): Resource {
+  const adGroupAd = (row.ad_group_ad ?? row.adGroupAd) as Record<string, unknown> | undefined
+  const ad = adGroupAd?.ad as Record<string, unknown> | undefined
+  const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
+  const campaign = row.campaign as Record<string, unknown> | undefined
+
+  const adId = str(ad?.id)
+  const adType = resolveEnum(ad?.type, { 39: 'DEMAND_GEN_MULTI_ASSET_AD', 40: 'DEMAND_GEN_CAROUSEL_AD' })
+  const adStatus = mapStatus(adGroupAd?.status)
+  const finalUrls = (ad?.final_urls ?? ad?.finalUrls ?? []) as string[]
+  const finalUrl = finalUrls[0] ?? ''
+
+  const adGroupName = str(adGroup?.name)
+  const campaignName = str(campaign?.name)
+  const campaignPath = slugify(campaignName)
+  const groupSlug = slugify(adGroupName)
+
+  if (adType === 'DEMAND_GEN_MULTI_ASSET_AD') {
+    const dgma = (ad?.demand_gen_multi_asset_ad ?? ad?.demandGenMultiAssetAd) as Record<string, unknown> | undefined
+
+    const headlineAssets = (dgma?.headlines ?? []) as Array<{ text: string }>
+    const headlines = headlineAssets.map(h => h.text)
+    const descriptionAssets = (dgma?.descriptions ?? []) as Array<{ text: string }>
+    const descriptions = descriptionAssets.map(d => d.text)
+    const businessName = str(dgma?.business_name ?? dgma?.businessName)
+    const callToAction = str(dgma?.call_to_action_text ?? dgma?.callToActionText) || undefined
+
+    const marketingImageRefs = (dgma?.marketing_images ?? dgma?.marketingImages ?? []) as Array<{ asset: string }>
+    const squareMarketingImageRefs = (dgma?.square_marketing_images ?? dgma?.squareMarketingImages ?? []) as Array<{ asset: string }>
+    const portraitMarketingImageRefs = (dgma?.portrait_marketing_images ?? dgma?.portraitMarketingImages ?? []) as Array<{ asset: string }>
+    const logoImageRefs = (dgma?.logo_images ?? dgma?.logoImages ?? []) as Array<{ asset: string }>
+
+    const properties: Record<string, unknown> = {
+      type: 'demand-gen-multi-asset',
+      headlines,
+      descriptions,
+      businessName,
+      finalUrl,
+      ...(adStatus !== 'enabled' ? { status: adStatus } : {}),
+      ...(marketingImageRefs.length > 0 ? { marketingImages: marketingImageRefs.map(i => i.asset) } : {}),
+      ...(squareMarketingImageRefs.length > 0 ? { squareMarketingImages: squareMarketingImageRefs.map(i => i.asset) } : {}),
+      ...(portraitMarketingImageRefs.length > 0 ? { portraitMarketingImages: portraitMarketingImageRefs.map(i => i.asset) } : {}),
+      ...(logoImageRefs.length > 0 ? { logoImages: logoImageRefs.map(i => i.asset) } : {}),
+      ...(callToAction ? { callToAction } : {}),
+    }
+
+    // Stable hash matching flattenDemandGen
+    const h = Bun.hash(JSON.stringify(properties))
+    const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
+    return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, adId)
+  }
+
+  // Carousel ad
+  const dgca = (ad?.demand_gen_carousel_ad ?? ad?.demandGenCarouselAd) as Record<string, unknown> | undefined
+  const headlineObj = (dgca?.headline ?? {}) as { text: string }
+  const descriptionObj = (dgca?.description ?? {}) as { text: string }
+  const businessName = str(dgca?.business_name ?? dgca?.businessName)
+  const callToAction = str(dgca?.call_to_action_text ?? dgca?.callToActionText) || undefined
+  const logoImage = dgca?.logo_image ?? dgca?.logoImage
+  const carouselCards = (dgca?.carousel_cards ?? dgca?.carouselCards ?? []) as Array<Record<string, unknown>>
+
+  const cards = carouselCards.map(card => ({
+    headline: (card.headline as { text: string })?.text ?? '',
+    finalUrl: str(card.final_url ?? card.finalUrl),
+    ...(card.call_to_action_text ?? card.callToActionText ? { callToAction: str(card.call_to_action_text ?? card.callToActionText) } : {}),
+    ...(card.marketing_image ?? card.marketingImage ? { marketingImage: card.marketing_image ?? card.marketingImage } : {}),
+    ...(card.square_marketing_image ?? card.squareMarketingImage ? { squareMarketingImage: card.square_marketing_image ?? card.squareMarketingImage } : {}),
+  }))
+
+  const properties: Record<string, unknown> = {
+    type: 'demand-gen-carousel',
+    headline: headlineObj.text ?? '',
+    description: descriptionObj.text ?? '',
+    businessName,
+    finalUrl,
+    cards,
+    ...(adStatus !== 'enabled' ? { status: adStatus } : {}),
+    ...(callToAction ? { callToAction } : {}),
+    ...(logoImage ? { logoImage } : {}),
+  }
+
+  const h = Bun.hash(JSON.stringify(properties))
+  const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
+  return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, adId)
+}
+
+// ─── Demand Gen Channel Controls Fetcher ────────────────────
+
+const DEMAND_GEN_CHANNEL_CONTROLS_QUERY = `
+SELECT
+  ad_group.id,
+  ad_group.name,
+  campaign.id,
+  campaign.name
+FROM ad_group
+WHERE campaign.advertising_channel_type = 'DEMAND_GEN'
+  AND ad_group.status != 'REMOVED'
+`.trim()
+
+// Note: Channel controls are part of the ad_group resource but currently
+// not directly fetchable via GAQL. They'll be available when the API
+// exposes demand_gen_ad_group_settings. For now, ad groups are created
+// with channel controls via apply, and the fetch returns the ad group
+// without channel data (which will show as a no-op in plan).
 
 // ─── Asset Group Fetcher (PMax) ──────────────────────────────
 
@@ -1338,11 +1487,12 @@ export async function fetchAllState(
     : []
   const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-  // Step 3: Keywords + ads + display ads + asset groups — can run in parallel
-  const [keywords, ads, displayAds, assetGroupData] = await Promise.all([
+  // Step 3: Keywords + ads + display ads + demand gen ads + asset groups — can run in parallel
+  const [keywords, ads, displayAds, demandGenAds, assetGroupData] = await Promise.all([
     adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
+    adGroupIds.length > 0 ? fetchDemandGenAds(client, adGroupIds) : Promise.resolve([]),
     pmaxCampaignIds.length > 0 ? fetchAssetGroups(client, pmaxCampaignIds) : Promise.resolve({ groups: [], assets: [] }),
   ])
 
@@ -1382,7 +1532,7 @@ export async function fetchAllState(
   // Merge audience targeting into ad group resources
   const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
+  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...demandGenAds, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -1420,10 +1570,11 @@ export async function fetchKnownState(
       : []
     const adGroupIds = adGroups.map(ag => ag.platformId!).filter(Boolean)
 
-    const [keywords, ads, displayAds, assetGroupData] = await Promise.all([
+    const [keywords, ads, displayAds, demandGenAds, assetGroupData] = await Promise.all([
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchDisplayAds(client, adGroupIds) : Promise.resolve([]),
+      adGroupIds.length > 0 ? fetchDemandGenAds(client, adGroupIds) : Promise.resolve([]),
       pmaxIds.length > 0 ? fetchAssetGroups(client, pmaxIds) : Promise.resolve({ groups: [], assets: [] }),
     ])
 
@@ -1458,7 +1609,7 @@ export async function fetchKnownState(
     const campaignsWithDemographics = mergeDemographicsIntoCampaigns(campaignsWithDevices, demographicMap)
     const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...extensions, ...negatives]
+    return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...demandGenAds, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything

@@ -138,11 +138,12 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
-  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 10=PERFORMANCE_MAX
+  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 10=PERFORMANCE_MAX, 14=DEMAND_GEN
   const channelTypeStr = props.channelType as string | undefined
   const channelType = channelTypeStr === 'display' ? 3
     : channelTypeStr === 'shopping' ? 4
     : channelTypeStr === 'performance-max' ? 10
+    : channelTypeStr === 'demand-gen' ? 14
     : 2
 
   const campaign: Record<string, unknown> = {
@@ -398,6 +399,7 @@ function buildAdGroupCreate(
   const adGroupName = parts[1] ?? resource.path
 
   // Ad group type: 2=SEARCH_STANDARD, 5=SHOPPING_PRODUCT_ADS, 7=DISPLAY_STANDARD
+  // Note: Demand Gen uses the default type (the API infers from campaign channel type)
   const adGroupTypeStr = props.adGroupType as string | undefined
   const adGroupType = adGroupTypeStr === 'display' ? 7
     : adGroupTypeStr === 'shopping' ? 5
@@ -415,6 +417,23 @@ function buildAdGroupCreate(
   const bid = props.bid as number | undefined
   if (bid !== undefined) {
     adGroupResource.cpc_bid_micros = String(toMicros(bid))
+  }
+
+  // Demand Gen channel controls
+  const channels = props.channels as Record<string, boolean> | undefined
+  if (channels) {
+    adGroupResource.demand_gen_ad_group_settings = {
+      channel_controls: {
+        selected_channels: {
+          gmail: channels.gmail ?? true,
+          discover: channels.discover ?? true,
+          display: channels.display ?? true,
+          youtube_in_feed: channels.youtube ?? true,
+          youtube_in_stream: channels.youtube ?? true,
+          youtube_shorts: channels.youtubeShorts ?? true,
+        },
+      },
+    }
   }
 
   return {
@@ -480,6 +499,14 @@ function buildAdCreate(
   // Dispatch to RDA builder if this is a responsive display ad
   if (props.adType === 'responsive-display') {
     return buildResponsiveDisplayAdCreate(adGroupResourceName, resource)
+  }
+
+  // Dispatch to Demand Gen ad builders
+  if (props.type === 'demand-gen-multi-asset') {
+    return buildDemandGenMultiAssetAdCreate(adGroupResourceName, resource)
+  }
+  if (props.type === 'demand-gen-carousel') {
+    return buildDemandGenCarouselAdCreate(adGroupResourceName, resource)
   }
 
   // Build headline assets with optional pinning
@@ -557,6 +584,83 @@ function buildResponsiveDisplayAdCreate(
           ...(mainColor ? { main_color: mainColor } : {}),
           ...(accentColor ? { accent_color: accentColor } : {}),
           ...(callToAction ? { call_to_action_text: callToAction } : {}),
+        },
+        final_urls: [props.finalUrl],
+      },
+    },
+  }
+}
+
+// ─── Demand Gen Ad Builders ─────────────────────────────────
+
+function buildDemandGenMultiAssetAdCreate(
+  adGroupResourceName: string,
+  resource: Resource,
+): MutateOperation {
+  const props = resource.properties
+  const adStatus = (props.status as string) === 'paused' ? 3 : 2
+
+  const headlines = (props.headlines as string[]).map(text => ({ text }))
+  const descriptions = (props.descriptions as string[]).map(text => ({ text }))
+
+  // Image asset references — stored as resource name strings or ImageRef objects
+  const marketingImages = props.marketingImages as unknown[] | undefined
+  const squareMarketingImages = props.squareMarketingImages as unknown[] | undefined
+  const portraitMarketingImages = props.portraitMarketingImages as unknown[] | undefined
+  const logoImages = props.logoImages as unknown[] | undefined
+
+  return {
+    operation: 'ad_group_ad',
+    op: 'create',
+    resource: {
+      ad_group: adGroupResourceName,
+      status: adStatus,
+      ad: {
+        demand_gen_multi_asset_ad: {
+          headlines,
+          descriptions,
+          business_name: props.businessName as string,
+          ...(marketingImages ? { marketing_images: marketingImages } : {}),
+          ...(squareMarketingImages ? { square_marketing_images: squareMarketingImages } : {}),
+          ...(portraitMarketingImages ? { portrait_marketing_images: portraitMarketingImages } : {}),
+          ...(logoImages ? { logo_images: logoImages } : {}),
+          ...(props.callToAction ? { call_to_action_text: props.callToAction } : {}),
+        },
+        final_urls: [props.finalUrl],
+      },
+    },
+  }
+}
+
+function buildDemandGenCarouselAdCreate(
+  adGroupResourceName: string,
+  resource: Resource,
+): MutateOperation {
+  const props = resource.properties
+  const adStatus = (props.status as string) === 'paused' ? 3 : 2
+
+  const cards = (props.cards as Array<Record<string, unknown>>).map(card => ({
+    headline: { text: card.headline as string },
+    ...(card.callToAction ? { call_to_action_text: card.callToAction } : {}),
+    final_url: card.finalUrl as string,
+    ...(card.marketingImage ? { marketing_image: card.marketingImage } : {}),
+    ...(card.squareMarketingImage ? { square_marketing_image: card.squareMarketingImage } : {}),
+  }))
+
+  return {
+    operation: 'ad_group_ad',
+    op: 'create',
+    resource: {
+      ad_group: adGroupResourceName,
+      status: adStatus,
+      ad: {
+        demand_gen_carousel_ad: {
+          headline: { text: props.headline as string },
+          description: { text: props.description as string },
+          business_name: props.businessName as string,
+          ...(props.logoImage ? { logo_image: props.logoImage } : {}),
+          ...(props.callToAction ? { call_to_action_text: props.callToAction } : {}),
+          carousel_cards: cards,
         },
         final_urls: [props.finalUrl],
       },
