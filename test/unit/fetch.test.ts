@@ -140,6 +140,18 @@ describe('fetchCampaigns', () => {
   })
 })
 
+// ─── campaign normalization — budgetResourceName isolation ──
+
+describe('campaign normalization — budgetResourceName isolation', () => {
+  test('budgetResourceName is in meta, not properties', async () => {
+    const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+    const campaign = resources[0]!
+    expect(campaign.properties.budgetResourceName).toBeUndefined()
+    expect(campaign.meta?.budgetResourceName).toBeDefined()
+  })
+})
+
 // ─── fetchAdGroups ──────────────────────────────────────────
 
 describe('fetchAdGroups', () => {

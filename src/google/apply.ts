@@ -531,10 +531,7 @@ function buildUpdateOperations(
         if (newBudget) {
           // Get budget resource name from the budgetResourceName change (from=actual value)
           // or from the resource properties (if available from fetched state)
-          const brnChange = change.changes.find(c => c.field === 'budgetResourceName')
-          const budgetResourceName = (brnChange?.from as string)
-            ?? (resource.properties.budgetResourceName as string)
-            ?? undefined
+          const budgetResourceName = (resource.meta?.budgetResourceName as string) ?? undefined
           if (budgetResourceName && typeof budgetResourceName === 'string' && budgetResourceName.startsWith('customers/')) {
             ops.push({
               operation: 'campaign_budget',

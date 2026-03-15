@@ -176,14 +176,15 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     displayNetwork: (networkSettingsRaw.target_content_network ?? networkSettingsRaw.targetContentNetwork) === true,
   } : undefined
 
-  return resource('campaign', path, {
+  const props: Record<string, unknown> = {
     name,
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
-    ...(budgetResourceName ? { budgetResourceName } : {}),
     ...(networkSettings ? { networkSettings } : {}),
-  }, id)
+  }
+  const meta = budgetResourceName ? { budgetResourceName } : undefined
+  return { kind: 'campaign' as const, path, properties: props, ...(meta ? { meta } : {}), ...(id ? { platformId: id } : {}) }
 }
 
 // ─── Ad Group Fetcher ───────────────────────────────────────
