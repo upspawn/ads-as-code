@@ -123,7 +123,7 @@ export class Cache {
         `INSERT INTO resource_map (project, path, platformId, kind, managedBy, lastSeen)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(project, path) DO UPDATE SET
-           platformId = excluded.platformId,
+           platformId = COALESCE(excluded.platformId, resource_map.platformId),
            kind = excluded.kind,
            managedBy = excluded.managedBy,
            lastSeen = excluded.lastSeen`,

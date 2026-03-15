@@ -432,8 +432,11 @@ function formatCreative(
 
   // Default: image
   imports.add('image')
-  // Image path: prefer meta.imagePath (from flatten), fall back to properties (legacy), then derive
-  const imagePath = (meta.imagePath as string) || (props.image as string) || `./assets/imported/${slugify(name || 'image')}.png`
+  // Image reference: prefer hash (already-uploaded), then local path, then derive from name
+  const imageHash = meta.imageHash as string | undefined
+  const imagePath = imageHash
+    ? `hash:${imageHash}`
+    : (meta.imagePath as string) || (props.image as string) || `./assets/imported/${slugify(name || 'image')}.png`
   if (parts.length === 0) return `image(${quote(imagePath)})`
   return `image(${quote(imagePath)}, {\n      ${parts.join(',\n      ')},\n    })`
 }

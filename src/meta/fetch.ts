@@ -241,40 +241,38 @@ function normalizeTargeting(raw: Record<string, unknown>): Record<string, unknow
     targeting.excludedAudiences = excludedAudiences.map((a) => a.name)
   }
 
-  // Interests (from flexible_spec)
+  // Interests — check both flexible_spec (canonical) and top-level (legacy/direct).
+  // Meta stores interests in flexible_spec when sent there, but at top-level when
+  // sent directly in the targeting spec.
   const flexibleSpec = raw.flexible_spec as Array<Record<string, unknown>> | undefined
+  const allInterests: Array<{ id: string; name: string }> = []
+  const allBehaviors: Array<{ id: string; name: string }> = []
+  const allDemographics: Array<{ id: string; name: string }> = []
+
   if (flexibleSpec) {
-    const allInterests: Array<{ id: string; name: string }> = []
     for (const spec of flexibleSpec) {
       const interests = spec.interests as Array<{ id: string; name: string }> | undefined
-      if (interests) {
-        allInterests.push(...interests)
-      }
-    }
-    if (allInterests.length > 0) {
-      targeting.interests = allInterests
-    }
-
-    // Behaviors (from flexible_spec)
-    const allBehaviors: Array<{ id: string; name: string }> = []
-    for (const spec of flexibleSpec) {
+      if (interests) allInterests.push(...interests)
       const behaviors = spec.behaviors as Array<{ id: string; name: string }> | undefined
       if (behaviors) allBehaviors.push(...behaviors)
-    }
-    if (allBehaviors.length > 0) {
-      targeting.behaviors = allBehaviors
-    }
-
-    // Demographics (from flexible_spec)
-    const allDemographics: Array<{ id: string; name: string }> = []
-    for (const spec of flexibleSpec) {
       const demographics = spec.demographics as Array<{ id: string; name: string }> | undefined
       if (demographics) allDemographics.push(...demographics)
     }
-    if (allDemographics.length > 0) {
-      targeting.demographics = allDemographics
-    }
   }
+
+  // Top-level interests/behaviors (when sent directly, not via flexible_spec)
+  const topInterests = raw.interests as Array<{ id: string; name: string }> | undefined
+  if (topInterests && allInterests.length === 0) {
+    allInterests.push(...topInterests)
+  }
+  const topBehaviors = raw.behaviors as Array<{ id: string; name: string }> | undefined
+  if (topBehaviors && allBehaviors.length === 0) {
+    allBehaviors.push(...topBehaviors)
+  }
+
+  if (allInterests.length > 0) targeting.interests = allInterests
+  if (allBehaviors.length > 0) targeting.behaviors = allBehaviors
+  if (allDemographics.length > 0) targeting.demographics = allDemographics
 
   // Exclusions (from exclusions spec — separate from flexible_spec)
   const exclusions = raw.exclusions as Record<string, unknown> | undefined
@@ -396,8 +394,23 @@ function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap, curre
     properties.budget = centsToBudget(raw.daily_budget, 'daily', currency)
   }
 
-  // billingEvent and promotedObject are API-only fields that the SDK
-  // doesn't model — omit them for clean roundtripping
+  // billingEvent is API-only — omit for clean roundtripping.
+  // promotedObject is needed for conversion campaign roundtripping.
+  if (raw.promoted_object) {
+    const po = raw.promoted_object as Record<string, unknown>
+    const pixelId = po.pixel_id as string | undefined
+    const customEventType = po.custom_event_type as string | undefined
+    if (pixelId) {
+      properties.conversion = {
+        pixelId,
+        ...(customEventType && { customEventType }),
+      }
+      properties.promotedObject = {
+        pixel_id: pixelId,
+        ...(customEventType && { custom_event_type: customEventType }),
+      }
+    }
+  }
 
   return resource('adSet', path, properties, raw.id)
 }
@@ -500,11 +513,15 @@ function normalizeAd(raw: MetaApiAd, adSetPaths: AdSetPathMap): Resource[] {
 
   const { properties: creativeProps, meta: creativeMeta } = extractCreativeProps(raw.creative)
 
-  // Use the creative name as the canonical name for both creative and ad.
-  // This matches flatten behavior where the ad name is derived from the creative
-  // (via resolveAdName -> creative.name). Using the raw ad name would produce
-  // different paths since Meta ad names and creative names are independent.
-  const canonicalName = raw.creative?.name ?? raw.name
+  // Derive the canonical name for path generation.
+  // When we create via apply, ad name = creative name. But Meta appends a
+  // date+hash suffix to creative names (e.g. "Foo" → "Foo 2026-03-15-abc123").
+  // Detect this case and use the ad name (which we control). For imported
+  // campaigns where names genuinely differ, prefer the creative name.
+  const creativeName = raw.creative?.name
+  const canonicalName = creativeName?.startsWith(raw.name)
+    ? raw.name  // Meta appended suffix — use our original name
+    : creativeName ?? raw.name
   creativeProps.name = canonicalName
 
   const adSlug = slugify(canonicalName)

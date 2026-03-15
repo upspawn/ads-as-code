@@ -210,16 +210,15 @@ function buildTargetingSpec(targeting: Record<string, unknown>): Record<string, 
     spec['genders'] = genders.map(g => genderMap[g] ?? 0).filter(g => g !== 0)
   }
 
-  // Interests
+  // Interests + Behaviors — send in flexible_spec (Meta's canonical format).
+  // Top-level `interests` is deprecated; flexible_spec ensures fetch round-trips correctly.
   const interests = targeting.interests as Array<{ id: string; name: string }> | undefined
-  if (interests && interests.length > 0) {
-    spec['interests'] = interests
-  }
-
-  // Behaviors
   const behaviors = targeting.behaviors as Array<{ id: string; name: string }> | undefined
-  if (behaviors && behaviors.length > 0) {
-    spec['behaviors'] = behaviors
+  if ((interests && interests.length > 0) || (behaviors && behaviors.length > 0)) {
+    const flexSpec: Record<string, unknown> = {}
+    if (interests && interests.length > 0) flexSpec['interests'] = interests
+    if (behaviors && behaviors.length > 0) flexSpec['behaviors'] = behaviors
+    spec['flexible_spec'] = [flexSpec]
   }
 
   // Custom audiences

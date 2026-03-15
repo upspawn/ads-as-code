@@ -158,7 +158,12 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       ...(placements !== 'automatic' && { placements }),
       ...(adSet.config.budget !== undefined && { budget: adSet.config.budget }),
       ...(adSet.config.schedule !== undefined && { schedule: adSet.config.schedule }),
-      ...(adSet.config.conversion !== undefined && { conversion: adSet.config.conversion }),
+      // Strip conversionWindow/attributionSetting from conversion — they're used only
+      // during apply and the API doesn't return them, so including them causes false diffs.
+      ...(adSet.config.conversion !== undefined && { conversion: (() => {
+        const { conversionWindow: _cw, attributionSetting: _as, ...rest } = adSet.config.conversion
+        return rest
+      })() }),
       ...(adSet.config.dsa !== undefined && { dsa: adSet.config.dsa }),
       // Build promotedObject from conversion config if not explicitly set
       ...(adSet.config.promotedObject !== undefined

@@ -311,7 +311,7 @@ describe('ad set create', () => {
       expect(targeting.geo_locations.countries).toEqual(['US', 'DE'])
       expect(targeting.age_min).toBe(25)
       expect(targeting.age_max).toBe(54)
-      expect(targeting.interests).toEqual([{ id: '6003', name: 'Technology' }])
+      expect(targeting.flexible_spec).toEqual([{ interests: [{ id: '6003', name: 'Technology' }] }])
     } finally {
       mockApi.restore()
     }
