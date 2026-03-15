@@ -312,6 +312,8 @@ SELECT
   ad_group_ad.ad.responsive_search_ad.headlines,
   ad_group_ad.ad.responsive_search_ad.descriptions,
   ad_group_ad.ad.final_urls,
+  ad_group_ad.ad.responsive_search_ad.path1,
+  ad_group_ad.ad.responsive_search_ad.path2,
   ad_group_ad.status,
   ad_group.id,
   ad_group.name,
@@ -344,11 +346,35 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
   const adId = str(ad?.id)
   // gRPC returns snake_case: responsive_search_ad; REST returns camelCase: responsiveSearchAd
   const rsa = (ad?.responsive_search_ad ?? ad?.responsiveSearchAd) as Record<string, unknown> | undefined
-  const headlineAssets = (rsa?.headlines ?? []) as Array<{ text: string }>
-  const descriptionAssets = (rsa?.descriptions ?? []) as Array<{ text: string }>
+  const headlineAssets = (rsa?.headlines ?? []) as Array<{ text: string; pinned_field?: number; pinnedField?: number }>
+  const descriptionAssets = (rsa?.descriptions ?? []) as Array<{ text: string; pinned_field?: number; pinnedField?: number }>
 
   const headlines = headlineAssets.map(h => h.text).sort()
   const descriptions = descriptionAssets.map(d => d.text).sort()
+
+  // Extract pinned headlines (pinned_field 1-3 = HEADLINE_1/2/3)
+  const pinnedHeadlines = headlineAssets
+    .filter(h => {
+      const pf = h.pinned_field ?? h.pinnedField ?? 0
+      return pf >= 1 && pf <= 3
+    })
+    .map(h => ({ text: h.text, position: (h.pinned_field ?? h.pinnedField!) as 1 | 2 | 3 }))
+
+  // Extract pinned descriptions (pinned_field 4-5 = DESCRIPTION_1/2)
+  const pinnedDescriptions = descriptionAssets
+    .filter(d => {
+      const pf = d.pinned_field ?? d.pinnedField ?? 0
+      return pf >= 4 && pf <= 5
+    })
+    .map(d => ({ text: d.text, position: ((d.pinned_field ?? d.pinnedField!) - 3) as 1 | 2 }))
+
+  // Path fields
+  const path1 = str(rsa?.path1) || undefined
+  const path2 = str(rsa?.path2) || undefined
+
+  // Ad status from ad_group_ad level
+  const adStatus = mapStatus(adGroupAd?.status)
+
   // gRPC returns snake_case: final_urls; REST returns camelCase: finalUrls
   const finalUrls = (ad?.final_urls ?? ad?.finalUrls ?? []) as string[]
   const finalUrl = finalUrls[0] ?? ''
@@ -369,6 +395,11 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
     headlines,
     descriptions,
     finalUrl,
+    ...(adStatus !== 'enabled' ? { status: adStatus } : {}),
+    ...(pinnedHeadlines.length > 0 ? { pinnedHeadlines } : {}),
+    ...(pinnedDescriptions.length > 0 ? { pinnedDescriptions } : {}),
+    ...(path1 ? { path1 } : {}),
+    ...(path2 ? { path2 } : {}),
   }, adId)
 }
 

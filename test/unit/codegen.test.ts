@@ -797,6 +797,54 @@ describe('generateCampaignFile — campaign status and tracking', () => {
   })
 })
 
+// ─── Ad Completeness ────────────────────────────────────
+
+describe('generateCampaignFile — ad completeness', () => {
+  test('emits multiple ads with ad: [rsa(...), rsa(...)]', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'ad', path: 'c/g/rsa:aaa', properties: { headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'], finalUrl: 'https://renamed.to' } },
+      { kind: 'ad', path: 'c/g/rsa:bbb', properties: { headlines: ['H4', 'H5', 'H6'], descriptions: ['D3', 'D4'], finalUrl: 'https://renamed.to/2' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain('ad: [')
+    expect((code.match(/rsa\(/g) || []).length).toBe(2)
+  })
+
+  test('emits path1 and path2', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'ad', path: 'c/g/rsa:aaa', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to', path1: 'rename', path2: 'files' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("path1: 'rename'")
+    expect(code).toContain("path2: 'files'")
+  })
+
+  test('emits ad status when paused', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'ad', path: 'c/g/rsa:aaa', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to', status: 'paused' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("status: 'paused'")
+  })
+
+  test('single ad does not use array form', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'ad', path: 'c/g/rsa:aaa', properties: { headlines: ['H1'], descriptions: ['D1'], finalUrl: 'https://renamed.to' } },
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain('ad: rsa(')
+    expect(code).not.toContain('ad: [')
+  })
+})
+
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {

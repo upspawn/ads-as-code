@@ -312,23 +312,40 @@ function buildAdCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
+
+  // Build headline assets with optional pinning
+  const pinnedHL = props.pinnedHeadlines as Array<{ text: string; position: number }> | undefined
+  const pinnedHLMap = new Map(pinnedHL?.map(p => [p.text, p.position]) ?? [])
   const headlines = (props.headlines as string[]).map(text => ({
     text,
-    pinned_field: 0, // UNSPECIFIED
+    pinned_field: pinnedHLMap.get(text) ?? 0,
   }))
+
+  // Build description assets with optional pinning
+  const pinnedDesc = props.pinnedDescriptions as Array<{ text: string; position: number }> | undefined
+  const pinnedDescMap = new Map(pinnedDesc?.map(p => [p.text, p.position + 3]) ?? [])
   const descriptions = (props.descriptions as string[]).map(text => ({
     text,
-    pinned_field: 0, // UNSPECIFIED
+    pinned_field: pinnedDescMap.get(text) ?? 0,
   }))
+
+  const path1 = props.path1 as string | undefined
+  const path2 = props.path2 as string | undefined
+  const adStatus = (props.status as string) === 'paused' ? 3 : 2
 
   return {
     operation: 'ad_group_ad',
     op: 'create',
     resource: {
       ad_group: adGroupResourceName,
-      status: 2, // ENABLED
+      status: adStatus,
       ad: {
-        responsive_search_ad: { headlines, descriptions },
+        responsive_search_ad: {
+          headlines,
+          descriptions,
+          ...(path1 ? { path1 } : {}),
+          ...(path2 ? { path2 } : {}),
+        },
         final_urls: [props.finalUrl],
       },
     },

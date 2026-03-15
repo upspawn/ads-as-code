@@ -289,29 +289,49 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     }
     const keywordsLine = `keywords: [${keywordParts.join(', ')}],`
 
-    // Ad (take first RSA)
+    // Ads
     let adLines = ''
     if (groupAds.length > 0) {
-      const ad = groupAds[0]!
-      const hl = ad.properties.headlines as string[]
-      const desc = ad.properties.descriptions as string[]
-      const finalUrl = ad.properties.finalUrl as string
-
       imports.add('rsa')
       imports.add('headlines')
       imports.add('descriptions')
       imports.add('url')
 
-      const headlinesStr =
-        hl.length <= 3
-          ? `headlines(${hl.map(quote).join(', ')})`
-          : `headlines(\n        ${hl.map(quote).join(',\n        ')},\n      )`
-      const descriptionsStr =
-        desc.length <= 2
-          ? `descriptions(${desc.map(quote).join(', ')})`
-          : `descriptions(\n        ${desc.map(quote).join(',\n        ')},\n      )`
+      const formatOneAd = (adRes: Resource): string => {
+        const hl = adRes.properties.headlines as string[]
+        const desc = adRes.properties.descriptions as string[]
+        const adFinalUrl = adRes.properties.finalUrl as string
+        const p1 = adRes.properties.path1 as string | undefined
+        const p2 = adRes.properties.path2 as string | undefined
+        const adSt = adRes.properties.status as string | undefined
 
-      adLines = `ad: rsa(\n      ${headlinesStr},\n      ${descriptionsStr},\n      url(${quote(finalUrl)}),\n    ),`
+        const headlinesStr =
+          hl.length <= 3
+            ? `headlines(${hl.map(quote).join(', ')})`
+            : `headlines(\n        ${hl.map(quote).join(',\n        ')},\n      )`
+        const descriptionsStr =
+          desc.length <= 2
+            ? `descriptions(${desc.map(quote).join(', ')})`
+            : `descriptions(\n        ${desc.map(quote).join(',\n        ')},\n      )`
+
+        const rsaParts = [headlinesStr, descriptionsStr, `url(${quote(adFinalUrl)})`]
+
+        // Path and status options
+        const opts: string[] = []
+        if (p1) opts.push(`path1: ${quote(p1)}`)
+        if (p2) opts.push(`path2: ${quote(p2)}`)
+        if (adSt === 'paused') opts.push(`status: 'paused'`)
+        if (opts.length > 0) rsaParts.push(`{ ${opts.join(', ')} }`)
+
+        return `rsa(\n      ${rsaParts.join(',\n      ')},\n    )`
+      }
+
+      if (groupAds.length === 1) {
+        adLines = `ad: ${formatOneAd(groupAds[0]!)},`
+      } else {
+        const formatted = groupAds.map(a => formatOneAd(a))
+        adLines = `ad: [\n      ${formatted.join(',\n      ')},\n    ],`
+      }
     }
 
     // Group-level targeting

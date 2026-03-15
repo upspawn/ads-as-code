@@ -894,6 +894,82 @@ describe('fetchDeviceBidModifiers', () => {
   })
 })
 
+// ─── fetchAds — extended fields ─────────────────────────────
+
+describe('fetchAds — extended fields', () => {
+  test('includes path1, path2, and status', async () => {
+    const client = createMockClient({
+      ads: [{
+        ad_group_ad: {
+          status: 3, // PAUSED
+          ad: {
+            id: '999', type: 30,
+            responsive_search_ad: {
+              headlines: [{ text: 'H1', pinned_field: 0 }, { text: 'H2', pinned_field: 1 }],
+              descriptions: [{ text: 'D1', pinned_field: 0 }],
+              path1: 'rename', path2: 'files',
+            },
+            final_urls: ['https://renamed.to'],
+          },
+        },
+        ad_group: { id: '100', name: 'Test Group' },
+        campaign: { id: '123', name: 'Test Campaign' },
+      }],
+    })
+    const resources = await fetchAds(client)
+    expect(resources).toHaveLength(1)
+    const ad = resources[0]!
+    expect(ad.properties.path1).toBe('rename')
+    expect(ad.properties.path2).toBe('files')
+    expect(ad.properties.status).toBe('paused')
+    expect(ad.properties.pinnedHeadlines).toEqual([{ text: 'H2', position: 1 }])
+  })
+
+  test('omits status when enabled (default)', async () => {
+    const client = createMockClient({
+      ads: [{
+        ad_group_ad: {
+          status: 2,
+          ad: {
+            id: '999', type: 30,
+            responsive_search_ad: {
+              headlines: [{ text: 'H1', pinned_field: 0 }],
+              descriptions: [{ text: 'D1', pinned_field: 0 }],
+            },
+            final_urls: ['https://renamed.to'],
+          },
+        },
+        ad_group: { id: '100', name: 'Group' },
+        campaign: { id: '123', name: 'Campaign' },
+      }],
+    })
+    const resources = await fetchAds(client)
+    expect(resources[0]!.properties.status).toBeUndefined()
+  })
+
+  test('extracts pinned descriptions (pinned_field 4-5)', async () => {
+    const client = createMockClient({
+      ads: [{
+        ad_group_ad: {
+          status: 2,
+          ad: {
+            id: '888', type: 30,
+            responsive_search_ad: {
+              headlines: [{ text: 'H1', pinned_field: 0 }],
+              descriptions: [{ text: 'D1', pinned_field: 4 }, { text: 'D2', pinned_field: 0 }],
+            },
+            final_urls: ['https://renamed.to'],
+          },
+        },
+        ad_group: { id: '100', name: 'Group' },
+        campaign: { id: '123', name: 'Campaign' },
+      }],
+    })
+    const resources = await fetchAds(client)
+    expect(resources[0]!.properties.pinnedDescriptions).toEqual([{ text: 'D1', position: 1 }])
+  })
+})
+
 describe('fetchAllState — device bid adjustments', () => {
   test('merges device bid adjustments into campaign targeting', async () => {
     const deviceRows: GoogleAdsRow[] = [

@@ -864,6 +864,61 @@ describe('extension create — no malformed updateMask', () => {
   })
 })
 
+// ─── Ad Create — Extended Fields ────────────────────────────
+
+describe('ad create — extended fields', () => {
+  test('includes path1, path2, and paused status', () => {
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
+      finalUrl: 'https://renamed.to', path1: 'rename', path2: 'files', status: 'paused',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const adOp = mutations.find(m => m.operation === 'ad_group_ad')!
+    const rsa = (adOp.resource.ad as Record<string, unknown>).responsive_search_ad as Record<string, unknown>
+    expect(rsa.path1).toBe('rename')
+    expect(rsa.path2).toBe('files')
+    expect(adOp.resource.status).toBe(3)
+  })
+
+  test('includes pinned headlines', () => {
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
+      finalUrl: 'https://renamed.to',
+      pinnedHeadlines: [{ text: 'H1', position: 1 }],
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const adOp = mutations.find(m => m.operation === 'ad_group_ad')!
+    const rsa = (adOp.resource.ad as Record<string, unknown>).responsive_search_ad as Record<string, unknown>
+    const headlineAssets = rsa.headlines as Array<{ text: string; pinned_field: number }>
+    const pinned = headlineAssets.find(h => h.text === 'H1')
+    expect(pinned!.pinned_field).toBe(1)
+  })
+
+  test('includes pinned descriptions', () => {
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
+      finalUrl: 'https://renamed.to',
+      pinnedDescriptions: [{ text: 'D1', position: 1 }],
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const adOp = mutations.find(m => m.operation === 'ad_group_ad')!
+    const rsa = (adOp.resource.ad as Record<string, unknown>).responsive_search_ad as Record<string, unknown>
+    const descAssets = rsa.descriptions as Array<{ text: string; pinned_field: number }>
+    const pinned = descAssets.find(d => d.text === 'D1')
+    expect(pinned!.pinned_field).toBe(4) // position 1 + 3 = 4
+  })
+
+  test('defaults to ENABLED when no status specified', () => {
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
+      finalUrl: 'https://renamed.to',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test/grp', '456']]))
+    const adOp = mutations.find(m => m.operation === 'ad_group_ad')!
+    expect(adOp.resource.status).toBe(2)
+  })
+})
+
 // ─── Device Bid Adjustments ────────────────────────────────
 
 describe('device bid adjustments', () => {
