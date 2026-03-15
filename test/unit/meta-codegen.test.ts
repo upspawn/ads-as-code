@@ -590,6 +590,67 @@ describe('codegenMeta', () => {
     expect(importLine).not.toContain('metaVideo')
   })
 
+  test('carousel creative generates carousel() call', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      {
+        kind: 'creative',
+        path: 'retargeting-us/visitors/product-carousel/cr',
+        properties: {
+          name: 'Product Carousel',
+          format: 'carousel',
+          primaryText: 'Check out our features',
+          cta: 'LEARN_MORE',
+          url: 'https://renamed.to',
+          cards: [
+            { image: 'hash:abc123', headline: 'Feature 1', url: 'https://renamed.to/f1' },
+            { image: 'hash:def456', headline: 'Feature 2', url: 'https://renamed.to/f2', description: 'Second' },
+          ],
+        },
+      },
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain('carousel(')
+    expect(code).toContain("headline: 'Feature 1'")
+    expect(code).toContain("headline: 'Feature 2'")
+    expect(code).toContain("url: 'https://renamed.to/f1'")
+    expect(code).toContain("description: 'Second'")
+    expect(code).toContain("primaryText: 'Check out our features'")
+    const importLine = code.split('\n').find((l) => l.startsWith('import'))!
+    expect(importLine).toContain('carousel')
+    expect(importLine).not.toContain('metaImage')
+    expect(importLine).not.toContain('metaVideo')
+  })
+
+  test('collection creative generates a TODO comment', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      {
+        kind: 'creative',
+        path: 'retargeting-us/visitors/product-collection/cr',
+        properties: {
+          name: 'Product Collection',
+          format: 'collection',
+          instantExperience: 'unknown',
+          headline: '',
+          primaryText: '',
+        },
+      },
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain('// TODO: Collection ad')
+    expect(code).toContain("'Product Collection'")
+    expect(code).toContain('Instant Experience')
+    expect(code).not.toContain("image('./assets")
+    expect(code).not.toContain("video('./assets")
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),

@@ -316,6 +316,41 @@ function formatCreative(
   // Emit status only when the ad's status differs from the ad set (per-ad override)
   if (adStatusOverride) parts.push(`status: ${quote(adStatusOverride)}`)
 
+  if (format === 'carousel') {
+    imports.add('carousel')
+    const cards = props.cards as Array<Record<string, unknown>> | undefined
+    const cardStrings = (cards ?? []).map((card) => {
+      const cardParts: string[] = []
+      if (card.image) cardParts.push(`image: ${quote(card.image as string)}`)
+      if (card.headline) cardParts.push(`headline: ${quote(card.headline as string)}`)
+      if (card.description) cardParts.push(`description: ${quote(card.description as string)}`)
+      if (card.url) cardParts.push(`url: ${quote(card.url as string)}`)
+      return `{ ${cardParts.join(', ')} }`
+    })
+
+    const configParts: string[] = []
+    if (primaryText) configParts.push(`primaryText: ${quote(primaryText)}`)
+    if (url && url !== hoistedUrl) configParts.push(`url: ${quote(url)}`)
+    if (cta && cta !== hoistedCta) configParts.push(`cta: ${quote(cta)}`)
+    if (name) configParts.push(`name: ${quote(name)}`)
+    if (adStatusOverride) configParts.push(`status: ${quote(adStatusOverride)}`)
+
+    const cardsStr = cardStrings.length <= 1
+      ? `[${cardStrings.join(', ')}]`
+      : `[\n      ${cardStrings.join(',\n      ')},\n    ]`
+
+    if (configParts.length === 0) {
+      return `carousel(${cardsStr}, { primaryText: '' })`
+    }
+    return `carousel(${cardsStr}, {\n      ${configParts.join(',\n      ')},\n    })`
+  }
+
+  if (format === 'collection') {
+    // Collection ads require Instant Experience IDs — not yet fully supported.
+    const collectionName = name ? ` ${quote(name)}` : ''
+    return `// TODO: Collection ad${collectionName} — requires Instant Experience configuration\n    // See: https://developers.facebook.com/docs/marketing-api/creative/collection-ads`
+  }
+
   if (format === 'video') {
     imports.add('video')
     // Video path: prefer meta.videoPath (from flatten), fall back to properties (legacy), then derive

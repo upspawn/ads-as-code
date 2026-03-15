@@ -499,6 +499,110 @@ describe('fetchMetaAll() boosted post normalization', () => {
   })
 })
 
+// ─── Carousel Ad Normalization ──────────────────────────────
+
+describe('fetchMetaAll() carousel ad normalization', () => {
+  test('detects carousel from link_data with child_attachments', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_carousel',
+          name: 'Product Carousel',
+          object_story_spec: {
+            link_data: {
+              message: 'Check out our features',
+              link: 'https://renamed.to',
+              call_to_action: { type: 'LEARN_MORE', value: { link: 'https://renamed.to' } },
+              child_attachments: [
+                { image_hash: 'hash_card1', link: 'https://renamed.to/feature-1', name: 'Feature 1', description: 'First feature' },
+                { image_hash: 'hash_card2', link: 'https://renamed.to/feature-2', name: 'Feature 2' },
+                { image_hash: 'hash_card3', link: 'https://renamed.to/feature-3', name: 'Feature 3', description: 'Third feature' },
+              ],
+            },
+          },
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative.properties.format).toBe('carousel')
+    expect(creative.properties.primaryText).toBe('Check out our features')
+    expect(creative.properties.cta).toBe('LEARN_MORE')
+    expect(creative.properties.url).toBe('https://renamed.to')
+
+    const cards = creative.properties.cards as Array<Record<string, unknown>>
+    expect(cards).toHaveLength(3)
+    expect(cards[0]!.headline).toBe('Feature 1')
+    expect(cards[0]!.url).toBe('https://renamed.to/feature-1')
+    expect(cards[0]!.description).toBe('First feature')
+    expect(cards[0]!.image).toBe('hash:hash_card1')
+    expect(cards[1]!.headline).toBe('Feature 2')
+    expect(cards[1]!).not.toHaveProperty('description')
+  })
+
+  test('carousel with empty child_attachments falls through to image', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_not_carousel',
+          name: 'Not A Carousel',
+          object_story_spec: {
+            link_data: {
+              image_hash: 'abc123',
+              message: 'Regular image ad',
+              name: 'Image Headline',
+              child_attachments: [],
+            },
+          },
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative.properties.format).toBe('image')
+    expect(creative.properties.headline).toBe('Image Headline')
+  })
+})
+
+// ─── Collection Ad Normalization ────────────────────────────
+
+describe('fetchMetaAll() collection ad normalization', () => {
+  test('detects collection from template_data', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_collection',
+          name: 'Product Collection',
+          object_story_spec: {
+            template_data: {
+              description: 'Browse our collection',
+              format_option: 'collection',
+              elements: [{ id: 'elem1' }, { id: 'elem2' }],
+            },
+          },
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative.properties.format).toBe('collection')
+    expect(creative.properties.instantExperience).toBe('unknown')
+    expect(creative.meta?.templateData).toBeDefined()
+  })
+})
+
 // ─── Full Account Normalization ─────────────────────────────
 
 describe('fetchMetaAll() full account', () => {
