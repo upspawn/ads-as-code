@@ -160,7 +160,15 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       ...(adSet.config.schedule !== undefined && { schedule: adSet.config.schedule }),
       ...(adSet.config.conversion !== undefined && { conversion: adSet.config.conversion }),
       ...(adSet.config.dsa !== undefined && { dsa: adSet.config.dsa }),
-      ...(adSet.config.promotedObject !== undefined && { promotedObject: adSet.config.promotedObject }),
+      // Build promotedObject from conversion config if not explicitly set
+      ...(adSet.config.promotedObject !== undefined
+        ? { promotedObject: adSet.config.promotedObject }
+        : adSet.config.conversion?.pixelId
+          ? { promotedObject: {
+              pixel_id: adSet.config.conversion.pixelId,
+              ...(adSet.config.conversion.customEventType && { custom_event_type: adSet.config.conversion.customEventType }),
+            }}
+          : {}),
     }, adSetDefaults.length > 0 ? { _defaults: adSetDefaults } : undefined))
 
     // 3. Creatives + Ads

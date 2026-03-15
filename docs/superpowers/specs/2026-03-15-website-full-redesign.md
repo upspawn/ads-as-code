@@ -1,7 +1,7 @@
 # ads-as-code Website — Full Redesign Spec
 
 **Date:** 2026-03-15
-**Status:** Draft
+**Status:** Reviewed
 **Project location:** `~/Projects/upspawn-products/ads-as-code-website`
 **Supersedes:** `2026-03-15-website-landing-page-design.md` (single-page lander)
 
@@ -152,7 +152,7 @@ For Pipelines and Developer Experience, the template is the same but the tone sh
 - AI generating headlines and descriptions from a brief
 - Optimizing existing copy for performance
 - Quality scoring/judging
-**Capabilities:** Generate from briefs, optimize existing copy, quality judgment, brand voice consistency, batch generation across campaigns
+**Capabilities:** Generate from briefs, `ads optimize` for campaign analysis, quality judgment, brand voice consistency, batch generation across campaigns
 
 ### 6. /features/ai-variants — "One Campaign. Every Market."
 
@@ -279,6 +279,8 @@ Reference
 | Content (marketing) | In-code (React components) | Design-heavy pages need JSX |
 | Content (docs) | MDX via fumadocs-mdx | Content-heavy pages need Markdown |
 | Example product | "Arcflow" (fictional SaaS) | Realistic but not a real product |
+
+**Fumadocs + static export note:** Fumadocs supports `output: 'export'` but requires `generateStaticParams` in the catch-all docs route to pre-render all doc pages at build time. The `lib/source.ts` file provides the page tree that feeds this. Search uses Fumadocs' static search index (no external service needed).
 
 ### Project structure
 
