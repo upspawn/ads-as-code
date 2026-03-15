@@ -3,6 +3,7 @@ import type { Resource, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
 import type { MetaCampaign } from './index.ts'
 import { flattenMeta } from './flatten.ts'
+import { deduplicateResourceSlugs } from '../core/flatten.ts'
 import { codegenMeta } from './codegen.ts'
 import { downloadMetaImages } from './download.ts'
 import { fetchMetaAll } from './fetch.ts'
@@ -18,7 +19,11 @@ const metaProvider: ProviderModule = {
     const built = campaigns.map((c) =>
       c instanceof MetaCampaignBuilder ? (c as MetaCampaignBuilder<any>).build() : c as MetaCampaign,
     )
-    return built.flatMap(flattenMeta)
+    // Flatten each campaign independently, then deduplicate slugs across
+    // all campaigns. This handles the case where two campaigns share the
+    // same name (e.g., "Retargeting - Website Visitors") — the second gets
+    // a "-2" suffix, matching the dedup logic in fetch.ts.
+    return deduplicateResourceSlugs(built.flatMap(flattenMeta))
   },
 
   async fetchAll(config: AdsConfig, _cache: Cache): Promise<Resource[]> {
