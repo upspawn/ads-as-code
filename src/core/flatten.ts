@@ -1,5 +1,5 @@
 import type { Resource } from './types.ts'
-import type { GoogleSearchCampaign } from '../google/types.ts'
+import type { GoogleCampaign } from '../google/types.ts'
 import { flattenAll as googleFlattenAll } from '../google/flatten.ts'
 import { flattenMeta } from '../meta/flatten.ts'
 import type { MetaCampaign } from '../meta/index.ts'
@@ -115,7 +115,7 @@ export function flattenAll(campaigns: DiscoveredCampaign[]): Resource[] {
   return campaigns.flatMap(({ provider, campaign }) => {
     switch (provider) {
       case 'google':
-        return googleFlattenAll([campaign as GoogleSearchCampaign])
+        return googleFlattenAll([campaign as GoogleCampaign])
       case 'meta':
         return flattenMeta(campaign as MetaCampaign)
       default:

@@ -526,8 +526,10 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   )
   lines.push('')
 
-  // Campaign declaration
-  lines.push(`export default google.search(${quote(campaignName)}, {`)
+  // Campaign declaration — detect channel type
+  const channelType = props.channelType as string | undefined
+  const builderMethod = channelType === 'display' ? 'display' : 'search'
+  lines.push(`export default google.${builderMethod}(${quote(campaignName)}, {`)
   for (const part of configParts) {
     lines.push(`  ${part}`)
   }

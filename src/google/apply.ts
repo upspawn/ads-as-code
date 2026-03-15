@@ -137,11 +137,14 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
+  // Channel type: 2=SEARCH, 3=DISPLAY
+  const channelType = (props.channelType as string) === 'display' ? 3 : 2
+
   const campaign: Record<string, unknown> = {
     resource_name: `customers/${customerId}/campaigns/${tempCampaignId}`,
     name: props.name,
     status: (props.status as string) === 'enabled' ? 2 : 3, // 2=ENABLED, 3=PAUSED
-    advertising_channel_type: 2, // SEARCH
+    advertising_channel_type: channelType,
     campaign_budget: `customers/${customerId}/campaignBudgets/${tempBudgetId}`,
   }
 
@@ -372,6 +375,9 @@ function buildAdGroupCreate(
   const parts = resource.path.split('/')
   const adGroupName = parts[1] ?? resource.path
 
+  // Ad group type: 2=SEARCH_STANDARD, 7=DISPLAY_STANDARD
+  const adGroupType = (props.adGroupType as string) === 'display' ? 7 : 2
+
   return {
     operation: 'ad_group',
     op: 'create',
@@ -380,7 +386,7 @@ function buildAdGroupCreate(
       campaign: campaignResourceName,
       name: adGroupName,
       status: (props.status as string) === 'paused' ? 3 : 2, // 3=PAUSED, 2=ENABLED
-      type: 2, // SEARCH_STANDARD
+      type: adGroupType,
     },
   }
 }

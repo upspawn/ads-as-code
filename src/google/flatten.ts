@@ -1,5 +1,5 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
-import type { GoogleSearchCampaign } from './types.ts'
+import type { GoogleSearchCampaign, GoogleDisplayCampaign, GoogleCampaign } from './types.ts'
 import { slugify } from '../core/flatten.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
@@ -156,7 +156,87 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
   return resources
 }
 
-/** Flatten multiple Google campaigns into a single flat list. */
-export function flattenAll(campaigns: GoogleSearchCampaign[]): Resource[] {
-  return campaigns.flatMap(flatten)
+// ─── Display Flatten ─────────────────────────────────────
+
+/** Flatten a single Google Display campaign tree into a flat list of Resource objects. */
+export function flattenDisplay(campaign: GoogleDisplayCampaign): Resource[] {
+  const resources: Resource[] = []
+  const campaignPath = slugify(campaign.name)
+
+  // 1. Campaign resource — same as Search but with channelType marker
+  resources.push(resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    bidding: campaign.bidding,
+    targeting: campaign.targeting,
+    channelType: 'display',
+    ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
+    ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
+    ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
+    ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
+    ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
+  }))
+
+  // 2. Ad groups + ads (no keywords for Display)
+  for (const [groupKey, group] of Object.entries(campaign.groups)) {
+    const adGroupPath = `${campaignPath}/${groupKey}`
+
+    resources.push(resource('adGroup', adGroupPath, {
+      status: group.status ?? 'enabled',
+      targeting: group.targeting,
+      adGroupType: 'display',
+    }))
+
+    // Responsive Display Ads
+    for (const ad of group.ads) {
+      const hash = responsiveDisplayHash(ad.headlines, ad.longHeadline, ad.finalUrl)
+      const adPath = `${adGroupPath}/rda:${hash}`
+      resources.push(resource('ad', adPath, {
+        adType: 'responsive-display',
+        headlines: [...ad.headlines].sort(),
+        longHeadline: ad.longHeadline,
+        descriptions: [...ad.descriptions].sort(),
+        businessName: ad.businessName,
+        finalUrl: ad.finalUrl,
+        marketingImages: ad.marketingImages,
+        squareMarketingImages: ad.squareMarketingImages,
+        ...(ad.logoImages && { logoImages: ad.logoImages }),
+        ...(ad.squareLogoImages && { squareLogoImages: ad.squareLogoImages }),
+        ...(ad.mainColor && { mainColor: ad.mainColor }),
+        ...(ad.accentColor && { accentColor: ad.accentColor }),
+        ...(ad.callToAction && { callToAction: ad.callToAction }),
+      }))
+    }
+  }
+
+  // 3. Campaign-level negatives
+  for (const neg of campaign.negatives) {
+    const negPath = `${campaignPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`
+    resources.push(resource('negative', negPath, {
+      text: neg.text,
+      matchType: neg.matchType,
+    }))
+  }
+
+  return resources
+}
+
+function responsiveDisplayHash(headlines: readonly string[], longHeadline: string, finalUrl: string): string {
+  const payload = JSON.stringify({
+    headlines: [...headlines].sort(),
+    longHeadline,
+    finalUrl,
+  })
+  return stableHash(payload)
+}
+
+// ─── Multi-Kind Flatten ──────────────────────────────────
+
+/** Flatten multiple Google campaigns (Search or Display) into a single flat list. */
+export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
+  return campaigns.flatMap(c => {
+    if (c.kind === 'display') return flattenDisplay(c)
+    return flatten(c)
+  })
 }

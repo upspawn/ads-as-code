@@ -1,7 +1,7 @@
 import type { ProviderModule } from '../core/providers.ts'
 import type { Resource, ApplyResult, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
-import type { GoogleSearchCampaign } from './types.ts'
+import type { GoogleCampaign } from './types.ts'
 import { flattenAll } from './flatten.ts'
 import { fetchAllState } from './fetch.ts'
 import { applyChangeset } from './apply.ts'
@@ -12,7 +12,7 @@ import { createGoogleClient } from './api.ts'
 
 const googleProvider: ProviderModule = {
   flatten(campaigns: unknown[]): Resource[] {
-    return flattenAll(campaigns as GoogleSearchCampaign[])
+    return flattenAll(campaigns as GoogleCampaign[])
   },
 
   async fetchAll(_config: AdsConfig, _cache: Cache): Promise<Resource[]> {

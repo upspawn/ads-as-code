@@ -7,7 +7,12 @@ import type {
   BiddingStrategy,
   CallExtension,
   CampaignBuilder,
+  DisplayAdGroupInput,
+  DisplayCampaignBuilder,
+  DisplayCampaignInput,
   GoogleAdGroupUnresolved,
+  GoogleDisplayAdGroup,
+  GoogleDisplayCampaign,
   GoogleSearchCampaignUnresolved,
   ImageExtension,
   PriceExtension,
@@ -230,6 +235,49 @@ function createBuilder(campaign: GoogleSearchCampaignUnresolved): CampaignBuilde
   return builder
 }
 
+// ─── Display Builder ──────────────────────────────────────
+
+/**
+ * Normalize DisplayAdGroupInput into a GoogleDisplayAdGroup.
+ */
+function normalizeDisplayAdGroup(input: DisplayAdGroupInput, targetingOverride?: Targeting): GoogleDisplayAdGroup {
+  const ads = Array.isArray(input.ad) ? input.ad : [input.ad]
+
+  const group: GoogleDisplayAdGroup = {
+    ads,
+    ...(input.status !== undefined && { status: input.status }),
+    ...(targetingOverride ?? input.targeting
+      ? { targeting: targetingOverride ?? input.targeting }
+      : {}),
+  }
+  return group
+}
+
+/**
+ * Create a DisplayCampaignBuilder that wraps a GoogleDisplayCampaign with chained methods.
+ */
+function createDisplayBuilder(campaign: GoogleDisplayCampaign): DisplayCampaignBuilder {
+  const builder: DisplayCampaignBuilder = Object.create(null)
+
+  const keys = Object.keys(campaign) as (keyof GoogleDisplayCampaign)[]
+  for (const key of keys) {
+    Object.defineProperty(builder, key, {
+      value: campaign[key],
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    })
+  }
+
+  builder.group = function (key: string, input: DisplayAdGroupInput): DisplayCampaignBuilder {
+    const group = normalizeDisplayAdGroup(input)
+    const newGroups = { ...campaign.groups, [key]: group }
+    return createDisplayBuilder({ ...campaign, groups: newGroups })
+  }
+
+  return builder
+}
+
 /**
  * Google Ads campaign builder namespace.
  *
@@ -283,5 +331,56 @@ export const google = {
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
     }
     return createBuilder(campaign)
+  },
+
+  /**
+   * Create a Google Display campaign with a chainable builder API.
+   *
+   * Returns a `DisplayCampaignBuilder` that exposes `.group()` for adding ad groups.
+   * Each method returns a new builder (immutable chaining).
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration (budget, bidding, targeting, negatives, status)
+   * @returns A DisplayCampaignBuilder for adding ad groups
+   *
+   * @example
+   * ```ts
+   * const campaign = google.display('Display - Remarketing', {
+   *   budget: daily(5),
+   *   bidding: 'maximize-conversions',
+   *   targeting: targeting(geo('US', 'DE'), languages('en', 'de')),
+   * })
+   * .group('remarketing', {
+   *   ad: {
+   *     type: 'responsive-display',
+   *     headlines: ['Rename Your Files'],
+   *     longHeadline: 'AI-Powered File Renaming in Seconds',
+   *     descriptions: ['Try renamed.to free'],
+   *     businessName: 'renamed.to',
+   *     finalUrl: 'https://renamed.to',
+   *     marketingImages: [landscape('./hero.png')],
+   *     squareMarketingImages: [square('./hero-square.png')],
+   *   },
+   * })
+   * ```
+   */
+  display(name: string, input: DisplayCampaignInput): DisplayCampaignBuilder {
+    const campaign: GoogleDisplayCampaign = {
+      provider: 'google',
+      kind: 'display',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      bidding: normalizeBidding(input.bidding),
+      targeting: input.targeting ?? { rules: [] },
+      negatives: input.negatives ?? [],
+      groups: {},
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
+      ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+      ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+    }
+    return createDisplayBuilder(campaign)
   },
 }

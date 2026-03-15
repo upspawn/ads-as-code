@@ -61,7 +61,28 @@ export type {
   GoogleConfig,
   GoogleAdsClient,
   Campaign,
+  GoogleCampaign,
+  GoogleDisplayCampaign,
+  GoogleDisplayAdGroup,
+  GoogleDisplayAd,
+  ResponsiveDisplayAd,
+  DisplayCampaignInput,
+  DisplayAdGroupInput,
+  DisplayCampaignBuilder,
 } from './google/types.ts'
+
+export type {
+  ImageRef,
+  ImageAspectRatio,
+} from './google/image-assets.ts'
+
+export {
+  landscape,
+  square,
+  portrait,
+  logo,
+  logoLandscape,
+} from './google/image-assets.ts'
 
 // === Helpers ===
 

@@ -8,6 +8,7 @@ import type {
   UTMParams,
 } from '../core/types.ts'
 import type { RsaMarker, KeywordsMarker } from '../ai/types.ts'
+import type { ImageRef } from './image-assets.ts'
 
 // === Bidding ===
 
@@ -159,6 +160,76 @@ export type GoogleSearchCampaignUnresolved = Omit<GoogleSearchCampaign, 'groups'
   readonly groups: Record<string, GoogleAdGroupUnresolved>
 }
 
+// === Display Campaign ===
+
+export type ResponsiveDisplayAd = {
+  readonly type: 'responsive-display'
+  readonly headlines: string[]
+  readonly longHeadline: string
+  readonly descriptions: string[]
+  readonly businessName: string
+  readonly finalUrl: string
+  readonly marketingImages: ImageRef[]
+  readonly squareMarketingImages: ImageRef[]
+  readonly logoImages?: ImageRef[]
+  readonly squareLogoImages?: ImageRef[]
+  readonly mainColor?: string
+  readonly accentColor?: string
+  readonly callToAction?: string
+}
+
+export type GoogleDisplayAd = ResponsiveDisplayAd
+
+export type GoogleDisplayAdGroup = {
+  readonly ads: GoogleDisplayAd[]
+  readonly status?: 'enabled' | 'paused'
+  readonly targeting?: Targeting
+}
+
+export type GoogleDisplayCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'display'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy
+  readonly targeting: Targeting
+  readonly negatives: Keyword[]
+  readonly groups: Record<string, GoogleDisplayAdGroup>
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+// === Display Campaign Input ===
+
+export type DisplayCampaignInput = {
+  readonly budget: Budget
+  readonly bidding: BiddingInput
+  readonly targeting?: Targeting
+  readonly negatives?: Keyword[]
+  readonly status?: 'enabled' | 'paused'
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+export type DisplayAdGroupInput = {
+  readonly ad: GoogleDisplayAd | GoogleDisplayAd[]
+  readonly targeting?: Targeting
+  readonly status?: 'enabled' | 'paused'
+}
+
+// === Display Campaign Builder ===
+
+export type DisplayCampaignBuilder = GoogleDisplayCampaign & {
+  group(key: string, input: DisplayAdGroupInput): DisplayCampaignBuilder
+}
+
 // === Campaign Builder ===
 
 export type CampaignBuilder = GoogleSearchCampaignUnresolved & {
@@ -221,4 +292,5 @@ export type GoogleAdsClient = {
 
 // === Campaign union (extensible for Meta) ===
 
-export type Campaign = GoogleSearchCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign
