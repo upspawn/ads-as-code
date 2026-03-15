@@ -154,7 +154,9 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       targeting: adSet.config.targeting,
       optimization,
       bidding,
-      placements,
+      // Omit placements when automatic — fetch omits it too, and the diff engine
+      // would see {placements: 'automatic'} vs {no placements} as a change
+      ...(placements !== 'automatic' && { placements }),
       ...(adSet.config.budget !== undefined && { budget: adSet.config.budget }),
       ...(adSet.config.schedule !== undefined && { schedule: adSet.config.schedule }),
       ...(adSet.config.conversion !== undefined && { conversion: adSet.config.conversion }),

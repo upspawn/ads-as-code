@@ -116,8 +116,11 @@ const BID_STRATEGY_MAP: Record<string, BidStrategy['type']> = {
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, platformId?: string): Resource {
-  return platformId ? { kind, path, properties, platformId } : { kind, path, properties }
+function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, platformId?: string, meta?: Record<string, unknown>): Resource {
+  const r: Record<string, unknown> = { kind, path, properties }
+  if (meta && Object.keys(meta).length > 0) r.meta = meta
+  if (platformId) r.platformId = platformId
+  return r as Resource
 }
 
 function mapStatus(apiStatus: string): 'ACTIVE' | 'PAUSED' {
@@ -306,26 +309,30 @@ function normalizeAdSet(raw: MetaApiAdSet, campaignSlugs: CampaignSlugMap): Reso
 type AdSetPathMap = Map<string, string>
 
 /**
- * Extract creative properties from the object_story_spec.
+ * Extract creative properties and meta from the object_story_spec.
  * Handles both link_data (image ads) and video_data shapes.
+ *
+ * API identifiers (imageHash, videoId) go in meta — they're platform-internal
+ * references, not user-declared campaign settings.
  */
-function extractCreativeProps(creative: MetaApiCreative | undefined): Record<string, unknown> {
-  if (!creative) return {}
+function extractCreativeProps(creative: MetaApiCreative | undefined): { properties: Record<string, unknown>; meta: Record<string, unknown> } {
+  if (!creative) return { properties: {}, meta: {} }
 
   const props: Record<string, unknown> = {}
+  const meta: Record<string, unknown> = {}
   const spec = creative.object_story_spec
 
   if (spec?.video_data) {
     const vd = spec.video_data
     props.format = 'video'
-    if (vd.video_id) props.videoId = vd.video_id
     if (vd.title) props.headline = vd.title
     if (vd.message) props.primaryText = vd.message
     if (vd.link_description) props.description = vd.link_description
     if (vd.call_to_action?.type) props.cta = vd.call_to_action.type as MetaCTA
     if (vd.call_to_action?.value?.link) props.url = vd.call_to_action.value.link
-    // Store imageHash internally for the download module to resolve
-    if (vd.image_hash) props.imageHash = vd.image_hash
+    // Platform-internal identifiers go in meta
+    if (vd.video_id) meta.videoId = vd.video_id
+    if (vd.image_hash) meta.imageHash = vd.image_hash
   } else if (spec?.link_data) {
     const ld = spec.link_data
     props.format = 'image'
@@ -335,20 +342,20 @@ function extractCreativeProps(creative: MetaApiCreative | undefined): Record<str
     if (ld.call_to_action?.type) props.cta = ld.call_to_action.type as MetaCTA
     if (ld.link) props.url = ld.link
     if (ld.caption) props.displayLink = ld.caption
-    // Store imageHash internally for the download module to resolve
-    if (ld.image_hash) props.imageHash = ld.image_hash
+    // Platform-internal identifier goes in meta
+    if (ld.image_hash) meta.imageHash = ld.image_hash
   }
 
   // Fallback image_hash from creative level
-  if (!props.imageHash && creative.image_hash) {
-    props.imageHash = creative.image_hash
+  if (!meta.imageHash && creative.image_hash) {
+    meta.imageHash = creative.image_hash
   }
 
   if (creative.url_tags) {
     props.urlParameters = creative.url_tags
   }
 
-  return props
+  return { properties: props, meta }
 }
 
 /**
@@ -363,13 +370,13 @@ function normalizeAd(raw: MetaApiAd, adSetPaths: AdSetPathMap): Resource[] {
   const adPath = `${adSetPath}/${adSlug}`
   const creativePath = `${adPath}/cr`
 
-  const creativeProps = extractCreativeProps(raw.creative)
+  const { properties: creativeProps, meta: creativeMeta } = extractCreativeProps(raw.creative)
   creativeProps.name = raw.creative?.name ?? raw.name
 
   const resources: Resource[] = []
 
   // Creative resource
-  resources.push(resource('creative', creativePath, creativeProps, raw.creative?.id))
+  resources.push(resource('creative', creativePath, creativeProps, raw.creative?.id, creativeMeta))
 
   // Ad resource
   resources.push(resource('ad', adPath, {
