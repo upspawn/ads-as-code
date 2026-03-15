@@ -1,5 +1,5 @@
 export { exact, phrase, broad, keywords } from './keywords.ts'
-export { daily, monthly, eur, usd } from './budget.ts'
+export { daily, monthly, lifetime, eur, usd } from './budget.ts'
 export { geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting, audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch } from './targeting.ts'
 export { headlines, descriptions, rsa } from './ads.ts'
 export type { RSAOptions } from './ads.ts'

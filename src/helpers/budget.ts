@@ -1,4 +1,4 @@
-import type { DailyBudget, MonthlyBudget } from '../core/types.ts'
+import type { DailyBudget, MonthlyBudget, LifetimeBudget } from '../core/types.ts'
 
 type Currency = 'EUR' | 'USD'
 
@@ -38,6 +38,28 @@ export function daily(amount: number, currency: Currency = 'EUR'): DailyBudget {
 export function monthly(amount: number, currency: Currency = 'EUR'): MonthlyBudget {
   if (amount <= 0) throw new Error(`Budget amount must be positive, got ${amount}`)
   return { amount, currency, period: 'monthly' as const }
+}
+
+/**
+ * Create a lifetime budget with a fixed end date.
+ * Meta distributes this total amount across the campaign's lifetime.
+ *
+ * @param amount - Total budget amount (must be positive)
+ * @param endTime - End date as ISO 8601 string (e.g., `'2026-04-01'` or `'2026-04-01T23:59:59Z'`)
+ * @param currency - Currency code, defaults to `'EUR'`
+ * @returns A lifetime budget object
+ * @throws If amount is zero or negative, or endTime is empty
+ *
+ * @example
+ * ```ts
+ * lifetime(500, '2026-04-01')          // { amount: 500, currency: 'EUR', period: 'lifetime', endTime: '2026-04-01' }
+ * lifetime(1000, '2026-06-30', 'USD')  // { amount: 1000, currency: 'USD', period: 'lifetime', endTime: '2026-06-30' }
+ * ```
+ */
+export function lifetime(amount: number, endTime: string, currency: Currency = 'EUR'): LifetimeBudget {
+  if (amount <= 0) throw new Error(`Budget amount must be positive, got ${amount}`)
+  if (!endTime) throw new Error('lifetime() requires an endTime')
+  return { amount, currency, period: 'lifetime' as const, endTime }
 }
 
 /**

@@ -70,7 +70,7 @@ export type {
 
 export {
   exact, phrase, broad, keywords,
-  daily, monthly, eur, usd,
+  daily, monthly, lifetime, eur, usd,
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   headlines, descriptions, rsa,
@@ -104,6 +104,76 @@ export type {
   GenerateResult,
   StaleSlot,
 } from './ai/index.ts'
+
+// === Meta Helpers ===
+
+export {
+  metaTargeting,
+  age,
+  audience,
+  interests,
+  excludeAudience,
+  lookalike,
+} from './helpers/meta-targeting.ts'
+
+export type {
+  AudienceMarker,
+  ExcludedAudienceMarker,
+  InterestMarker,
+  LookalikeConfig,
+  LookalikeMarker,
+  MetaTargetingRule,
+} from './helpers/meta-targeting.ts'
+
+export {
+  image as metaImage,
+  video as metaVideo,
+  carousel,
+} from './helpers/meta-creative.ts'
+
+export {
+  lowestCost,
+  costCap,
+  bidCap,
+  minRoas,
+} from './helpers/meta-bidding.ts'
+
+export {
+  automatic,
+  manual,
+} from './helpers/meta-placement.ts'
+
+// === Meta Types ===
+
+export type {
+  Objective,
+  OptimizationGoalMap,
+  BidStrategy,
+  InterestTarget,
+  BehaviorTarget,
+  MetaDemographicTarget,
+  ConnectionTarget,
+  MetaTargeting,
+  MetaPlatform,
+  PlacementPosition,
+  MetaPlacements,
+  ImageAd,
+  VideoAd,
+  CarouselCard,
+  CarouselAd,
+  CollectionAd,
+  MetaCreative,
+  MetaCTA,
+  AdSetSchedule,
+  DayPartRule,
+  ConversionConfig,
+  DSAConfig,
+  SpecialAdCategory,
+  PromotedObject,
+  MetaCampaignConfig,
+  AdSetConfig,
+  AdSetContent,
+} from './meta/types.ts'
 
 // === Providers ===
 
