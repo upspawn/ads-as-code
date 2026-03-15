@@ -573,7 +573,21 @@ export type AppCampaignInput = {
   readonly endDate?: string
 }
 
+// === Video Campaign (Read-Only) ===
+// The Google Ads API only supports READING Video campaigns, not creating them.
+// Use Google Ads UI or Google Ads Scripts to manage Video campaigns.
+
+export type GoogleVideoCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'video'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy
+  readonly targeting: Targeting
+}
+
 // === Campaign union (extensible for Meta) ===
 
-export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign
-export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign | GoogleVideoCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign | GoogleAppCampaign | GoogleVideoCampaign

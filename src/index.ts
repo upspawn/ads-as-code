@@ -92,6 +92,7 @@ export type {
   GoogleAppCampaign,
   AppAdInfo,
   AppCampaignInput,
+  GoogleVideoCampaign,
 } from './google/types.ts'
 
 export type {

@@ -366,6 +366,21 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     configParts.push(`urlExpansion: ${urlExpansion},`)
   }
 
+  // Video campaigns are read-only — emit a comment instead of executable code
+  const earlyChannelType = props.channelType as string | undefined
+  if (earlyChannelType === 'video') {
+    const lines: string[] = []
+    lines.push(`// VIDEO campaign — read-only (Google Ads API does not support creation/updates)`)
+    lines.push(`// Use Google Ads UI or Google Ads Scripts to manage this campaign`)
+    lines.push(`//`)
+    lines.push(`// Name: ${campaignName}`)
+    lines.push(`// Status: ${props.status}`)
+    lines.push(`// Budget: ${(budget.period as string) === 'daily' ? `${budget.amount}/day` : `${budget.amount}/month`}`)
+    lines.push(`// Bidding: ${(bidding.type as string)}`)
+    lines.push('')
+    return lines.join('\n')
+  }
+
   // Build the campaign header
   const lines: string[] = []
   lines.push(`// Imported from Google Ads on ${today}`)

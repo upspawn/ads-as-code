@@ -1,5 +1,5 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
-import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleSmartCampaign, GoogleAppCampaign, GoogleCampaign } from './types.ts'
+import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleSmartCampaign, GoogleAppCampaign, GoogleVideoCampaign, GoogleCampaign } from './types.ts'
 import { slugify } from '../core/flatten.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
@@ -457,6 +457,26 @@ export function flattenApp(campaign: GoogleAppCampaign): Resource[] {
   return resources
 }
 
+// ─── Video Flatten (Read-Only) ──────────────────────────
+
+/**
+ * Flatten a Google Video campaign into a flat list of Resource objects.
+ * Video campaigns are read-only — only the campaign resource is emitted,
+ * since the Google Ads API does not support creating/updating Video campaigns.
+ */
+export function flattenVideo(campaign: GoogleVideoCampaign): Resource[] {
+  const campaignPath = slugify(campaign.name)
+
+  return [resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    bidding: campaign.bidding,
+    targeting: campaign.targeting,
+    channelType: 'video',
+  })]
+}
+
 // ─── Multi-Kind Flatten ──────────────────────────────────
 
 /** Flatten multiple Google campaigns into a single flat list. */
@@ -468,6 +488,7 @@ export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
     if (c.kind === 'demand-gen') return flattenDemandGen(c)
     if (c.kind === 'smart') return flattenSmart(c)
     if (c.kind === 'app') return flattenApp(c)
+    if (c.kind === 'video') return flattenVideo(c)
     return flatten(c)
   })
 }

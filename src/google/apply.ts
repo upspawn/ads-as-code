@@ -1224,6 +1224,11 @@ export function changeToMutations(
   customerId: string,
   resourceMap: Map<string, string>,
 ): MutateOperation[] {
+  // Video campaigns are read-only — the Google Ads API does not support creation/updates
+  if (change.resource.kind === 'campaign' && change.resource.properties.channelType === 'video') {
+    return []
+  }
+
   switch (change.op) {
     case 'create':
       return buildCreateMutations(change.resource, customerId, resourceMap)
