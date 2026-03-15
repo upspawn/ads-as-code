@@ -7,6 +7,7 @@ import {
   fetchNegativeKeywords,
   fetchExtensions,
   fetchCampaignTargeting,
+  fetchDeviceBidModifiers,
   fetchAllState,
 } from '../../src/google/fetch.ts'
 import type { GoogleAdsClient, GoogleAdsRow } from '../../src/google/types.ts'
@@ -28,6 +29,7 @@ function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsC
     if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'KEYWORD'")) return Promise.resolve(responses.negatives ?? [])
     if (gaql.includes('FROM campaign_criterion') && gaql.includes("('LOCATION', 'LANGUAGE')")) return Promise.resolve(responses.targeting ?? [])
     if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'AD_SCHEDULE'")) return Promise.resolve(responses.schedule ?? [])
+    if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'DEVICE'")) return Promise.resolve(responses.devices ?? [])
     if (gaql.includes('FROM campaign_criterion')) return Promise.resolve(responses.negatives ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('SITELINK')) return Promise.resolve(responses.sitelinks ?? [])
     if (gaql.includes('FROM campaign_asset') && gaql.includes('CALLOUT')) return Promise.resolve(responses.callouts ?? [])
@@ -580,5 +582,351 @@ describe('fetchAllState', () => {
     expect(kinds.has('negative')).toBe(true)
     expect(kinds.has('sitelink')).toBe(true)
     expect(kinds.has('callout')).toBe(true)
+  })
+})
+
+// ─── Network Settings ──────────────────────────────────────
+
+describe('fetchCampaigns — network settings', () => {
+  test('includes networkSettings from API response', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 111,
+        name: 'Network Test',
+        status: 2,
+        bidding_strategy_type: 6,
+        network_settings: {
+          target_google_search: true,
+          target_search_network: false,
+          target_content_network: true,
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/1',
+        amount_micros: 1000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    expect(resources).toHaveLength(1)
+    const ns = resources[0]!.properties.networkSettings as { searchNetwork: boolean; searchPartners: boolean; displayNetwork: boolean }
+    expect(ns).toBeDefined()
+    expect(ns.searchNetwork).toBe(true)
+    expect(ns.searchPartners).toBe(false)
+    expect(ns.displayNetwork).toBe(true)
+  })
+
+  test('omits networkSettings when API does not return it', async () => {
+    const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    // The existing fixture campaigns have no network_settings
+    for (const r of resources) {
+      expect(r.properties.networkSettings).toBeUndefined()
+    }
+  })
+
+  test('handles camelCase networkSettings from REST API', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 222,
+        name: 'CamelCase Net',
+        status: 2,
+        biddingStrategyType: 6,
+        networkSettings: {
+          targetGoogleSearch: true,
+          targetSearchNetwork: true,
+          targetContentNetwork: false,
+        },
+      },
+      campaignBudget: {
+        resourceName: 'customers/7300967494/campaignBudgets/2',
+        amountMicros: 2000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const ns = resources[0]!.properties.networkSettings as { searchNetwork: boolean; searchPartners: boolean; displayNetwork: boolean }
+    expect(ns).toBeDefined()
+    expect(ns.searchNetwork).toBe(true)
+    expect(ns.searchPartners).toBe(true)
+    expect(ns.displayNetwork).toBe(false)
+  })
+})
+
+// ─── Missing Bidding Strategies ────────────────────────────
+
+describe('fetchCampaigns — missing bidding strategies', () => {
+  test('maps TARGET_ROAS (8) correctly', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 333,
+        name: 'ROAS Campaign',
+        status: 2,
+        bidding_strategy_type: 8,
+        target_roas: {
+          target_roas: 3.5,
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/3',
+        amount_micros: 3000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; targetRoas: number }
+    expect(bidding.type).toBe('target-roas')
+    expect(bidding.targetRoas).toBe(3.5)
+  })
+
+  test('maps TARGET_IMPRESSION_SHARE (15) correctly', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 444,
+        name: 'Impression Share Campaign',
+        status: 2,
+        bidding_strategy_type: 15,
+        target_impression_share: {
+          location: 4, // ABSOLUTE_TOP
+          location_fraction_micros: 900000, // 90%
+          cpc_bid_ceiling_micros: 3000000,
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/4',
+        amount_micros: 5000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; location: string; targetPercent: number; maxCpc?: number }
+    expect(bidding.type).toBe('target-impression-share')
+    expect(bidding.location).toBe('absolute-top')
+    expect(bidding.targetPercent).toBe(90)
+    expect(bidding.maxCpc).toBe(3)
+  })
+
+  test('maps TARGET_IMPRESSION_SHARE with top location and no max CPC', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 445,
+        name: 'TIS No Cap',
+        status: 2,
+        bidding_strategy_type: 15,
+        target_impression_share: {
+          location: 3, // TOP
+          location_fraction_micros: 750000, // 75%
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/4b',
+        amount_micros: 5000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; location: string; targetPercent: number; maxCpc?: number }
+    expect(bidding.type).toBe('target-impression-share')
+    expect(bidding.location).toBe('top')
+    expect(bidding.targetPercent).toBe(75)
+    expect(bidding.maxCpc).toBeUndefined()
+  })
+
+  test('maps TARGET_IMPRESSION_SHARE with "anywhere" location (2)', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 446,
+        name: 'TIS Anywhere',
+        status: 2,
+        bidding_strategy_type: 15,
+        target_impression_share: {
+          location: 2, // ANYWHERE_ON_PAGE
+          location_fraction_micros: 500000, // 50%
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/4c',
+        amount_micros: 5000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; location: string; targetPercent: number }
+    expect(bidding.type).toBe('target-impression-share')
+    expect(bidding.location).toBe('anywhere')
+    expect(bidding.targetPercent).toBe(50)
+  })
+
+  test('maps MAXIMIZE_CONVERSION_VALUE (12) correctly', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 555,
+        name: 'Max Conv Value',
+        status: 2,
+        bidding_strategy_type: 12,
+        maximize_conversion_value: {
+          target_roas: 2.0,
+        },
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/5',
+        amount_micros: 8000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; targetRoas?: number }
+    expect(bidding.type).toBe('maximize-conversion-value')
+    expect(bidding.targetRoas).toBe(2.0)
+  })
+
+  test('maps MAXIMIZE_CONVERSION_VALUE without targetRoas', async () => {
+    const campaignRow: GoogleAdsRow = {
+      campaign: {
+        id: 556,
+        name: 'Max Conv Value No ROAS',
+        status: 2,
+        bidding_strategy_type: 12,
+      },
+      campaign_budget: {
+        resource_name: 'customers/7300967494/campaignBudgets/5b',
+        amount_micros: 8000000,
+      },
+    }
+
+    const client = createMockClient({ campaigns: [campaignRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    const bidding = resources[0]!.properties.bidding as { type: string; targetRoas?: number }
+    expect(bidding.type).toBe('maximize-conversion-value')
+    expect(bidding.targetRoas).toBeUndefined()
+  })
+})
+
+// ─── Device Bid Adjustments ────────────────────────────────
+
+describe('fetchDeviceBidModifiers', () => {
+  test('fetches and normalizes device bid modifiers', async () => {
+    const deviceRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          device: { type: 2 }, // MOBILE
+          bid_modifier: 0.75,  // -25%
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          device: { type: 4 }, // TABLET
+          bid_modifier: 1.2,   // +20%
+        },
+      },
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          device: { type: 3 }, // DESKTOP — no change
+          bid_modifier: 1.0,
+        },
+      },
+    ]
+
+    const client = createMockClient({ devices: deviceRows })
+    const result = await fetchDeviceBidModifiers(client)
+
+    const mods = result.get('123456')
+    expect(mods).toBeDefined()
+    // Desktop (1.0) is skipped — no-op
+    expect(mods).toHaveLength(2)
+
+    const mobile = mods!.find(m => m.device === 'mobile')
+    expect(mobile).toBeDefined()
+    expect(mobile!.bidAdjustment).toBeCloseTo(-0.25)
+
+    const tablet = mods!.find(m => m.device === 'tablet')
+    expect(tablet).toBeDefined()
+    expect(tablet!.bidAdjustment).toBeCloseTo(0.2)
+  })
+
+  test('skips no-op modifiers (bidAdjustment === 0)', async () => {
+    const deviceRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '999' },
+        campaign_criterion: {
+          device: { type: 2 }, // MOBILE
+          bid_modifier: 1.0,   // no change
+        },
+      },
+    ]
+
+    const client = createMockClient({ devices: deviceRows })
+    const result = await fetchDeviceBidModifiers(client)
+
+    // No entries because all are no-op
+    expect(result.has('999')).toBe(false)
+  })
+})
+
+describe('fetchAllState — device bid adjustments', () => {
+  test('merges device bid adjustments into campaign targeting', async () => {
+    const deviceRows: GoogleAdsRow[] = [
+      {
+        campaign: { id: '123456' },
+        campaign_criterion: {
+          device: { type: 2 }, // MOBILE
+          bid_modifier: 0.8,   // -20%
+        },
+      },
+    ]
+
+    const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'KEYWORD'")) return Promise.resolve([])
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("('LOCATION', 'LANGUAGE')")) return Promise.resolve([])
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'AD_SCHEDULE'")) return Promise.resolve([])
+      if (gaql.includes('FROM campaign_criterion') && gaql.includes("type = 'DEVICE'")) return Promise.resolve(deviceRows)
+      if (gaql.includes('FROM campaign_criterion')) return Promise.resolve([])
+      if (gaql.includes('FROM campaign_asset')) return Promise.resolve([])
+      if (gaql.includes('FROM campaign')) return Promise.resolve(campaignFixtures as GoogleAdsRow[])
+      if (gaql.includes('FROM ad_group_criterion')) return Promise.resolve([])
+      if (gaql.includes('FROM ad_group_ad')) return Promise.resolve([])
+      if (gaql.includes('FROM ad_group')) return Promise.resolve(adGroupFixtures as GoogleAdsRow[])
+      return Promise.resolve([])
+    })
+
+    const client: GoogleAdsClient = {
+      query: queryFn,
+      mutate: mock(() => Promise.resolve([])),
+      customerId: '7300967494',
+    }
+
+    const resources = await fetchAllState(client, { includePaused: true })
+
+    // Find the campaign that should have device rules (campaign 123456 = "Search - PDF Renaming")
+    const pdfCampaign = resources.find(r => r.kind === 'campaign' && r.platformId === '123456')
+    expect(pdfCampaign).toBeDefined()
+
+    const targeting = pdfCampaign!.properties.targeting as { rules: Array<{ type: string; device?: string; bidAdjustment?: number }> }
+    expect(targeting).toBeDefined()
+    expect(targeting.rules).toBeDefined()
+
+    const deviceRule = targeting.rules.find(r => r.type === 'device')
+    expect(deviceRule).toBeDefined()
+    expect(deviceRule!.device).toBe('mobile')
+    expect(deviceRule!.bidAdjustment).toBeCloseTo(-0.2)
   })
 })

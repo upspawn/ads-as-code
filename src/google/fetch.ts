@@ -80,6 +80,34 @@ function mapBiddingStrategy(apiType: unknown, row: GoogleAdsRow): BiddingStrateg
       const micros = targetCpa?.target_cpa_micros ?? targetCpa?.targetCpaMicros
       return { type: 'target-cpa', targetCpa: micros ? microsToAmount(micros as string | number) : 0 }
     }
+    case 'TARGET_ROAS': {
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const targetRoasObj = (campaign?.target_roas ?? campaign?.targetRoas) as Record<string, unknown> | undefined
+      const roas = targetRoasObj?.target_roas ?? targetRoasObj?.targetRoas
+      return { type: 'target-roas', targetRoas: Number(roas ?? 0) }
+    }
+    case 'TARGET_IMPRESSION_SHARE': {
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const tis = (campaign?.target_impression_share ?? campaign?.targetImpressionShare) as Record<string, unknown> | undefined
+      const locationEnum = Number(tis?.location ?? 2)
+      const locationMap: Record<number, 'anywhere' | 'top' | 'absolute-top'> = { 2: 'anywhere', 3: 'top', 4: 'absolute-top' }
+      const location = locationMap[locationEnum] ?? 'anywhere'
+      const fractionMicros = tis?.location_fraction_micros ?? tis?.locationFractionMicros
+      const targetPercent = fractionMicros ? Number(fractionMicros) / 10_000 : 0
+      const cpcCeiling = tis?.cpc_bid_ceiling_micros ?? tis?.cpcBidCeilingMicros
+      const result: BiddingStrategy = { type: 'target-impression-share', location, targetPercent }
+      return cpcCeiling
+        ? { ...result, maxCpc: microsToAmount(cpcCeiling as string | number) }
+        : result
+    }
+    case 'MAXIMIZE_CONVERSION_VALUE': {
+      const campaign = row.campaign as Record<string, unknown> | undefined
+      const mcv = (campaign?.maximize_conversion_value ?? campaign?.maximizeConversionValue) as Record<string, unknown> | undefined
+      const roas = mcv?.target_roas ?? mcv?.targetRoas
+      return roas !== undefined && roas !== null
+        ? { type: 'maximize-conversion-value', targetRoas: Number(roas) }
+        : { type: 'maximize-conversion-value' }
+    }
     default:
       return { type: 'maximize-conversions' }
   }
@@ -102,6 +130,9 @@ SELECT
   campaign.name,
   campaign.status,
   campaign.bidding_strategy_type,
+  campaign.network_settings.target_google_search,
+  campaign.network_settings.target_search_network,
+  campaign.network_settings.target_content_network,
   campaign_budget.id,
   campaign_budget.resource_name,
   campaign_budget.amount_micros
@@ -137,12 +168,21 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
   const path = slugify(name)
   const budgetResourceName = str(budget?.resource_name ?? budget?.resourceName)
 
+  // Network settings: support both snake_case (gRPC) and camelCase (REST)
+  const networkSettingsRaw = (campaign?.network_settings ?? campaign?.networkSettings) as Record<string, unknown> | undefined
+  const networkSettings = networkSettingsRaw ? {
+    searchNetwork: (networkSettingsRaw.target_google_search ?? networkSettingsRaw.targetGoogleSearch) === true,
+    searchPartners: (networkSettingsRaw.target_search_network ?? networkSettingsRaw.targetSearchNetwork) === true,
+    displayNetwork: (networkSettingsRaw.target_content_network ?? networkSettingsRaw.targetContentNetwork) === true,
+  } : undefined
+
   return resource('campaign', path, {
     name,
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
     ...(budgetResourceName ? { budgetResourceName } : {}),
+    ...(networkSettings ? { networkSettings } : {}),
   }, id)
 }
 
@@ -641,6 +681,89 @@ function mergeTargetingIntoCampaigns(
   })
 }
 
+// ─── Device Bid Modifiers ────────────────────────────────────
+
+export type DeviceBidModifier = { device: 'mobile' | 'desktop' | 'tablet'; bidAdjustment: number }
+
+const DEVICE_TYPE_MAP: Record<number | string, 'mobile' | 'desktop' | 'tablet'> = {
+  2: 'mobile', 3: 'desktop', 4: 'tablet',
+  'MOBILE': 'mobile', 'DESKTOP': 'desktop', 'TABLET': 'tablet',
+}
+
+const DEVICE_QUERY = `
+SELECT
+  campaign.id,
+  campaign_criterion.device.type,
+  campaign_criterion.bid_modifier
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'DEVICE'
+  AND campaign.status != 'REMOVED'
+`.trim()
+
+export async function fetchDeviceBidModifiers(
+  client: GoogleAdsClient,
+  campaignIds?: string[],
+): Promise<Map<string, DeviceBidModifier[]>> {
+  let query = DEVICE_QUERY
+  if (campaignIds?.length) {
+    query += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+
+  const rows = await client.query(query)
+  const result = new Map<string, DeviceBidModifier[]>()
+
+  for (const row of rows) {
+    const campaign = row.campaign as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
+    const campaignId = str(campaign?.id)
+
+    const deviceObj = criterion?.device as Record<string, unknown> | undefined
+    const rawType = deviceObj?.type as number | string
+    const device = DEVICE_TYPE_MAP[rawType]
+    if (!device) continue
+
+    const bidModifier = Number(criterion?.bid_modifier ?? criterion?.bidModifier ?? 1.0)
+    const bidAdjustment = bidModifier - 1.0
+
+    // Skip no-op modifiers
+    if (Math.abs(bidAdjustment) < 1e-9) continue
+
+    if (!result.has(campaignId)) {
+      result.set(campaignId, [])
+    }
+    result.get(campaignId)!.push({ device, bidAdjustment })
+  }
+
+  return result
+}
+
+/**
+ * Merge device bid modifiers into campaign Resources as targeting rules.
+ */
+function mergeDevicesIntoCampaigns(
+  campaigns: Resource[],
+  deviceMap: Map<string, DeviceBidModifier[]>,
+): Resource[] {
+  return campaigns.map(c => {
+    if (c.kind !== 'campaign' || !c.platformId) return c
+
+    const devices = deviceMap.get(c.platformId)
+    if (!devices || devices.length === 0) return c
+
+    const existingTargeting = c.properties.targeting as { rules: Array<Record<string, unknown>> } | undefined
+    const existingRules = existingTargeting?.rules ?? []
+    const deviceRules = devices.map(d => ({ type: 'device', device: d.device, bidAdjustment: d.bidAdjustment }))
+
+    return {
+      ...c,
+      properties: {
+        ...c.properties,
+        targeting: { rules: [...existingRules, ...deviceRules] },
+      },
+    }
+  })
+}
+
 // ─── Orchestrators ──────────────────────────────────────────
 
 export async function fetchAllState(
@@ -663,17 +786,19 @@ export async function fetchAllState(
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
   ])
 
-  // Step 4: Extensions + negative keywords + targeting (scoped to campaigns) — can run in parallel
-  const [extensions, negatives, targetingMap] = await Promise.all([
+  // Step 4: Extensions + negative keywords + targeting + devices (scoped to campaigns) — can run in parallel
+  const [extensions, negatives, targetingMap, deviceMap] = await Promise.all([
     fetchExtensions(client, campaignIds),
     fetchNegativeKeywords(client, campaignIds),
     fetchCampaignTargeting(client, campaignIds),
+    fetchDeviceBidModifiers(client, campaignIds),
   ])
 
-  // Merge targeting into campaign resources
+  // Merge targeting and device bid adjustments into campaign resources
   const campaignsWithTargeting = mergeTargetingIntoCampaigns(campaigns, targetingMap)
+  const campaignsWithDevices = mergeDevicesIntoCampaigns(campaignsWithTargeting, deviceMap)
 
-  return [...campaignsWithTargeting, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+  return [...campaignsWithDevices, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -706,15 +831,17 @@ export async function fetchKnownState(
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     ])
-    const [extensions, negatives, targetingMap] = await Promise.all([
+    const [extensions, negatives, targetingMap, deviceMap] = await Promise.all([
       fetchExtensions(client, knownCampaignIds),
       fetchNegativeKeywords(client, knownCampaignIds),
       fetchCampaignTargeting(client, knownCampaignIds),
+      fetchDeviceBidModifiers(client, knownCampaignIds),
     ])
 
     const campaignsWithTargeting = mergeTargetingIntoCampaigns(knownCampaigns, targetingMap)
+    const campaignsWithDevices = mergeDevicesIntoCampaigns(campaignsWithTargeting, deviceMap)
 
-    return [...campaignsWithTargeting, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
+    return [...campaignsWithDevices, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything
