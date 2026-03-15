@@ -812,24 +812,36 @@ The init command:
 
 ### Plan Output
 
-Plan output uses **human-readable names** (not slugified paths) so you can immediately see what's being changed:
+Plan output uses **human-readable names** (not slugified paths) so you can immediately see what's being changed. **Default-resolved values are annotated with `(default)`** so there's zero hidden magic — you see exactly what the SDK will send to Meta, and you know which values you set vs which were inferred:
 
 ```
 Meta Ads — act_4053319338268788
 
   + campaign    Retargeting - US                                    (daily €5.00, paused)
-  + adSet       Retargeting - US → Website Visitors 30d             (lowest cost, automatic)
+  + adSet       Retargeting - US → Website Visitors 30d
+                  bidding:        lowest cost (default)
+                  placements:     automatic (default)
+                  optimization:   LINK_CLICKS (default for traffic)
+                  status:         paused (default)
   + upload      ./assets/hero.png                                   (new, 245 KB)
   + upload      ./assets/comparison.png                             (new, 189 KB)
   + creative    Retargeting - US → Website Visitors 30d → hero      (image, "Rename Files Instantly")
   + ad          Retargeting - US → Website Visitors 30d → hero
+                  name:           hero (default from filename)
+                  cta:            SIGN_UP (default from ad set)
+                  url:            https://renamed.to (default from ad set)
   + creative    Retargeting - US → Website Visitors 30d → comparison (image, "Before & After")
   + ad          Retargeting - US → Website Visitors 30d → comparison
+                  name:           comparison (default from filename)
+                  cta:            LEARN_MORE
+                  url:            https://renamed.to/tour
 
 Google Ads — 7300967494
 
   ~ campaign    Search - PDF Renaming                               (budget: €1.50 → €2.00)
 ```
+
+The `(default)` and `(default from ...)` annotations appear only on **creates**. For existing resources (updates/drift), the resolved values are already live — no annotation needed.
 
 **Property-level diffs** for updates show exactly what changed:
 
