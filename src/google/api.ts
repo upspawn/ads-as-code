@@ -184,7 +184,7 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
       }))
 
       const results = await customer.mutateResources(mutateOps as Parameters<typeof customer.mutateResources>[0])
-      return (results as Array<{ resource_name?: string }>).map(r => ({
+      return (results as unknown as Array<{ resource_name?: string }>).map(r => ({
         resourceName: r.resource_name ?? '',
       }))
     } catch (err: unknown) {

@@ -106,7 +106,7 @@ async function fetchAllCampaigns(
 
   for (const row of adGroupRows) {
     const c = row.campaign as Record<string, unknown>
-    const ag = row.ad_group ?? row.adGroup as Record<string, unknown>
+    const ag = (row.ad_group ?? row.adGroup) as Record<string, unknown>
     const campaignPath = campaignToFilename(c.name as string)
     const entry = campaignMap.get(campaignPath)
     if (!entry) continue
@@ -194,7 +194,7 @@ async function fetchAllCampaigns(
 
   for (const row of adRows) {
     const c = row.campaign as Record<string, unknown>
-    const ag = row.ad_group ?? row.adGroup as Record<string, unknown>
+    const ag = (row.ad_group ?? row.adGroup) as Record<string, unknown>
     const adGroupAd = (row.ad_group_ad ?? row.adGroupAd) as Record<string, unknown>
     const ad = adGroupAd.ad as Record<string, unknown>
     const rsa = (ad.responsive_search_ad ?? ad.responsiveSearchAd) as Record<string, unknown>
@@ -243,7 +243,7 @@ async function fetchAllCampaigns(
 
   for (const row of negRows) {
     const c = row.campaign as Record<string, unknown>
-    const criterion = row.campaign_criterion ?? row.campaignCriterion as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
     const keyword = criterion.keyword as Record<string, unknown>
 
     const campaignPath = campaignToFilename(c.name as string)
@@ -298,7 +298,7 @@ async function fetchAllCampaigns(
 
   for (const row of targetingRows) {
     const c = row.campaign as Record<string, unknown>
-    const criterion = row.campaign_criterion ?? row.campaignCriterion as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
     const campaignPath = campaignToFilename(c.name as string)
     const type = criterion.type as string
 
