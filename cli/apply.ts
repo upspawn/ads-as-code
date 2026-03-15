@@ -93,6 +93,7 @@ function printPlan(changeset: Changeset, campaignNames: Map<string, string>): vo
     for (const change of campaignUpdates) {
       if (change.op !== 'update') continue
       for (const pc of change.changes) {
+        if (pc.field === 'budgetResourceName') continue  // internal metadata
         console.log(`  ~ ${describeResource(change.resource)}: ${pc.field}: ${formatValue(pc.from)} -> ${formatValue(pc.to)}`)
       }
     }

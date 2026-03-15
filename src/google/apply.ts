@@ -367,53 +367,91 @@ function buildDeleteOperation(
 
 // ─── Update Builders ────────────────────────────────────────
 
-function buildUpdateOperation(
+function buildUpdateOperations(
   customerId: string,
   change: Change & { op: 'update' },
-): MutateOperation | null {
+): MutateOperation[] {
   const resource = change.resource
-  if (!resource.platformId) return null
+  if (!resource.platformId || typeof resource.platformId !== 'string') return []
 
-  const changedFields = change.changes.map(c => c.field)
+  const campaignId = resource.platformId.includes('/campaigns/')
+    ? resource.platformId
+    : `customers/${customerId}/campaigns/${resource.platformId}`
 
   switch (resource.kind) {
     case 'campaign': {
-      const update: Record<string, unknown> = {
-        resource_name: `customers/${customerId}/campaigns/${resource.platformId}`,
-      }
+      const ops: MutateOperation[] = []
+
+      // Campaign field updates (status, name)
+      const campaignFields: Record<string, unknown> = {}
+      const campaignMask: string[] = []
       for (const c of change.changes) {
         if (c.field === 'status') {
-          update.status = (c.to as string) === 'enabled' ? 2 : 3 // 2=ENABLED, 3=PAUSED
+          campaignFields.status = (c.to as string) === 'enabled' ? 2 : 3
+          campaignMask.push('status')
         }
         if (c.field === 'name') {
-          update.name = c.to
+          campaignFields.name = c.to
+          campaignMask.push('name')
         }
       }
-      return {
-        operation: 'campaign',
-        op: 'update',
-        resource: update,
-        updateMask: changedFields.join(','),
+      if (campaignMask.length > 0) {
+        ops.push({
+          operation: 'campaign',
+          op: 'update',
+          resource: { resource_name: campaignId, ...campaignFields },
+          updateMask: campaignMask.join(','),
+        })
       }
+
+      // Budget update — separate campaign_budget resource
+      const budgetChange = change.changes.find(c => c.field === 'budget')
+      if (budgetChange) {
+        const newBudget = budgetChange.to as { amount: number; period?: string } | undefined
+        if (newBudget) {
+          // Get budget resource name from the budgetResourceName change (from=actual value)
+          // or from the resource properties (if available from fetched state)
+          const brnChange = change.changes.find(c => c.field === 'budgetResourceName')
+          const budgetResourceName = (brnChange?.from as string)
+            ?? (resource.properties.budgetResourceName as string)
+            ?? undefined
+          if (budgetResourceName && typeof budgetResourceName === 'string' && budgetResourceName.startsWith('customers/')) {
+            ops.push({
+              operation: 'campaign_budget',
+              op: 'update',
+              resource: {
+                resource_name: budgetResourceName,
+                amount_micros: String(dailyBudgetMicros(newBudget)),
+              },
+              updateMask: 'amount_micros',
+            })
+          }
+        }
+      }
+
+      return ops
     }
     case 'adGroup': {
       const update: Record<string, unknown> = {
-        resource_name: `customers/${customerId}/adGroups/${resource.platformId}`,
+        resource_name: resolveResourceName(customerId, 'adGroups', resource.platformId),
       }
+      const mask: string[] = []
       for (const c of change.changes) {
         if (c.field === 'status') {
-          update.status = (c.to as string) === 'enabled' ? 2 : 3 // 2=ENABLED, 3=PAUSED
+          update.status = (c.to as string) === 'enabled' ? 2 : 3
+          mask.push('status')
         }
       }
-      return {
+      if (mask.length === 0) return []
+      return [{
         operation: 'ad_group',
         op: 'update',
         resource: update,
-        updateMask: changedFields.join(','),
-      }
+        updateMask: mask.join(','),
+      }]
     }
     default:
-      return null
+      return []
   }
 }
 
@@ -536,8 +574,7 @@ function buildUpdateMutations(
   change: Change & { op: 'update' },
   customerId: string,
 ): MutateOperation[] {
-  const op = buildUpdateOperation(customerId, change)
-  return op ? [op] : []
+  return buildUpdateOperations(customerId, change)
 }
 
 function buildDeleteMutations(

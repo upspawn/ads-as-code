@@ -216,7 +216,8 @@ export function diff(
       matchedActualPaths.add(dPath)
       const changes = compareProperties(dResource.properties, aResource.properties)
       if (changes.length > 0) {
-        updates.push({ op: 'update', resource: dResource, changes })
+        // Merge platformId and internal metadata from actual resource into desired
+        updates.push({ op: 'update', resource: { ...dResource, platformId: aResource.platformId, properties: { ...dResource.properties, budgetResourceName: aResource.properties.budgetResourceName } }, changes })
       }
     } else {
       // No direct path match — try RSA stable identity via cache

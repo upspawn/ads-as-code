@@ -103,6 +103,7 @@ SELECT
   campaign.status,
   campaign.bidding_strategy_type,
   campaign_budget.id,
+  campaign_budget.resource_name,
   campaign_budget.amount_micros
 FROM campaign
 WHERE campaign.status != 'REMOVED'
@@ -134,12 +135,14 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
 
   const bidding = mapBiddingStrategy(biddingType, row)
   const path = slugify(name)
+  const budgetResourceName = str(budget?.resource_name ?? budget?.resourceName)
 
   return resource('campaign', path, {
     name,
     status,
     budget: { amount, currency: 'EUR', period: 'daily' },
     bidding,
+    ...(budgetResourceName ? { budgetResourceName } : {}),
   }, id)
 }
 
