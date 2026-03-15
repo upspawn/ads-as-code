@@ -397,6 +397,11 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     // Find the group key from the path: campaignSlug/groupKey
     const groupKey = ag.path.replace(`${campaignSlug}/`, '')
 
+    // Smart ad groups are handled inline in the config — skip them
+    if ((ag.properties.adGroupType as string) === 'smart') {
+      continue
+    }
+
     // Shopping ad groups are simple — just optional bid and status
     if ((ag.properties.adGroupType as string) === 'shopping') {
       const shoppingParts: string[] = []
@@ -746,8 +751,33 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   )
   lines.push('')
 
-  // Shopping settings — add merchantId etc. to config
+  // Smart campaign settings — add businessName, finalUrl, language, keywordThemes, ad to config
   const channelType = props.channelType as string | undefined
+  if (channelType === 'smart') {
+    const bizName = props.businessName as string | undefined
+    if (bizName) configParts.push(`businessName: ${quote(bizName)},`)
+    const bizProfile = props.businessProfile as string | undefined
+    if (bizProfile) configParts.push(`businessProfile: ${quote(bizProfile)},`)
+    const smartFinalUrl = props.finalUrl as string | undefined
+    if (smartFinalUrl) configParts.push(`finalUrl: ${quote(smartFinalUrl)},`)
+    const lang = props.language as string | undefined
+    if (lang) configParts.push(`language: ${quote(lang)},`)
+    const kwThemes = props.keywordThemes as string[] | undefined
+    if (kwThemes && kwThemes.length > 0) {
+      configParts.push(`keywordThemes: [${kwThemes.map(quote).join(', ')}],`)
+    }
+
+    // Inline the ad from the ad resource
+    const smartAdRes = ads.find(a => a.properties.adType === 'smart')
+    if (smartAdRes) {
+      imports.add('smartAd')
+      const hl = smartAdRes.properties.headlines as string[]
+      const desc = smartAdRes.properties.descriptions as string[]
+      configParts.push(`ad: smartAd({\n    headlines: [${hl.map(quote).join(', ')}],\n    descriptions: [${desc.map(quote).join(', ')}],\n  }),`)
+    }
+  }
+
+  // Shopping settings — add merchantId etc. to config
   if (channelType === 'shopping') {
     const shoppingSetting = props.shoppingSetting as Record<string, unknown> | undefined
     if (shoppingSetting) {
@@ -769,6 +799,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     : channelType === 'performance-max' ? 'performanceMax'
     : channelType === 'shopping' ? 'shopping'
     : channelType === 'demand-gen' ? 'demandGen'
+    : channelType === 'smart' ? 'smart'
     : 'search'
   lines.push(`export default google.${builderMethod}(${quote(campaignName)}, {`)
   for (const part of configParts) {
@@ -777,7 +808,10 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   lines.push(`})`)
 
   // Chain asset groups (PMax) or ad groups (Search/Display)
-  if (channelType === 'performance-max') {
+  // Smart campaigns are flat — ad is part of the config, no group chains
+  if (channelType === 'smart') {
+    // No groups to chain — everything is in the config
+  } else if (channelType === 'performance-max') {
     for (const ag of assetGroupResources) {
       const agKey = ag.path.replace(`${campaignSlug}/`, '')
       const agProps = ag.properties

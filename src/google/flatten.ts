@@ -1,5 +1,5 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
-import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleCampaign } from './types.ts'
+import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleSmartCampaign, GoogleCampaign } from './types.ts'
 import { slugify } from '../core/flatten.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
@@ -375,15 +375,56 @@ export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] 
   return resources
 }
 
+// ─── Smart Flatten ──────────────────────────────────────
+
+/** Flatten a single Google Smart campaign tree into a flat list of Resource objects. */
+export function flattenSmart(campaign: GoogleSmartCampaign): Resource[] {
+  const resources: Resource[] = []
+  const campaignPath = slugify(campaign.name)
+
+  // 1. Campaign resource — with channelType and smart-specific fields
+  resources.push(resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    // Smart campaigns use maximize-conversions internally
+    bidding: { type: 'maximize-conversions' },
+    channelType: 'smart',
+    businessName: campaign.businessName,
+    ...(campaign.businessProfile ? { businessProfile: campaign.businessProfile } : {}),
+    finalUrl: campaign.finalUrl,
+    language: campaign.language,
+    keywordThemes: campaign.keywordThemes,
+  }))
+
+  // 2. One auto-created ad group
+  const adGroupPath = `${campaignPath}/default`
+  resources.push(resource('adGroup', adGroupPath, {
+    status: 'enabled',
+    adGroupType: 'smart',
+  }))
+
+  // 3. One ad with SmartCampaignAdInfo
+  const adHash = stableHash(JSON.stringify(campaign.ad))
+  resources.push(resource('ad', `${adGroupPath}/smart:${adHash}`, {
+    adType: 'smart',
+    headlines: campaign.ad.headlines,
+    descriptions: campaign.ad.descriptions,
+  }))
+
+  return resources
+}
+
 // ─── Multi-Kind Flatten ──────────────────────────────────
 
-/** Flatten multiple Google campaigns (Search, Display, PMax, Shopping, or Demand Gen) into a single flat list. */
+/** Flatten multiple Google campaigns (Search, Display, PMax, Shopping, Demand Gen, or Smart) into a single flat list. */
 export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
   return campaigns.flatMap(c => {
     if (c.kind === 'display') return flattenDisplay(c)
     if (c.kind === 'performance-max') return flattenPMax(c)
     if (c.kind === 'shopping') return flattenShopping(c)
     if (c.kind === 'demand-gen') return flattenDemandGen(c)
+    if (c.kind === 'smart') return flattenSmart(c)
     return flatten(c)
   })
 }

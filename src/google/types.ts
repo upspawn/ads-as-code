@@ -501,7 +501,40 @@ export type DemandGenCampaignBuilder = GoogleDemandGenCampaign & {
   group(key: string, input: DemandGenAdGroupInput): DemandGenCampaignBuilder
 }
 
+// === Smart Campaign ===
+
+export type SmartCampaignAd = {
+  readonly type: 'smart'
+  readonly headlines: [string, string, string]  // exactly 3, max 30 chars
+  readonly descriptions: [string, string]       // exactly 2, max 90 chars
+}
+
+export type GoogleSmartCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'smart'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly businessName: string
+  readonly businessProfile?: string  // 'locations/{id}'
+  readonly finalUrl: string
+  readonly language: string
+  readonly keywordThemes: string[]
+  readonly ad: SmartCampaignAd
+}
+
+export type SmartCampaignInput = {
+  readonly budget: Budget
+  readonly status?: 'enabled' | 'paused'
+  readonly businessName: string
+  readonly businessProfile?: string
+  readonly finalUrl: string
+  readonly language?: string
+  readonly keywordThemes: string[]
+  readonly ad: SmartCampaignAd
+}
+
 // === Campaign union (extensible for Meta) ===
 
-export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign
-export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign | GoogleSmartCampaign

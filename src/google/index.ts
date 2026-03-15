@@ -22,6 +22,7 @@ import type {
   GooglePMaxCampaign,
   GoogleSearchCampaignUnresolved,
   GoogleShoppingCampaign,
+  GoogleSmartCampaign,
   ImageExtension,
   PMaxCampaignBuilder,
   PMaxCampaignInput,
@@ -32,6 +33,7 @@ import type {
   ShoppingCampaignBuilder,
   ShoppingCampaignInput,
   Sitelink,
+  SmartCampaignInput,
   StructuredSnippet,
 } from './types.ts'
 
@@ -655,5 +657,35 @@ export const google = {
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
     }
     return createDemandGenBuilder(campaign)
+  },
+
+  /**
+   * Create a Google Smart campaign.
+   *
+   * Smart campaigns are simplified campaigns that use keyword themes
+   * instead of individual keywords. They're designed for small businesses
+   * and run across Search, Display, and Maps.
+   *
+   * Smart campaigns are flat — no `.group()` chaining. The campaign
+   * object is returned directly.
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration
+   * @returns A GoogleSmartCampaign object (not a builder)
+   */
+  smart(name: string, input: SmartCampaignInput): GoogleSmartCampaign {
+    return {
+      provider: 'google',
+      kind: 'smart',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      businessName: input.businessName,
+      ...(input.businessProfile !== undefined && { businessProfile: input.businessProfile }),
+      finalUrl: input.finalUrl,
+      language: input.language ?? 'en',
+      keywordThemes: input.keywordThemes,
+      ad: input.ad,
+    }
   },
 }

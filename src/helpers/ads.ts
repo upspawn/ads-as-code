@@ -1,5 +1,5 @@
 import type { Headline, Description } from '../core/types.ts'
-import type { RSAd, PinnedHeadline, PinnedDescription } from '../google/types.ts'
+import type { RSAd, PinnedHeadline, PinnedDescription, SmartCampaignAd } from '../google/types.ts'
 
 const HEADLINE_MAX = 30
 const DESCRIPTION_MAX = 90
@@ -132,4 +132,16 @@ export function rsa(
     ...(options?.mobileUrl ? { mobileUrl: options.mobileUrl } : {}),
     ...(options?.trackingTemplate ? { trackingTemplate: options.trackingTemplate } : {}),
   }
+}
+
+/**
+ * Build a Smart Campaign ad from headlines and descriptions.
+ *
+ * Smart campaigns require exactly 3 headlines (max 30 chars) and 2 descriptions (max 90 chars).
+ *
+ * @param config - Headlines and descriptions for the Smart ad
+ * @returns A SmartCampaignAd definition
+ */
+export function smartAd(config: { headlines: [string, string, string]; descriptions: [string, string] }): SmartCampaignAd {
+  return { type: 'smart' as const, ...config }
 }

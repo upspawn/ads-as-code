@@ -86,12 +86,31 @@ export type {
   DemandGenCampaignInput,
   DemandGenAdGroupInput,
   DemandGenCampaignBuilder,
+  GoogleSmartCampaign,
+  SmartCampaignAd,
+  SmartCampaignInput,
 } from './google/types.ts'
 
 export type {
   ImageRef,
   ImageAspectRatio,
 } from './google/image-assets.ts'
+
+export type {
+  SharedNegativeList,
+  ConversionActionConfig,
+  ConversionActionType,
+  ConversionCategory,
+  ConversionCounting,
+  AttributionModel,
+  SharedBudgetConfig,
+} from './google/shared-types.ts'
+
+export {
+  sharedNegatives,
+  conversionAction,
+  sharedBudget,
+} from './google/shared-types.ts'
 
 export {
   landscape,
@@ -109,7 +128,7 @@ export {
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   placements, topics, contentKeywords,
-  headlines, descriptions, rsa,
+  headlines, descriptions, rsa, smartAd,
   responsiveDisplay,
   demandGenMultiAsset, demandGenCarousel, carouselCard,
   link, sitelinks, callouts, snippet, call, price, promotion, image,

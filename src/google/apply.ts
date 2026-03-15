@@ -9,6 +9,10 @@ export type { ApplyResult }
 
 /** Dependency order for resource creation (parent → child) */
 const CREATION_ORDER: ResourceKind[] = [
+  'sharedBudget',
+  'sharedSet',
+  'sharedCriterion',
+  'conversionAction',
   'campaign',
   'assetGroup',
   'adGroup',
@@ -138,10 +142,11 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
-  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 10=PERFORMANCE_MAX, 14=DEMAND_GEN
+  // Channel type: 2=SEARCH, 3=DISPLAY, 4=SHOPPING, 9=SMART, 10=PERFORMANCE_MAX, 14=DEMAND_GEN
   const channelTypeStr = props.channelType as string | undefined
   const channelType = channelTypeStr === 'display' ? 3
     : channelTypeStr === 'shopping' ? 4
+    : channelTypeStr === 'smart' ? 9
     : channelTypeStr === 'performance-max' ? 10
     : channelTypeStr === 'demand-gen' ? 14
     : 2
@@ -221,6 +226,16 @@ function buildCampaignCreate(
       ...(shoppingSetting.enableLocal !== undefined && { enable_local: shoppingSetting.enableLocal }),
       ...(shoppingSetting.feedLabel !== undefined && { feed_label: shoppingSetting.feedLabel }),
     }
+  }
+
+  // Smart campaign settings
+  if (channelTypeStr === 'smart') {
+    const smartSetting: Record<string, unknown> = {}
+    if (props.businessName) smartSetting.business_name = props.businessName
+    if (props.businessProfile) smartSetting.business_profile_location = props.businessProfile
+    if (props.finalUrl) smartSetting.final_url = props.finalUrl
+    if (props.language) smartSetting.advertising_language_code = props.language
+    campaign.smart_campaign_setting = smartSetting
   }
 
   // Dates
