@@ -1,22 +1,22 @@
 # ads-as-code
 
-Manage Google Ads campaigns as version-controlled TypeScript code. Like Pulumi/Terraform, but for ad campaigns.
+Manage Google Ads and Meta (Facebook/Instagram) campaigns as version-controlled TypeScript code. Like Pulumi/Terraform, but for ad campaigns.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-bun%20test-blue)](https://bun.sh)
 
 ## What is this?
 
-`ads-as-code` is a TypeScript SDK and CLI for defining ad campaigns in code, diffing them against your live account, and applying changes. Instead of clicking through the Google Ads UI, you write type-safe campaign definitions, review a plan of what will change, and apply it. Your campaigns live in git, are reviewable in PRs, and have full change history.
+`ads-as-code` is a TypeScript SDK and CLI for defining ad campaigns in code, diffing them against your live accounts, and applying changes. Instead of clicking through the Google Ads or Meta Ads Manager UI, you write type-safe campaign definitions, review a plan of what will change, and apply it. Your campaigns live in git, are reviewable in PRs, and have full change history.
 
 ## Features
 
 - **Type-safe campaign definitions** -- headlines validated to 30 chars, descriptions to 90 chars, budgets, bidding, keywords, and targeting all checked at compile time
 - **Plan / apply workflow** -- see exactly what will change before it touches your account (`ads plan` then `ads apply`)
-- **Drift detection** -- `ads pull` detects changes made in the Google Ads UI that diverge from code
-- **Campaign import** -- `ads import` pulls your existing campaigns from Google Ads and generates idiomatic TypeScript files
+- **Drift detection** -- `ads pull` detects changes made in the ad platform UI that diverge from code
+- **Campaign import** -- `ads import` pulls your existing campaigns and generates idiomatic TypeScript files
 - **SQLite cache + history** -- local cache maps code paths to platform IDs, stores snapshots for rollback
-- **Google Ads support** (Facebook/Meta planned)
+- **Multi-provider** -- Google Ads (Search campaigns) and Meta/Facebook (traffic, conversions, leads, and more)
 
 ## Quick Start
 
@@ -114,6 +114,33 @@ export default google.search('Search - PDF Renaming', {
     ),
   })
 ```
+
+### Meta (Facebook/Instagram) campaign
+
+```typescript
+import { meta, daily, geo, targeting, image } from '@upspawn/ads'
+
+export default meta.traffic('Retargeting - US', {
+  budget: daily(10),
+})
+  .adSet('Website Visitors', {
+    targeting: targeting(geo('US')),
+    optimization: 'LINK_CLICKS',
+  }, {
+    url: 'https://www.renamed.to',
+    cta: 'SIGN_UP',
+    ads: [
+      image('./assets/hero.png', {
+        headline: 'Rename Files Instantly',
+        primaryText: 'Stop wasting hours organizing files manually.',
+      }),
+    ],
+  })
+```
+
+Objectives: `meta.traffic()`, `meta.conversions()`, `meta.leads()`, `meta.sales()`, `meta.awareness()`, `meta.engagement()`, `meta.appPromotion()`. Each objective constrains which optimization goals are valid for its ad sets at compile time.
+
+Creative helpers: `image()`, `video()`, `carousel()`, `boostedPost()`.
 
 ### Shared targeting and negatives
 
@@ -235,12 +262,14 @@ export default google.search('My Campaign', { /* ... */ })
 |---------|-------------|-----------|
 | `ads init` | Scaffold a new project (config, directories, presets) | |
 | `ads auth <provider>` | Authenticate with an ad platform (interactive OAuth) | `--check` |
-| `ads import` | Import live campaigns as TypeScript files | `--all`, `--filter <glob>` |
+| `ads import` | Import live campaigns as TypeScript files | `--all`, `--filter <glob>`, `--provider meta` |
 | `ads validate` | Validate campaign files and report errors | |
 | `ads plan` | Show what changes would be applied | `--json` |
-| `ads apply` | Apply changes to ad platforms | `--json` |
+| `ads apply` | Apply changes to ad platforms | `--json`, `--dry-run` |
 | `ads pull` | Pull live state and detect drift from code | |
 | `ads status` | Show current platform state | `--filter <glob>`, `--json` |
+| `ads search <type> <query>` | Search Meta targeting (interests, behaviors) | `ads search interests "Construction"` |
+| `ads audiences` | List Meta custom audiences | |
 | `ads history` | Show operation history | `--diff N`, `--rollback N` |
 | `ads doctor` | Run diagnostic checks on project setup | |
 | `ads cache` | Manage the local cache | `clear`, `stats` |
@@ -259,9 +288,11 @@ export default defineConfig({
     customerId: '730-096-7494',     // Your Google Ads customer ID
     managerId: '239-066-1468',      // MCC manager ID (optional)
   },
-  // meta: {                        // Coming soon
-  //   accountId: 'act_123456789',
-  // },
+  meta: {
+    accountId: 'act_123456789',     // Your Meta Ads account ID
+    pageId: '123456789',            // Facebook Page ID (for ad creatives)
+    apiVersion: 'v22.0',            // Graph API version (optional, defaults to v22.0)
+  },
 })
 ```
 
@@ -296,14 +327,24 @@ ads auth google --check
 # Authentication valid.
 ```
 
+### Meta (Facebook/Instagram)
+
+Set the `FB_ADS_ACCESS_TOKEN` environment variable:
+
+```bash
+export FB_ADS_ACCESS_TOKEN="your-meta-access-token"
+```
+
+Generate a long-lived token from the [Meta Business Suite](https://business.facebook.com/settings/system-users) system user settings, or use a short-lived token from the Graph API Explorer for testing.
+
 ## How It Works
 
 ```
-campaigns/*.ts          TypeScript campaign definitions
+campaigns/*.ts          TypeScript campaign definitions (Google + Meta)
        |
        v
    flatten()            Decompose campaigns into flat Resource list
-       |                (campaign, adGroup, keyword, ad, sitelink, negative)
+       |                (campaign, adGroup/adSet, keyword, ad, extensions)
        v
     diff()              Pure function: compare desired vs actual resources
        |                Semantic comparison (budget micros, URL normalization,
@@ -312,38 +353,52 @@ campaigns/*.ts          TypeScript campaign definitions
    Changeset            { creates, updates, deletes, drift }
        |
        v
-   apply()              Execute mutations via Google Ads API
+   apply()              Execute mutations via Google Ads API or Meta Graph API
 ```
 
-The **diff engine** is a pure function that takes desired resources (from code) and actual resources (from the API) and produces a changeset. It uses semantic comparison: budgets are compared in micros to avoid float issues, headlines/descriptions are order-independent, keyword text is case-insensitive, and URLs are normalized.
+The **diff engine** is a pure function that takes desired resources (from code) and actual resources (from the API) and produces a changeset. It uses semantic comparison: budgets are compared in micros to avoid float issues, headlines/descriptions are order-independent, keyword text is case-insensitive, and URLs are normalized. The same engine works for both Google and Meta resources.
 
 The **SQLite cache** (`.ads/cache.db`) tracks which resources are managed by ads-as-code, maps code paths to platform IDs for stable identity across content changes, and stores operation snapshots for history/rollback.
 
-The **import** command fetches live campaigns via GAQL queries, generates idiomatic TypeScript using the SDK helpers, and seeds the cache so `ads plan` immediately shows a clean diff.
+The **import** command fetches live campaigns via GAQL (Google) or Graph API (Meta), generates idiomatic TypeScript using the SDK helpers, and seeds the cache so `ads plan` immediately shows a clean diff.
 
 ## Status
 
-**v0.1.0** -- Early release. Actively used in production for managing Google Ads campaigns.
+**v0.2.0** -- Actively used in production for managing Google Ads and Meta campaigns.
 
 ### What works
 
+**Google Ads:**
 - Full campaign lifecycle: create, update, delete via `plan` / `apply`
-- Import existing campaigns from Google Ads as TypeScript files
+- Import existing campaigns as TypeScript files
 - Drift detection between code and live account
 - Semantic diff (budget precision, headline ordering, URL normalization)
-- SQLite cache with operation history
 - RSA stable identity (content changes produce updates, not delete+create)
 - Geo, language, and schedule targeting
 - Sitelink and callout extensions
 - Negative keywords (campaign-level, broad/phrase/exact)
 
+**Meta (Facebook/Instagram):**
+- Campaign + ad set + ad lifecycle: create, update, pause via `plan` / `apply`
+- Import existing campaigns from Meta Ads as TypeScript files
+- Image, video, carousel, and boosted post ad creatives
+- Local image/video upload to Meta during apply
+- Interest and behavior targeting search (`ads search interests "..."`)
+- Custom audience listing (`ads audiences`)
+- Objective-typed campaigns (traffic, conversions, leads, sales, awareness, engagement, app promotion)
+- Type-safe optimization goals constrained by campaign objective
+
+**Shared:**
+- SQLite cache with operation history
+- `--dry-run` flag on apply
+- Multi-provider support in all CLI commands
+
 ### Known limitations
 
-- Google Ads only (Meta/Facebook planned)
-- Search campaigns only (Display, Shopping, Performance Max not yet supported)
+- Google: Search campaigns only (Display, Shopping, Performance Max not yet supported)
+- Google: Sitelink/callout extensions are not yet fetched during import
+- Google: No shared negative keyword lists at the account level (campaign-level only)
 - No `ads destroy` or `ads diff` commands yet
-- Sitelink/callout extensions are not yet fetched during import
-- No shared negative keyword lists at the account level (campaign-level only)
 
 ## Contributing
 
@@ -364,8 +419,10 @@ PRs welcome. The codebase is structured as:
 
 - `src/core/` -- diff engine, flatten, cache, config, codegen (platform-agnostic)
 - `src/google/` -- Google Ads API client, fetch, apply, constants
-- `src/helpers/` -- keyword, budget, targeting, ad, extension, URL helpers
-- `cli/` -- CLI commands (init, auth, import, plan, apply, pull, status, history, doctor, cache)
+- `src/meta/` -- Meta Graph API client, fetch, apply, upload, codegen
+- `src/helpers/` -- keyword, budget, targeting, ad, extension, URL, meta-creative helpers
+- `src/ai/` -- AI-powered ad copy generation markers and prompts
+- `cli/` -- CLI commands (init, auth, import, plan, apply, pull, status, search, audiences, history, doctor, cache)
 - `test/unit/` -- unit tests for all modules
 - `example/` -- example project with real campaign files
 

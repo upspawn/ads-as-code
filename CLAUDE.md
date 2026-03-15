@@ -9,12 +9,17 @@ bun test                          # Run all unit tests
 bunx tsc --noEmit                 # Typecheck (strict mode, no output)
 bun cli/index.ts plan             # Preview changes (diff code vs platform)
 bun cli/index.ts apply            # Apply changes to ad platforms
+bun cli/index.ts apply --dry-run  # Preview apply without mutations
 bun cli/index.ts import           # Import existing campaigns as TypeScript
+bun cli/index.ts import --provider meta  # Import from Meta Ads
 bun cli/index.ts validate         # Validate campaign files
 bun cli/index.ts status           # Show live platform state
 bun cli/index.ts pull             # Pull live state, detect drift
 bun cli/index.ts doctor           # Diagnostic checks on project setup
 bun cli/index.ts auth google      # Authenticate with Google Ads
+bun cli/index.ts search interests "query"  # Search Meta targeting interests
+bun cli/index.ts search behaviors "query"  # Search Meta targeting behaviors
+bun cli/index.ts audiences        # List Meta custom audiences
 bun cli/index.ts history          # Show operation history
 bun cli/index.ts cache stats      # Cache statistics
 bun cli/index.ts cache clear      # Clear cache
@@ -40,24 +45,46 @@ src/
     fetch.ts        GAQL queries → normalized Resource[] (campaigns, ad groups, keywords, ads, extensions, negatives)
     apply.ts        Changeset → MutateOperation[] → execute in dependency order
     constants.ts    Language criteria IDs, geo target IDs
+  meta/           Meta (Facebook/Instagram) provider
+    types.ts        Objective, AdSetConfig, MetaCreative, MetaCTA, MetaTargeting, placements
+    index.ts        meta.traffic()/conversions()/leads()/... builders — chained .adSet()
+    api.ts          Graph API client, credential resolution (FB_ADS_ACCESS_TOKEN)
+    fetch.ts        Graph API queries → normalized Resource[] (campaigns, ad sets, ads, creatives)
+    flatten.ts      MetaCampaign tree → flat Resource[] with provider='meta'
+    apply.ts        Changeset → Graph API mutations (create, update, pause)
+    upload.ts       Local image/video upload to Meta via multipart API
+    download.ts     Download creative assets from Meta URLs
+    codegen.ts      Meta Resource[] → idiomatic TypeScript (for `import --provider meta`)
+    resolve.ts      Resolve ad set/ad dependencies and references
+    provider.ts     Provider interface implementation wiring fetch/flatten/apply/codegen
+    constants.ts    Objective → API enum mapping, status codes
+    interests-catalog.ts  Cached interest/behavior targeting data
   helpers/        SDK builder functions (the user-facing DSL)
     keywords.ts     exact(), phrase(), broad(), keywords()
-    budget.ts       daily(), monthly(), eur(), usd()
-    targeting.ts    geo(), languages(), weekdays(), hours(), targeting()
+    budget.ts       daily(), monthly(), lifetime(), eur(), usd()
+    targeting.ts    geo(), languages(), weekdays(), hours(), targeting(), audiences(), ...
     ads.ts          headlines(), descriptions(), rsa()
-    extensions.ts   link(), sitelinks(), callouts()
+    extensions.ts   link(), sitelinks(), callouts(), image() (Google extensions)
     negatives.ts    negatives()
     url.ts          url()
+    meta-creative.ts  image(), video(), carousel(), boostedPost() (Meta ad creatives)
+    meta-targeting.ts Meta-specific targeting helpers (interests, behaviors, demographics)
+    meta-placement.ts Placement helpers (feeds, stories, reels, etc.)
+    meta-bidding.ts   Bid strategy helpers (lowestCost, costCap, bidCap, minimumRoas)
+  ai/             AI-powered ad copy generation
+    index.ts        ai namespace — markers, prompts, generation
 cli/              CLI commands
   index.ts          Router — parses args, dispatches to subcommands
   plan.ts           Discover campaigns, flatten, fetch live state, diff, display changeset
-  apply.ts          Plan + execute mutations, record in cache
+  apply.ts          Plan + execute mutations, record in cache (supports --dry-run)
   import.ts         Fetch all state from API, run codegen, write campaigns/**/*.ts
   pull.ts           Fetch known state (cache-scoped), diff for drift detection
   validate.ts       Discover + flatten campaigns, report errors
   status.ts         Fetch + display live state
   auth.ts           OAuth flow + credential check
   init.ts           Scaffold ads.config.ts + campaigns/ directory
+  search.ts         Search Meta targeting interests/behaviors
+  audiences.ts      List Meta custom audiences
   history.ts        Query operation log from cache
   doctor.ts         Check credentials, config, campaign files
   cache.ts          Clear/stats for SQLite cache
@@ -100,6 +127,9 @@ Resolved in order: explicit `GoogleConfig` → `~/.ads/credentials.json` → env
 **Environment variables (alternative):**
 `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_MANAGER_ID`
 
+**Meta credentials:**
+`FB_ADS_ACCESS_TOKEN` — long-lived token from Meta Business Suite system user settings. Config file specifies `accountId` and `pageId`.
+
 ## Google Ads API Quirks
 
 - **Numeric enums everywhere.** The gRPC client returns numbers, not strings. See `fetch.ts` for `STATUS_MAP`, `BIDDING_STRATEGY_MAP`, `MATCH_TYPE_MAP`.
@@ -109,13 +139,27 @@ Resolved in order: explicit `GoogleConfig` → `~/.ads/credentials.json` → env
 - **TARGET_SPEND = Maximize Clicks.** The API enum for "Maximize Clicks" bidding is `TARGET_SPEND` (10), not `MAXIMIZE_CLICKS` (11).
 - **RSA identity is content-based.** Ads don't have stable user-assigned names. Identity is tracked via a hash of sorted headlines + sorted descriptions + finalUrl.
 
-## Adding a New Provider (e.g. Meta/Facebook)
+## Provider Architecture
 
-1. Create `src/meta/` with: `types.ts` (MetaCampaign, MetaAdSet, MetaAd), `api.ts` (client factory), `fetch.ts` (normalize API → Resource[]), `apply.ts` (Changeset → mutations), `index.ts` (meta.campaign() builder).
-2. Add Meta types to the `Campaign` union in `src/google/types.ts` (move to `src/core/types.ts` when multi-provider).
-3. Add `MetaProviderConfig` fields to `AdsConfig` (already stubbed in `core/types.ts`).
-4. Add `--provider meta` routing in CLI commands.
-5. The core engine (diff, flatten, cache) is provider-agnostic — it operates on `Resource[]` regardless of source.
+Both Google and Meta follow the same provider pattern:
+
+1. **types.ts** -- provider-specific campaign/ad set/ad types
+2. **index.ts** -- builder namespace (e.g., `google.search()`, `meta.traffic()`)
+3. **fetch.ts** -- API queries → normalized `Resource[]`
+4. **flatten.ts** -- campaign tree → flat `Resource[]` with provider tag
+5. **apply.ts** -- `Changeset` → platform API mutations
+6. **codegen.ts** -- `Resource[]` → idiomatic TypeScript source (for import)
+7. **provider.ts** -- wires fetch/flatten/apply/codegen into a provider interface
+
+The core engine (diff, cache, discovery) is provider-agnostic — it operates on `Resource[]` regardless of source. CLI commands route to the correct provider based on campaign `provider` field or `--provider` flag.
+
+### Meta-specific considerations
+
+- **Auth:** `FB_ADS_ACCESS_TOKEN` env var (no OAuth flow, token from Meta Business Suite)
+- **Media upload:** `upload.ts` handles local image/video → Meta via multipart Graph API. Files are uploaded during apply, not at definition time.
+- **Objectives are type-safe:** `meta.traffic()` returns `MetaCampaignBuilder<'traffic'>`, which constrains `.adSet()` optimization goals to `LINK_CLICKS | LANDING_PAGE_VIEWS | REACH | IMPRESSIONS`. Invalid goals are compile-time errors.
+- **Creative helpers:** `image()`, `video()`, `carousel()`, `boostedPost()` from `src/helpers/meta-creative.ts` (not the Google `image()` from extensions.ts)
+- **Interest search:** `cli/search.ts` queries Meta's targeting search API for interests and behaviors
 
 ## Testing
 
