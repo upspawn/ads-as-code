@@ -630,7 +630,8 @@ async function executeCreate(
           `parent ad set at path "${adSetPath}" has no platform ID.`
         )
       }
-      const creativePath = resource.properties.creativePath as string
+      const creativePath = (resource.meta?.creativePath as string)
+        ?? (resource.properties.creativePath as string)
         ?? extractCreativePath(resource.path)
       const creativeId = resourceMap.get(creativePath)
       if (!creativeId) {

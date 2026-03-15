@@ -476,7 +476,7 @@ function generateMetaCampaignFile(
     const adSetAds = ads.filter((a) => a.path.startsWith(`${adSetPath}/`))
     const effectiveAdSetStatus = adSetStatus ?? 'PAUSED'
     const adStrings = adSetCreatives.map((c) => {
-      const matchingAd = adSetAds.find((a) => a.properties.creativePath === c.path)
+      const matchingAd = adSetAds.find((a) => (a.meta?.creativePath ?? a.properties.creativePath) === c.path)
       const override = matchingAd
         ? (matchingAd.properties.status as string) !== effectiveAdSetStatus
           ? (matchingAd.properties.status as string)

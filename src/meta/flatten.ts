@@ -190,13 +190,13 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       resources.push(resource('creative', creativePath, creativeProps,
         Object.keys(creativeMetaFull).length > 0 ? creativeMetaFull : undefined))
 
-      // Ad references the creative
-      const adMeta = adDefaults.length > 0 ? { _defaults: adDefaults } : undefined
+      // Ad references the creative — creativePath is internal (used by apply), not an API field
+      const adMetaObj: Record<string, unknown> = { creativePath }
+      if (adDefaults.length > 0) adMetaObj._defaults = adDefaults
       resources.push(resource('ad', adPath, {
         name: adName,
         status: creative.status ?? adSetStatus,
-        creativePath,
-      }, adMeta))
+      }, adMetaObj))
     }
   }
 

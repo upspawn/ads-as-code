@@ -349,7 +349,7 @@ describe('fetchMetaAll() ad + creative normalization', () => {
     const resources = await fetchMetaAll(TEST_CONFIG, client)
     const ad = resources.find(r => r.kind === 'ad')!
 
-    expect(ad.properties.creativePath).toBe('retargeting-us/website-visitors-30d/hero-creative/cr')
+    expect(ad.meta?.creativePath).toBe('retargeting-us/website-visitors-30d/hero-creative/cr')
   })
 
   test('extracts creative properties from link_data', async () => {

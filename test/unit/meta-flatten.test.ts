@@ -79,7 +79,7 @@ describe('flattenMeta() path generation', () => {
   test('ad references its creative path', () => {
     const resources = flattenMeta(makeCampaign())
     const ad = resources.find(r => r.kind === 'ad')!
-    expect(ad.properties.creativePath).toBe('retargeting-us/website-visitors-30d/hero/cr')
+    expect(ad.meta?.creativePath).toBe('retargeting-us/website-visitors-30d/hero/cr')
   })
 
   test('campaign with 2 ad sets, each with 2 ads produces correct paths', () => {

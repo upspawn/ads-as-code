@@ -1,0 +1,70 @@
+<h2>Pick a design direction</h2>
+<p class="subtitle">Three approaches for the ads-as-code landing page — tone, palette, and structure</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%); padding: 32px; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;">
+      <div style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #00ff88; background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2); border-radius: 8px; padding: 16px 20px; width: 90%; text-align: left;">
+        <div style="color: #666; margin-bottom: 4px;">$ ads plan</div>
+        <div style="color: #00ff88;">+ campaign/brand-search</div>
+        <div style="color: #ffaa00;">~ campaign/retarget/budget</div>
+        <div style="color: #ff4444;">- campaign/old-promo</div>
+      </div>
+      <div style="font-family: system-ui; font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; margin-top: 8px;">ads-as-code</div>
+      <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 3px;">TERRAFORM FOR ADS</div>
+    </div>
+    <div class="card-body">
+      <h3>A — Terminal Dark</h3>
+      <p><strong>Palette:</strong> Near-black + neon green/amber terminal colors<br>
+      <strong>Vibe:</strong> "I live in the terminal." Pure developer tool. The diff output IS the hero. Monospace everywhere that matters.<br>
+      <strong>Reference:</strong> Warp terminal, Ghostty, Fig<br>
+      <strong>Name treatment:</strong> <code>ads-as-code</code> in monospace — no logo needed, the name is the logo</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #0f0f23 0%, #1a0a2e 50%, #2d1b69 100%); padding: 32px; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #8b5cf6, #ec4899); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 22px; color: white; font-family: system-ui;">⌘</div>
+        <div style="font-family: system-ui; font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -1.5px;">ads</div>
+      </div>
+      <div style="font-size: 20px; font-weight: 600; color: #c4b5fd; text-align: center; line-height: 1.3;">Your ad campaigns<br>deserve version control.</div>
+      <div style="display: flex; gap: 8px; margin-top: 12px;">
+        <div style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;">Get Started</div>
+        <div style="background: rgba(255,255,255,0.08); color: #a78bfa; padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid rgba(139,92,246,0.3);">GitHub →</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Electric Violet</h3>
+      <p><strong>Palette:</strong> Deep purple/indigo + violet accents + pink highlights<br>
+      <strong>Vibe:</strong> Premium developer tool with attitude. Confident, modern, a bit luxurious. Code blocks glow.<br>
+      <strong>Reference:</strong> Linear, Vercel, Raycast<br>
+      <strong>Name treatment:</strong> Just <strong>ads</strong> — short, bold. Icon mark + wordmark. <code>@upspawn/ads</code> for the package.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: #fafaf9; padding: 32px; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;">
+      <div style="font-family: system-ui; font-size: 11px; font-weight: 700; color: #f97316; text-transform: uppercase; letter-spacing: 3px; background: #fff7ed; padding: 4px 12px; border-radius: 4px;">OPEN SOURCE</div>
+      <div style="font-family: 'Georgia', serif; font-size: 32px; font-weight: 400; color: #1a1a1a; text-align: center; line-height: 1.2; letter-spacing: -0.5px;">Stop clicking.<br>Start committing.</div>
+      <div style="font-size: 14px; color: #666; text-align: center; max-width: 260px; line-height: 1.5;">Infrastructure-as-code for ad campaigns. Type-safe. Diffable. Reviewable.</div>
+      <div style="font-family: 'SF Mono', monospace; font-size: 12px; color: #333; background: #f5f5f0; border: 1px solid #e5e5e0; border-radius: 6px; padding: 10px 16px; margin-top: 4px;">$ npx @upspawn/ads init</div>
+    </div>
+    <div class="card-body">
+      <h3>C — Warm Minimal</h3>
+      <p><strong>Palette:</strong> Warm white/cream + black type + burnt orange accent<br>
+      <strong>Vibe:</strong> Understated confidence. Lets the copy do the heavy lifting. "We don't need to shout." Serif headlines for personality.<br>
+      <strong>Reference:</strong> Stripe docs, Cal.com, Resend<br>
+      <strong>Name treatment:</strong> <code>@upspawn/ads</code> — the npm package IS the brand. Clean wordmark.</p>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top: 24px; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+  <p style="margin: 0; color: #888; font-size: 13px;"><strong>My recommendation: B (Electric Violet)</strong> — it matches the "confident and opinionated" tone best. Terminal Dark is cool but can feel cold; Warm Minimal is elegant but less bold. Violet says "this is a premium tool" without trying too hard.</p>
+</div>

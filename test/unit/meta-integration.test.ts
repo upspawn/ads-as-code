@@ -736,8 +736,8 @@ describe('spec DSL example compiles and flattens correctly', () => {
     const ads = resources.filter(r => r.kind === 'ad')
     expect(ads).toHaveLength(3)
     for (const ad of ads) {
-      expect(ad.properties.creativePath).toBeDefined()
-      expect(typeof ad.properties.creativePath).toBe('string')
+      expect(ad.meta?.creativePath).toBeDefined()
+      expect(typeof ad.meta?.creativePath).toBe('string')
     }
   })
 

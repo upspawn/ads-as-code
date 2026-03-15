@@ -397,13 +397,11 @@ function normalizeAd(raw: MetaApiAd, adSetPaths: AdSetPathMap): Resource[] {
   // Creative resource
   resources.push(resource('creative', creativePath, creativeProps, raw.creative?.id, creativeMeta))
 
-  // Ad resource — name uses the canonical creative name for path consistency,
-  // and the ad's own name is preserved in properties for API operations
+  // Ad resource — creativePath is internal (used by apply to find creative ID), not an API field
   resources.push(resource('ad', adPath, {
     name: canonicalName,
     status: mapStatus(raw.status),
-    creativePath,
-  }, raw.id))
+  }, raw.id, { creativePath }))
 
   return resources
 }
