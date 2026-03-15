@@ -61,6 +61,8 @@ export type {
   GoogleConfig,
   GoogleAdsClient,
   Campaign,
+  GoogleAdGroupUnresolved,
+  GoogleSearchCampaignUnresolved,
 } from './google/types.ts'
 
 // === Helpers ===

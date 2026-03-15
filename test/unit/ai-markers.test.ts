@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { isAiMarker, isRsaMarker, isKeywordsMarker } from '../../src/ai/types.ts'
 import { ai } from '../../src/ai/index.ts'
+import { google } from '../../src/google/index.ts'
 import type { RsaMarker, KeywordsMarker } from '../../src/ai/types.ts'
+import type { Budget, Keyword } from '../../src/core/types.ts'
 
 // ─── Type Guard Tests ───────────────────────────────────────────────
 
@@ -169,5 +171,74 @@ describe('ai.keywords()', () => {
 
   test('marker does not pass isRsaMarker check', () => {
     expect(isRsaMarker(ai.keywords('test'))).toBe(false)
+  })
+})
+
+// ─── Builder Integration Tests ──────────────────────────────────────
+
+const budget: Budget = { amount: 20, currency: 'EUR', period: 'daily' }
+const kws: Keyword[] = [{ text: 'rename files', matchType: 'EXACT' }]
+
+describe('campaign builder with AI markers', () => {
+  test('ai.rsa() as ad does not throw', () => {
+    expect(() => {
+      google.search('Test', { budget, bidding: 'maximize-conversions' })
+        .group('main', { keywords: kws, ad: ai.rsa('generate headlines') })
+    }).not.toThrow()
+  })
+
+  test('ai.keywords() in keywords array does not throw', () => {
+    expect(() => {
+      google.search('Test', { budget, bidding: 'maximize-conversions' })
+        .group('main', {
+          keywords: [kws[0]!, ai.keywords('find more keywords')],
+          ad: ai.rsa('generate headlines'),
+        })
+    }).not.toThrow()
+  })
+
+  test('bare ai.keywords() as keywords does not throw', () => {
+    expect(() => {
+      google.search('Test', { budget, bidding: 'maximize-conversions' })
+        .group('main', {
+          keywords: ai.keywords('generate all keywords'),
+          ad: ai.rsa('generate headlines'),
+        })
+    }).not.toThrow()
+  })
+
+  test('campaign contains RsaMarker in correct position', () => {
+    const marker = ai.rsa('generate headlines')
+    const campaign = google.search('Test', { budget, bidding: 'maximize-conversions' })
+      .group('main', { keywords: kws, ad: marker })
+
+    const group = campaign.groups['main']!
+    expect(group.ads).toHaveLength(1)
+    expect(isRsaMarker(group.ads[0])).toBe(true)
+    expect(group.ads[0]).toBe(marker)
+  })
+
+  test('campaign contains KeywordsMarker in correct position', () => {
+    const kwMarker = ai.keywords('find keywords')
+    const campaign = google.search('Test', { budget, bidding: 'maximize-conversions' })
+      .group('main', { keywords: kwMarker, ad: ai.rsa('generate headlines') })
+
+    const group = campaign.groups['main']!
+    expect(group.keywords).toHaveLength(1)
+    expect(isKeywordsMarker(group.keywords[0])).toBe(true)
+  })
+
+  test('mixed keywords array preserves both types', () => {
+    const kwMarker = ai.keywords('find more keywords')
+    const campaign = google.search('Test', { budget, bidding: 'maximize-conversions' })
+      .group('main', {
+        keywords: [kws[0]!, kwMarker],
+        ad: ai.rsa('generate headlines'),
+      })
+
+    const group = campaign.groups['main']!
+    expect(group.keywords).toHaveLength(2)
+    expect(isKeywordsMarker(group.keywords[0])).toBe(false) // regular keyword
+    expect(isKeywordsMarker(group.keywords[1])).toBe(true)   // marker
   })
 })

@@ -1,12 +1,14 @@
 import type { CalloutText, Keyword, Targeting } from '../core/types.ts'
+import { isRsaMarker } from '../ai/types.ts'
+import { isKeywordsMarker } from '../ai/types.ts'
 import type {
   AdGroupInput,
   BiddingInput,
   BiddingStrategy,
   CallExtension,
   CampaignBuilder,
-  GoogleAdGroup,
-  GoogleSearchCampaign,
+  GoogleAdGroupUnresolved,
+  GoogleSearchCampaignUnresolved,
   ImageExtension,
   PriceExtension,
   PromotionExtension,
@@ -39,14 +41,24 @@ function normalizeBidding(input: BiddingInput): BiddingStrategy {
 }
 
 /**
- * Normalize AdGroupInput into a GoogleAdGroup.
- * - Converts a single `ad` to an array of `ads`.
+ * Normalize AdGroupInput into a GoogleAdGroupUnresolved.
+ * - Converts a single `ad` (or RsaMarker) to an array of `ads`.
+ * - Normalizes keywords: bare KeywordsMarker wraps to array, mixed arrays pass through.
  * - Merges optional targeting override.
  */
-function normalizeAdGroup(input: AdGroupInput, targetingOverride?: Targeting): GoogleAdGroup {
+function normalizeAdGroup(input: AdGroupInput, targetingOverride?: Targeting): GoogleAdGroupUnresolved {
+  // Normalize ads: single ad or marker becomes array
   const ads = Array.isArray(input.ad) ? input.ad : [input.ad]
-  const group: GoogleAdGroup = {
-    keywords: input.keywords,
+
+  // Normalize keywords: bare KeywordsMarker wraps to array, arrays pass through
+  const keywords = isKeywordsMarker(input.keywords)
+    ? [input.keywords]
+    : Array.isArray(input.keywords)
+      ? input.keywords
+      : [...input.keywords] // readonly array -> mutable
+
+  const group: GoogleAdGroupUnresolved = {
+    keywords,
     ads,
     ...(input.negatives !== undefined && input.negatives.length > 0 && { negatives: input.negatives }),
     ...(input.status !== undefined && { status: input.status }),
@@ -58,13 +70,13 @@ function normalizeAdGroup(input: AdGroupInput, targetingOverride?: Targeting): G
 }
 
 /**
- * Create a CampaignBuilder that wraps a GoogleSearchCampaign with chained methods.
+ * Create a CampaignBuilder that wraps a GoogleSearchCampaignUnresolved with chained methods.
  */
-function createBuilder(campaign: GoogleSearchCampaign): CampaignBuilder {
+function createBuilder(campaign: GoogleSearchCampaignUnresolved): CampaignBuilder {
   const builder: CampaignBuilder = Object.create(null)
 
   // Copy all campaign data properties onto the builder
-  const keys = Object.keys(campaign) as (keyof GoogleSearchCampaign)[]
+  const keys = Object.keys(campaign) as (keyof GoogleSearchCampaignUnresolved)[]
   for (const key of keys) {
     Object.defineProperty(builder, key, {
       value: campaign[key],
@@ -253,7 +265,7 @@ export const google = {
    * ```
    */
   search(name: string, input: SearchCampaignInput): CampaignBuilder {
-    const campaign: GoogleSearchCampaign = {
+    const campaign: GoogleSearchCampaignUnresolved = {
       provider: 'google',
       kind: 'search',
       name,

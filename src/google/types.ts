@@ -7,6 +7,7 @@ import type {
   Targeting,
   UTMParams,
 } from '../core/types.ts'
+import type { RsaMarker, KeywordsMarker } from '../ai/types.ts'
 
 // === Bidding ===
 
@@ -102,8 +103,8 @@ export type GoogleAdGroup = {
 }
 
 export type AdGroupInput = {
-  readonly keywords: Keyword[]
-  readonly ad: GoogleAd | GoogleAd[]
+  readonly keywords: Keyword[] | KeywordsMarker | readonly (Keyword | KeywordsMarker)[]
+  readonly ad: GoogleAd | GoogleAd[] | RsaMarker
   readonly negatives?: Keyword[]
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
@@ -144,9 +145,23 @@ export type GoogleSearchCampaign = {
   readonly networkSettings?: NetworkSettings
 }
 
+// === Unresolved Types (may contain AI markers awaiting generation) ===
+
+export type GoogleAdGroupUnresolved = {
+  readonly keywords: (Keyword | KeywordsMarker)[]
+  readonly ads: (GoogleAd | RsaMarker)[]
+  readonly negatives?: Keyword[]
+  readonly status?: 'enabled' | 'paused'
+  readonly targeting?: Targeting
+}
+
+export type GoogleSearchCampaignUnresolved = Omit<GoogleSearchCampaign, 'groups'> & {
+  readonly groups: Record<string, GoogleAdGroupUnresolved>
+}
+
 // === Campaign Builder ===
 
-export type CampaignBuilder = GoogleSearchCampaign & {
+export type CampaignBuilder = GoogleSearchCampaignUnresolved & {
   locale(key: string, targeting: Targeting, group: AdGroupInput): CampaignBuilder
   group(key: string, group: AdGroupInput): CampaignBuilder
   sitelinks(...links: Sitelink[]): CampaignBuilder
