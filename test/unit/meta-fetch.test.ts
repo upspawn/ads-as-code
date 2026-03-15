@@ -426,6 +426,79 @@ describe('fetchMetaAll() ad + creative normalization', () => {
   })
 })
 
+// ─── Boosted Post Normalization ──────────────────────────────
+
+describe('fetchMetaAll() boosted post normalization', () => {
+  test('creative without object_story_spec omits format/headline/primaryText', async () => {
+    // Boosted posts use object_story_id instead of object_story_spec,
+    // so link_data and video_data are both absent.
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_boosted',
+          name: 'Boosted Page Post',
+          // No object_story_spec — this is a boosted post
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative).toBeDefined()
+    expect(creative.properties.name).toBe('Boosted Page Post')
+    // These fields should NOT exist — they don't exist on the API side
+    expect(creative.properties).not.toHaveProperty('format')
+    expect(creative.properties).not.toHaveProperty('headline')
+    expect(creative.properties).not.toHaveProperty('primaryText')
+    expect(creative.properties).not.toHaveProperty('cta')
+    expect(creative.properties).not.toHaveProperty('url')
+  })
+
+  test('creative with empty object_story_spec omits format/headline/primaryText', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_boosted2',
+          name: 'Another Boosted Post',
+          object_story_spec: {},
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative.properties).not.toHaveProperty('format')
+    expect(creative.properties).not.toHaveProperty('headline')
+    expect(creative.properties).not.toHaveProperty('primaryText')
+  })
+
+  test('boosted post with url_tags still includes urlParameters', async () => {
+    const client = createMockClient({
+      campaigns: [makeApiCampaign()],
+      adSets: [makeApiAdSet()],
+      ads: [makeApiAd({
+        creative: {
+          id: 'cr_boosted3',
+          name: 'Boosted With Tags',
+          url_tags: 'utm_source=facebook',
+        },
+      })],
+    })
+
+    const resources = await fetchMetaAll(TEST_CONFIG, client)
+    const creative = resources.find(r => r.kind === 'creative')!
+
+    expect(creative.properties).not.toHaveProperty('format')
+    expect(creative.properties.urlParameters).toBe('utm_source=facebook')
+  })
+})
+
 // ─── Full Account Normalization ─────────────────────────────
 
 describe('fetchMetaAll() full account', () => {

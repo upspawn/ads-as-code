@@ -96,6 +96,7 @@ export type {
   ImageAd,
   VideoAd,
   CarouselAd,
+  BoostedPostAd,
   MetaCampaignConfig,
   AdSetConfig,
   AdSetContent,
@@ -107,6 +108,7 @@ export {
   image as metaImage,
   video as metaVideo,
   carousel,
+  boostedPost,
 } from './helpers/meta-creative.ts'
 
 export {

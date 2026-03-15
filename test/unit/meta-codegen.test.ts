@@ -563,6 +563,33 @@ describe('codegenMeta', () => {
     expect(code).not.toContain("image('./assets/imported/hero-abc123.png',")
   })
 
+  test('boosted post creative (no format) uses boostedPost() instead of image()', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      {
+        kind: 'creative',
+        path: 'retargeting-us/visitors/boosted-page-post/cr',
+        properties: {
+          name: 'Boosted Page Post',
+          // No format, headline, primaryText — this is a boosted post
+        },
+      },
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Should use boostedPost() helper, NOT image() or video()
+    expect(code).toContain("boostedPost('Boosted Page Post')")
+    expect(code).not.toContain('image(')
+    expect(code).not.toContain('video(')
+    // Should import boostedPost, not metaImage or metaVideo
+    const importLine = code.split('\n').find((l) => l.startsWith('import'))!
+    expect(importLine).toContain('boostedPost')
+    expect(importLine).not.toContain('metaImage')
+    expect(importLine).not.toContain('metaVideo')
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),

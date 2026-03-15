@@ -3,6 +3,7 @@ import type {
   VideoAd,
   CarouselAd,
   CarouselCard,
+  BoostedPostAd,
   MetaCTA,
 } from '../meta/types.ts'
 
@@ -161,4 +162,9 @@ export function carousel(cards: readonly CarouselCard[], config: CarouselAdConfi
     ...(config.url !== undefined && { url: config.url }),
     ...(config.endCard !== undefined && { endCard: config.endCard }),
   }
+}
+
+/** Create a boosted post creative — an existing page post promoted as an ad. */
+export function boostedPost(name?: string): BoostedPostAd {
+  return { format: 'boostedPost' as const, ...(name !== undefined && { name }) }
 }

@@ -96,6 +96,10 @@ export type MetaPlacements =
   | {
       readonly platforms: readonly MetaPlatform[]
       readonly positions?: readonly PlacementPosition[]
+      readonly facebookPositions?: readonly string[]
+      readonly instagramPositions?: readonly string[]
+      readonly messengerPositions?: readonly string[]
+      readonly audienceNetworkPositions?: readonly string[]
       readonly devicePlatforms?: readonly ('mobile' | 'desktop')[]
       readonly publisherPlatforms?: readonly ('facebook' | 'instagram' | 'audience_network' | 'messenger')[]
     }
@@ -156,7 +160,13 @@ export type CollectionAd = {
   readonly primaryText: string
 }
 
-export type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd
+/** A boosted post — an existing page post promoted as an ad. No standard ad copy fields. */
+export type BoostedPostAd = {
+  readonly format: 'boostedPost'
+  readonly name?: string
+}
+
+export type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd | BoostedPostAd
 
 // ─── CTAs ──────────────────────────────────────────────────
 
