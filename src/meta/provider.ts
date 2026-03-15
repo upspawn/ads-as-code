@@ -1,25 +1,29 @@
 import type { ProviderModule } from '../core/providers.ts'
 import type { Resource } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
+import type { MetaCampaign } from './flatten.ts'
+import { flattenMeta } from './flatten.ts'
 import { codegenMeta } from './codegen.ts'
 import { downloadMetaImages } from './download.ts'
 
 // ─── Meta Provider Module ──────────────────────────────────
 //
-// codegen and postImportFetch are fully implemented.
-// flatten, fetchAll, and applyChangeset remain stubs until
-// their respective tasks are completed (Tasks 10, 18, 21, 23).
+// flatten, codegen, and postImportFetch are fully implemented.
+// fetchAll and applyChangeset remain stubs until wired to
+// fetchMetaAll and applyMetaChangeset via createMetaClient.
 
 const metaProvider: ProviderModule = {
-  flatten(_campaigns: unknown[]) {
-    throw new Error('Meta flatten is not implemented yet')
+  flatten(campaigns: unknown[]): Resource[] {
+    return (campaigns as MetaCampaign[]).flatMap(flattenMeta)
   },
 
   async fetchAll() {
+    // TODO: wire to fetchMetaAll from src/meta/fetch.ts
     throw new Error('Meta fetchAll is not implemented yet')
   },
 
   async applyChangeset() {
+    // TODO: wire to applyMetaChangeset from src/meta/apply.ts
     throw new Error('Meta applyChangeset is not implemented yet')
   },
 
