@@ -201,6 +201,9 @@ async function uploadVideoChunked(
   }
 
   // Step 2: Transfer chunks
+  // Meta returns start_offset and end_offset in each transfer response.
+  // We use the API's end_offset to advance, which is more robust than
+  // assuming our chunk size matches what the server expects.
   const fileData = readFileSync(filePath)
   let offset = 0
 
@@ -209,14 +212,16 @@ async function uploadVideoChunked(
     const chunk = fileData.subarray(offset, end)
     const chunkBase64 = Buffer.from(chunk).toString('base64')
 
-    await graphPost(`${accountId}/advideos`, {
+    const transferResponse = await graphPost(`${accountId}/advideos`, {
       upload_phase: 'transfer',
       upload_session_id: uploadSessionId,
       start_offset: offset,
       video_file_chunk: chunkBase64,
     })
 
-    offset = end
+    // Use the server-returned end_offset if available, otherwise advance by chunk size
+    const serverEndOffset = transferResponse.end_offset as number | undefined
+    offset = serverEndOffset ?? end
   }
 
   // Step 3: Finish

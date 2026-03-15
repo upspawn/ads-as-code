@@ -590,6 +590,67 @@ describe('codegenMeta', () => {
     expect(importLine).not.toContain('metaVideo')
   })
 
+  test('carousel creative generates carousel() call', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      {
+        kind: 'creative',
+        path: 'retargeting-us/visitors/product-carousel/cr',
+        properties: {
+          name: 'Product Carousel',
+          format: 'carousel',
+          primaryText: 'Check out our features',
+          cta: 'LEARN_MORE',
+          url: 'https://renamed.to',
+          cards: [
+            { image: 'hash:abc123', headline: 'Feature 1', url: 'https://renamed.to/f1' },
+            { image: 'hash:def456', headline: 'Feature 2', url: 'https://renamed.to/f2', description: 'Second' },
+          ],
+        },
+      },
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain('carousel(')
+    expect(code).toContain("headline: 'Feature 1'")
+    expect(code).toContain("headline: 'Feature 2'")
+    expect(code).toContain("url: 'https://renamed.to/f1'")
+    expect(code).toContain("description: 'Second'")
+    expect(code).toContain("primaryText: 'Check out our features'")
+    const importLine = code.split('\n').find((l) => l.startsWith('import'))!
+    expect(importLine).toContain('carousel')
+    expect(importLine).not.toContain('metaImage')
+    expect(importLine).not.toContain('metaVideo')
+  })
+
+  test('collection creative generates a TODO comment', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      {
+        kind: 'creative',
+        path: 'retargeting-us/visitors/product-collection/cr',
+        properties: {
+          name: 'Product Collection',
+          format: 'collection',
+          instantExperience: 'unknown',
+          headline: '',
+          primaryText: '',
+        },
+      },
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain('// TODO: Collection ad')
+    expect(code).toContain("'Product Collection'")
+    expect(code).toContain('Instant Experience')
+    expect(code).not.toContain("image('./assets")
+    expect(code).not.toContain("video('./assets")
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),
@@ -610,5 +671,87 @@ describe('codegenMeta', () => {
     const importLine = code.split('\n').find((l) => l.startsWith('import'))!
     expect(importLine).toContain('audience')
     expect(importLine).toContain('excludeAudience')
+  })
+
+  test('behaviors and demographics in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          behaviors: [{ id: '123', name: 'Small Business Owners' }],
+          demographics: [{ id: '456', name: 'College Educated' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("behaviors: [{ id: '123', name: 'Small Business Owners' }]")
+    expect(code).toContain("demographics: [{ id: '456', name: 'College Educated' }]")
+  })
+
+  test('genders, locales, and advantage flags in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          genders: ['female'],
+          locales: [6, 24],
+          advantageAudience: true,
+          advantageDetailedTargeting: true,
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("genders: ['female']")
+    expect(code).toContain('locales: [6, 24]')
+    expect(code).toContain('advantageAudience: true')
+    expect(code).toContain('advantageDetailedTargeting: true')
+  })
+
+  test('connections and excluded connections in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          connections: [{ type: 'page', id: 'page_123' }],
+          excludedConnections: [{ type: 'page', id: 'page_456' }],
+          friendsOfConnections: [{ type: 'page', id: 'page_789' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("connections: [{ type: 'page', id: 'page_123' }]")
+    expect(code).toContain("excludedConnections: [{ type: 'page', id: 'page_456' }]")
+    expect(code).toContain("friendsOfConnections: [{ type: 'page', id: 'page_789' }]")
+  })
+
+  test('excluded interests and behaviors in targeting', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors', {
+        targeting: {
+          geo: [{ type: 'geo', countries: ['US'] }],
+          excludedInterests: [{ id: '111', name: 'Competitors' }],
+          excludedBehaviors: [{ id: '222', name: 'Budget Shoppers' }],
+        },
+      }),
+      makeCreative('retargeting-us/visitors/hero/cr'),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain("excludedInterests: [{ id: '111', name: 'Competitors' }]")
+    expect(code).toContain("excludedBehaviors: [{ id: '222', name: 'Budget Shoppers' }]")
   })
 })
