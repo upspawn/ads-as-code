@@ -325,8 +325,10 @@ function extractCreativeProps(creative: MetaApiCreative | undefined): { properti
   if (spec?.video_data) {
     const vd = spec.video_data
     props.format = 'video'
-    if (vd.title) props.headline = vd.title
-    if (vd.message) props.primaryText = vd.message
+    // Always emit headline and primaryText (even as empty string) to match
+    // flatten which defaults these to '' via the image()/video() builders
+    props.headline = vd.title ?? ''
+    props.primaryText = vd.message ?? ''
     if (vd.link_description) props.description = vd.link_description
     if (vd.call_to_action?.type) props.cta = vd.call_to_action.type as MetaCTA
     if (vd.call_to_action?.value?.link) props.url = vd.call_to_action.value.link
@@ -336,8 +338,10 @@ function extractCreativeProps(creative: MetaApiCreative | undefined): { properti
   } else if (spec?.link_data) {
     const ld = spec.link_data
     props.format = 'image'
-    if (ld.name) props.headline = ld.name
-    if (ld.message) props.primaryText = ld.message
+    // Always emit headline and primaryText (even as empty string) to match
+    // flatten which defaults these to '' via the image()/video() builders
+    props.headline = ld.name ?? ''
+    props.primaryText = ld.message ?? ''
     if (ld.description) props.description = ld.description
     if (ld.call_to_action?.type) props.cta = ld.call_to_action.type as MetaCTA
     if (ld.link) props.url = ld.link
