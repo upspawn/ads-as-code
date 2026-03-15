@@ -125,37 +125,31 @@ Each returns a `MetaCampaignBuilder<T>` typed to the objective, constraining whi
 ### Campaign Definition Example
 
 ```ts
-import { meta, daily, targeting, audience, geo, age, lowestCost,
-         automatic, image, video, interests } from '@upspawn/ads'
+import { meta, daily, targeting, audience, geo, age, image } from '@upspawn/ads'
 
 export const retargetingUS = meta.traffic('Retargeting - US', {
   budget: daily(5),
 })
 .adSet('Website Visitors 30d', {
   targeting: targeting(
-    audience('website-visitors-30d'),
+    audience('Website Visitors 30d'),
     geo('US', 'GB', 'CA', 'AU'),
     age(25, 65),
   ),
-  bidding: lowestCost(),
-  placements: automatic(),
-  optimization: 'LINK_CLICKS',
 }, {
+  url: 'https://renamed.to',
+  cta: 'SIGN_UP',
   ads: [
     image('./assets/hero.png', {
-      name: 'Hero - Sign Up',
       headline: 'Rename Files Instantly',
       primaryText: 'Stop wasting hours organizing files manually...',
       description: 'AI-powered file renaming for teams',
-      cta: 'SIGN_UP',
-      url: 'https://renamed.to',
     }),
     image('./assets/comparison.png', {
-      name: 'Comparison - Learn More',
       headline: 'Before & After',
       primaryText: 'See what renamed.to does to a messy folder',
-      cta: 'LEARN_MORE',
-      url: 'https://renamed.to/tour',
+      cta: 'LEARN_MORE',           // overrides ad set default
+      url: 'https://renamed.to/tour',  // overrides ad set default
     }),
   ],
 })
@@ -163,29 +157,91 @@ export const retargetingUS = meta.traffic('Retargeting - US', {
   targeting: targeting(
     geo('US', 'DE'),
     age(30, 60),
-    interests({ id: '6003370250981', name: 'Construction' },
-              { id: '6003597068925', name: 'Building Information Modeling' }),
+    interests('Construction', 'Building Information Modeling'),
   ),
-  bidding: lowestCost(),
-  placements: automatic(),
-  optimization: 'LANDING_PAGE_VIEWS',
+  optimization: 'LANDING_PAGE_VIEWS',   // override default (LINK_CLICKS for traffic)
   dsa: { beneficiary: 'Other Entity', payor: 'Other Entity' },
 }, {
+  url: 'https://renamed.to/construction',
+  cta: 'LEARN_MORE',
   ads: [
     image('./assets/construction.png', {
-      name: 'Construction Pain Point',
       headline: 'Rename 1000 Plans in Seconds',
       primaryText: 'Construction teams waste 2hrs/week on file naming...',
-      cta: 'LEARN_MORE',
-      url: 'https://renamed.to/construction',
     }),
   ],
 })
 ```
 
-**Note on `targeting()` vs `audience()`:** These are distinct helpers. `targeting()` composes targeting rules (geo, age, interests, audiences) into a `MetaTargeting` object — consistent with the existing Google `targeting()` helper. `audience('id')` returns an audience reference that can be passed into `targeting()`. This avoids the ambiguity of overloading `audience()` for both audience references and full targeting config.
+**Compare with the verbose version** (all explicit, no defaults):
 
-**Note on interest IDs:** The `interests()` helper requires `{ id, name }` objects because the Meta Graph API requires numeric interest IDs for targeting. Users look up IDs via Meta's [Targeting Search API](https://developers.facebook.com/docs/marketing-api/audiences/reference/targeting-search) or the Ads Manager UI. A future enhancement could add an `ads search-interests "Construction"` CLI command that queries the API and returns `{ id, name }` pairs.
+```ts
+// Same campaign, but specifying every field — valid but unnecessary for the common case
+.adSet('Website Visitors 30d', {
+  targeting: targeting(
+    audience({ id: '23856789012345' }),              // explicit ID
+    geo('US', 'GB', 'CA', 'AU'),
+    age(25, 65),
+  ),
+  bidding: lowestCost(),                              // default anyway
+  placements: automatic(),                            // default anyway
+  optimization: 'LINK_CLICKS',                        // default for traffic anyway
+  status: 'PAUSED',                                   // default anyway
+}, {
+  ads: [
+    image('./assets/hero.png', {
+      name: 'Hero - Sign Up',                         // auto-derived from filename if omitted
+      headline: 'Rename Files Instantly',
+      primaryText: 'Stop wasting hours...',
+      cta: 'SIGN_UP',                                 // could come from ad set default
+      url: 'https://renamed.to',                       // could come from ad set default
+    }),
+  ],
+})
+```
+
+### DX Design Principles
+
+**Sensible defaults** — the 80% case should need minimal config:
+
+| Field | Default | Rationale |
+|---|---|---|
+| `bidding` | `lowestCost()` | Used 99% of the time; override when you need cost/bid caps |
+| `placements` | `automatic()` | Meta recommends this; manual placement is the exception |
+| `optimization` | Inferred from objective | `traffic` → `LINK_CLICKS`, `conversions` → `OFFSITE_CONVERSIONS`, `awareness` → `REACH`, `leads` → `LEAD_GENERATION`, `sales` → `OFFSITE_CONVERSIONS`, `engagement` → `POST_ENGAGEMENT`, `app-promotion` → `APP_INSTALLS` |
+| `status` | `'PAUSED'` | Never accidentally go live; activate explicitly |
+| `ad.name` | Derived from filename | `./assets/hero-sign-up.png` → `hero-sign-up` |
+| `ad.cta` | Inherited from ad set content | Set once, override per ad when needed |
+| `ad.url` | Inherited from ad set content | Set once, override per ad when needed |
+
+**Ad set-level defaults** — `url` and `cta` on the content object cascade to all ads:
+
+```ts
+.adSet('Name', config, {
+  url: 'https://renamed.to',     // all ads inherit this
+  cta: 'SIGN_UP',                // all ads inherit this
+  ads: [
+    image('./hero.png', { headline: '...', primaryText: '...' }),                    // inherits url + cta
+    image('./comp.png', { headline: '...', primaryText: '...', cta: 'LEARN_MORE' }), // overrides cta only
+  ],
+})
+```
+
+**Zero-lookup targeting:**
+
+- `audience('Website Visitors 30d')` — looks up custom audiences by name in the account. Also accepts `audience({ id: '23856789012345' })` for explicit IDs.
+- `interests('Construction', 'BIM')` — looks up interest IDs via Meta's Targeting Search API at `validate`/`plan` time. Results are cached locally. If a name is ambiguous, `validate` prints the options:
+  ```
+  ⚠ Ambiguous interest "Construction" — did you mean:
+    interests({ id: '6003370250981', name: 'Construction (Industry)' })
+    interests({ id: '6003139266461', name: 'Construction Equipment' })
+  ```
+  Also accepts explicit `{ id, name }` objects for precision: `interests({ id: '6003370250981', name: 'Construction' })`.
+- A bundled `src/meta/interests-catalog.ts` ships the top ~500 interests pre-mapped for instant TypeScript autocomplete. Less common interests fall back to API lookup.
+- `ads search interests "Construction"` — CLI command to query the Targeting Search API and print `{ id, name }` pairs.
+- `ads audiences` — CLI command to list all custom audiences in the account with names and IDs.
+
+**Note on `targeting()` vs `audience()`:** These are distinct helpers. `targeting()` composes targeting rules (geo, age, interests, audiences) into a `MetaTargeting` object — consistent with the existing Google `targeting()` helper. `audience(nameOrId)` returns an audience reference that can be passed into `targeting()`. This avoids the ambiguity of overloading `audience()` for both audience references and full targeting config.
 
 ### Builder Typing
 
@@ -199,9 +255,15 @@ class MetaCampaignBuilder<T extends Objective> {
 
   adSet(
     name: string,
-    config: AdSetConfig<T>,   // optimization narrowed by T
-    content: { ads: MetaCreative[] }
+    config: AdSetConfig<T>,   // optimization narrowed by T, most fields optional
+    content: AdSetContent
   ): MetaCampaignBuilder<T>
+}
+
+type AdSetContent = {
+  ads: MetaCreative[]
+  url?: string      // default url for all ads in this ad set
+  cta?: MetaCTA     // default cta for all ads in this ad set
 }
 ```
 
@@ -327,11 +389,12 @@ type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd
 type ImageAd = {
   format: 'image'
   image: string
+  name?: string             // auto-derived from filename if omitted (hero.png → "hero")
   headline: string
   primaryText: string
   description?: string
-  cta: MetaCTA
-  url: string
+  cta?: MetaCTA             // inherits from AdSetContent.cta if omitted
+  url?: string              // inherits from AdSetContent.url if omitted
   urlParameters?: string
   displayLink?: string
 }
@@ -339,20 +402,23 @@ type ImageAd = {
 type VideoAd = {
   format: 'video'
   video: string
+  name?: string             // auto-derived from filename if omitted
   thumbnail?: string
   headline: string
   primaryText: string
   description?: string
-  cta: MetaCTA
-  url: string
+  cta?: MetaCTA             // inherits from AdSetContent.cta if omitted
+  url?: string              // inherits from AdSetContent.url if omitted
   urlParameters?: string
 }
 
 type CarouselAd = {
   format: 'carousel'
+  name?: string
   cards: CarouselCard[]
   primaryText: string
-  url: string
+  cta?: MetaCTA             // inherits from AdSetContent.cta if omitted
+  url?: string              // inherits from AdSetContent.url if omitted (fallback URL)
   endCard?: 'website' | 'none'
 }
 
@@ -366,12 +432,16 @@ type CarouselCard = {
 
 type CollectionAd = {
   format: 'collection'
+  name?: string
   coverImage?: string
   coverVideo?: string
   instantExperience: string
   headline: string
   primaryText: string
 }
+```
+
+**Validation:** At flatten time, every ad must have a resolved `url` and `cta` (either directly or via `AdSetContent` defaults). If both are missing, `validate` errors with a clear message: `Ad "hero" in ad set "Website Visitors" has no url — set it on the ad or on the ad set content.`
 ```
 
 ### CTAs (Full Set)
@@ -429,16 +499,16 @@ type MetaCampaignConfig<T extends Objective> = {
 type SpecialAdCategory = 'CREDIT' | 'EMPLOYMENT' | 'HOUSING' | 'ISSUES_ELECTIONS_POLITICS'
 
 type AdSetConfig<T extends Objective> = {
-  targeting: MetaTargeting
-  optimization: OptimizationGoalMap[T]
-  bidding?: BidStrategy
-  budget?: Budget
-  placements?: MetaPlacements
+  targeting: MetaTargeting                  // required — the only thing you must always specify
+  optimization?: OptimizationGoalMap[T]     // defaults based on objective (see DX Design Principles)
+  bidding?: BidStrategy                     // defaults to lowestCost()
+  budget?: Budget                           // ad set level budget (for non-CBO campaigns)
+  placements?: MetaPlacements              // defaults to automatic()
   schedule?: AdSetSchedule
   conversion?: ConversionConfig
-  dsa?: DSAConfig
+  dsa?: DSAConfig                           // overrides provider-level DSA
   promotedObject?: PromotedObject
-  status?: 'ACTIVE' | 'PAUSED'
+  status?: 'ACTIVE' | 'PAUSED'             // defaults to 'PAUSED'
 }
 
 type PromotedObject = {
@@ -463,33 +533,45 @@ type DSAConfig = {
 ### Helper Functions
 
 ```ts
-// Targeting (composed via targeting() — consistent with Google's targeting() helper)
-targeting(geo('US', 'DE'), age(25, 65), audience('custom-id'))
+// ── Targeting (composed via targeting()) ──
+targeting(geo('US', 'DE'), age(25, 65))                             // minimal
+targeting(audience('Website Visitors'), geo('US'), age(25, 65))     // with audience by name
+targeting(geo('US'), interests('Construction', 'BIM'))              // with interests by name
+
 geo('US', 'DE', 'GB')                                              // → GeoTarget
 age(25, 65)                                                         // → { min, max }
-interests({ id: '6003370250981', name: 'Construction' })            // → InterestTarget[]
-audience('custom-audience-id')                                      // → custom audience ref
-excludeAudience('existing-customers')                               // → excluded audience ref
-lookalike('source-audience-id', { geo: geo('US'), percent: 1 })     // → lookalike config
 
-// Bidding
-lowestCost()       // → { type: 'LOWEST_COST_WITHOUT_CAP' }
-costCap(10)        // → { type: 'COST_CAP', cap: 10 }
-bidCap(5)          // → { type: 'BID_CAP', cap: 5 }
-minRoas(2.5)       // → { type: 'MINIMUM_ROAS', floor: 2.5 }
+// interests() — string names (resolved at validate/plan) or explicit { id, name }
+interests('Construction', 'BIM')                                    // → API lookup + cache
+interests({ id: '6003370250981', name: 'Construction' })            // → explicit, no lookup
 
-// Placements
-automatic()                                                         // → 'automatic'
-manual(['facebook', 'instagram'], ['feed', 'story', 'reels'])       // → MetaPlacements
+// audience() — by name (looked up in account) or explicit ID
+audience('Website Visitors 30d')                                    // → name lookup
+audience({ id: '23856789012345' })                                  // → explicit ID
 
-// Budget (currency inferred from provider config)
+excludeAudience('Existing Customers')                               // → excluded audience
+lookalike('Website Visitors 30d', { geo: geo('US'), percent: 1 })   // → lookalike
+
+// ── Bidding ──
+lowestCost()       // → LOWEST_COST_WITHOUT_CAP (also the default if omitted)
+costCap(10)        // → COST_CAP, €10
+bidCap(5)          // → BID_CAP, €5
+minRoas(2.5)       // → MINIMUM_ROAS, 2.5x
+
+// ── Placements ──
+automatic()                                                         // → Advantage+ (default if omitted)
+manual(['facebook', 'instagram'], ['feed', 'story', 'reels'])       // → manual placement
+
+// ── Budget (currency inferred from account, shown in plan output) ──
 daily(5)                     // → { amount: 5, currency: 'EUR', period: 'daily' }
+daily(5, 'USD')              // → explicit currency override
 lifetime(500, '2026-04-01')  // → { amount: 500, currency: 'EUR', period: 'lifetime', endTime: '...' }
 
-// Creative
-image('./path.png', { name, headline, primaryText, cta, url })
-video('./path.mp4', { name, headline, primaryText, cta, url })
-carousel([card1, card2, ...], { primaryText, url })
+// ── Creative (name auto-derived from filename, url/cta inherit from ad set) ──
+image('./hero.png', { headline: '...', primaryText: '...' })                // minimal
+image('./hero.png', { name: 'Hero Ad', headline: '...', primaryText: '...', cta: 'SIGN_UP', url: '...' })  // explicit
+video('./demo.mp4', { headline: '...', primaryText: '...' })                // minimal
+carousel([card1, card2], { primaryText: '...' })                            // cards need own urls
 ```
 
 ### Validation Rules
@@ -614,11 +696,19 @@ Each provider exports a `ProviderModule` with its flatten/fetch/apply/codegen im
 
 ### `describeResource()` Updates
 
+Plan output uses human-readable names instead of slugified paths. The `Resource` stores both the slug path (for the diff engine) and the original `name` property (for display):
+
 ```ts
-// cli/plan.ts — describeResource() additions
-case 'adSet':    return `adSet       ${resource.path}`
-case 'creative': return `creative    ${resource.path}`
+// cli/plan.ts — describeResource() uses resource.properties.name, not resource.path
+function describeResource(resource: Resource): string {
+  const name = resource.properties.name as string ?? resource.path
+  // For nested resources, show the hierarchy: "Campaign → Ad Set → Ad"
+  const hierarchy = buildHierarchy(resource, allResources)  // resolves parent names
+  return `${resource.kind.padEnd(12)} ${hierarchy}`
+}
 ```
+
+The `→` separator in output (e.g., `Retargeting - US → Website Visitors 30d → hero`) is derived from the resource path hierarchy, resolving each segment to its human name.
 
 ## Config Schema
 
@@ -659,22 +749,57 @@ Campaign files are detected by their imports:
 ### Commands
 
 ```bash
-# All providers
+# ── Core workflow ──
 ads plan                        # diff for all providers
 ads apply                       # apply all changes
 ads status                      # live state for all providers
+ads validate                    # type-check + rule validation (interest/audience resolution)
 
 # Filter by provider
 ads plan --provider meta
 ads apply --provider google
-ads status --provider meta
 
 # Import live campaigns → TypeScript
 ads import --provider meta
 
-# Validate campaign files
-ads validate
+# ── Onboarding ──
+ads init                        # interactive setup (see below)
+ads init --provider meta        # skip provider picker
+
+# ── Discovery (Meta-specific) ──
+ads audiences                   # list custom audiences (name + ID)
+ads search interests "query"    # search Meta Targeting Search API
+ads search behaviors "query"    # search behaviors
 ```
+
+### `ads init` — Guided Onboarding
+
+A new user runs `ads init` and gets an interactive setup:
+
+```
+$ ads init
+
+  Which provider? (Use arrow keys)
+  ❯ Google Ads
+    Meta (Facebook/Instagram)
+
+  Meta Ad Account ID: act_4053319338268788
+  Page ID: 772782699246452
+  Pixel ID (optional): 710178735336470
+
+  ✓ Generated ads.config.ts
+  ✓ Authenticated (FB_ADS_ACCESS_TOKEN found in env)
+  ✓ Imported 3 campaigns → campaigns/
+
+  You're ready! Edit campaigns/*.ts and run: ads plan
+```
+
+The init command:
+1. Prompts for provider + credentials
+2. Generates `ads.config.ts` with the correct shape
+3. Verifies authentication works
+4. Runs `ads import` to seed from live state
+5. Prints a "what's next" message
 
 ### Import
 
@@ -687,20 +812,41 @@ ads validate
 
 ### Plan Output
 
+Plan output uses **human-readable names** (not slugified paths) so you can immediately see what's being changed:
+
 ```
 Meta Ads — act_4053319338268788
-  + campaign    retargeting-us
-  + adSet       retargeting-us/website-visitors-30d
-  + upload      ./assets/hero.png (new)
-  + upload      ./assets/comparison.png (new)
-  + creative    retargeting-us/website-visitors-30d/hero-sign-up/cr
-  + ad          retargeting-us/website-visitors-30d/hero-sign-up
-  + creative    retargeting-us/website-visitors-30d/comparison-learn-more/cr
-  + ad          retargeting-us/website-visitors-30d/comparison-learn-more
+
+  + campaign    Retargeting - US                                    (daily €5.00, paused)
+  + adSet       Retargeting - US → Website Visitors 30d             (lowest cost, automatic)
+  + upload      ./assets/hero.png                                   (new, 245 KB)
+  + upload      ./assets/comparison.png                             (new, 189 KB)
+  + creative    Retargeting - US → Website Visitors 30d → hero      (image, "Rename Files Instantly")
+  + ad          Retargeting - US → Website Visitors 30d → hero
+  + creative    Retargeting - US → Website Visitors 30d → comparison (image, "Before & After")
+  + ad          Retargeting - US → Website Visitors 30d → comparison
 
 Google Ads — 7300967494
-  ~ campaign    Search - PDF Renaming  (budget: $1.50 → $2.00)
+
+  ~ campaign    Search - PDF Renaming                               (budget: €1.50 → €2.00)
 ```
+
+**Property-level diffs** for updates show exactly what changed:
+
+```
+Meta Ads — act_4053319338268788
+
+  ~ adSet       Retargeting - US → Website Visitors 30d
+                  targeting.geo:  ["US", "GB"]  →  ["US", "GB", "DE"]
+                  budget:         daily €5.00   →  daily €7.00
+
+  ~ creative    Retargeting - US → Website Visitors 30d → hero
+                  headline:       "Rename Files Fast"  →  "Rename Files Instantly"
+
+  - ad          Retargeting - US → Cold Traffic → old-variant        (will delete)
+```
+
+**Currency is always shown** in plan output — resolved from the account, even though `daily(5)` in code doesn't specify it. This prevents "5 what?" confusion when reading diffs.
 
 ## Fetch Layer
 
@@ -769,28 +915,26 @@ Video upload uses a different Meta API endpoint (`POST /{accountId}/advideos`) w
 `src/meta/codegen.ts` generates TypeScript campaign files from fetched live state. This mirrors `src/core/codegen.ts` (which is Google-specific) but produces Meta builder DSL:
 
 ```ts
-// Generated output example:
-import { meta, daily, targeting, geo, age, lowestCost, automatic, image } from '@upspawn/ads'
+// Generated output example — codegen emits minimal code (defaults omitted)
+import { meta, daily, targeting, geo, age, image } from '@upspawn/ads'
 
 export const retargetingUs = meta.traffic('Retargeting - US', {
   budget: daily(5),
 })
 .adSet('Website Visitors 30d', {
   targeting: targeting(geo('US', 'GB'), age(25, 65)),
-  bidding: lowestCost(),
-  placements: automatic(),
-  optimization: 'LINK_CLICKS',
 }, {
+  url: 'https://renamed.to',
+  cta: 'SIGN_UP',
   ads: [
     image('./assets/imported/hero-abc123.png', {
-      name: 'Hero - Sign Up',
       headline: 'Rename Files Instantly',
       primaryText: 'Stop wasting hours...',
-      cta: 'SIGN_UP',
-      url: 'https://renamed.to',
     }),
   ],
 })
 ```
+
+Codegen is smart about defaults — it only emits fields that differ from the default value. If the live campaign uses `LOWEST_COST_WITHOUT_CAP` bidding and `automatic` placements, the generated code omits both.
 
 During import, creative images are downloaded from Meta's CDN to a local `assets/imported/` directory with a hash suffix to avoid collisions.
