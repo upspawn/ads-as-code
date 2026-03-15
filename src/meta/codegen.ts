@@ -428,7 +428,7 @@ function generateMetaCampaignFile(
   lines.push('')
 
   // Campaign declaration
-  const exportName = slugify(name).replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+  const exportName = slugify(name).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
 
   if (configParts.length > 0) {
     lines.push(`export const ${exportName} = meta.${methodName}(${quote(name)}, {`)

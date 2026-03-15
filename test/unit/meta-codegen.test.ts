@@ -489,6 +489,20 @@ describe('codegenMeta', () => {
     expect(code).toContain('export const coldTrafficHighIntent')
   })
 
+  test('export name handles hyphens before digits (e.g. Feb 2026)', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign({ name: 'Cold - Accounting Vertical - Feb 2026' }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Slugify produces "cold-accounting-vertical-feb-2026"
+    // CamelCase must also handle -2 (hyphen before digit)
+    expect(code).toContain('export const coldAccountingVerticalFeb2026')
+    // Must NOT contain a bare hyphen in the identifier
+    expect(code).not.toMatch(/export const [a-zA-Z0-9]*-/)
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),
