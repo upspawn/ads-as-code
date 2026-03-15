@@ -12,10 +12,18 @@ export type Budget = DailyBudget | MonthlyBudget
 
 // === Keywords ===
 
-export type ExactKeyword = { readonly text: string; readonly matchType: 'EXACT' }
-export type PhraseKeyword = { readonly text: string; readonly matchType: 'PHRASE' }
-export type BroadKeyword = { readonly text: string; readonly matchType: 'BROAD' }
+export type KeywordOptions = {
+  readonly bid?: number
+  readonly finalUrl?: string
+  readonly status?: 'enabled' | 'paused'
+}
+
+export type ExactKeyword = { readonly text: string; readonly matchType: 'EXACT' } & KeywordOptions
+export type PhraseKeyword = { readonly text: string; readonly matchType: 'PHRASE' } & KeywordOptions
+export type BroadKeyword = { readonly text: string; readonly matchType: 'BROAD' } & KeywordOptions
 export type Keyword = ExactKeyword | PhraseKeyword | BroadKeyword
+
+export type KeywordInput = string | ({ readonly text: string } & KeywordOptions)
 
 // === Targeting ===
 
@@ -26,7 +34,61 @@ export type Day = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 export type GeoTarget = { readonly type: 'geo'; readonly countries: CountryCode[] }
 export type LanguageTarget = { readonly type: 'language'; readonly languages: LanguageCode[] }
 export type ScheduleTarget = { readonly type: 'schedule'; readonly days?: Day[]; readonly startHour?: number; readonly endHour?: number }
-export type TargetingRule = GeoTarget | LanguageTarget | ScheduleTarget
+
+export type DeviceTarget = { readonly type: 'device'; readonly device: 'mobile' | 'desktop' | 'tablet'; readonly bidAdjustment: number }
+export type RegionTarget = { readonly type: 'region'; readonly regions: string[] }
+export type CityTarget = { readonly type: 'city'; readonly cities: string[] }
+export type RadiusTarget = { readonly type: 'radius'; readonly latitude: number; readonly longitude: number; readonly radiusKm: number }
+export type PresenceTarget = { readonly type: 'presence'; readonly mode: 'presence' | 'presence-or-interest' }
+
+export type AgeRange = '18-24' | '25-34' | '35-44' | '45-54' | '55-64' | '65+' | 'undetermined'
+export type Gender = 'male' | 'female' | 'undetermined'
+export type IncomeRange = 'top-10%' | '11-20%' | '21-30%' | '31-40%' | '41-50%' | 'lower-50%' | 'undetermined'
+export type ParentalStatus = 'parent' | 'not-parent' | 'undetermined'
+
+export type DemographicTarget = {
+  readonly type: 'demographic'
+  readonly ageRanges?: AgeRange[]
+  readonly genders?: Gender[]
+  readonly incomes?: IncomeRange[]
+  readonly parentalStatuses?: ParentalStatus[]
+}
+
+export type ScheduleBidTarget = {
+  readonly type: 'schedule-bid'
+  readonly day: Day
+  readonly startHour: number
+  readonly endHour: number
+  readonly bidAdjustment: number
+}
+
+export type AudienceRef =
+  | { readonly kind: 'remarketing'; readonly listId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'custom'; readonly audienceId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'in-market'; readonly categoryId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'affinity'; readonly categoryId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'customer-match'; readonly listId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'combined'; readonly audienceId: string; readonly name?: string; readonly bidAdjustment?: number }
+  | { readonly kind: 'similar'; readonly listId: string; readonly name?: string; readonly bidAdjustment?: number }
+
+export type AudienceTarget = {
+  readonly type: 'audience'
+  readonly audiences: AudienceRef[]
+  readonly mode?: 'targeting' | 'observation'
+}
+
+export type TargetingRule =
+  | GeoTarget
+  | LanguageTarget
+  | ScheduleTarget
+  | DeviceTarget
+  | RegionTarget
+  | CityTarget
+  | RadiusTarget
+  | PresenceTarget
+  | DemographicTarget
+  | ScheduleBidTarget
+  | AudienceTarget
 
 export type Targeting = { readonly rules: TargetingRule[] }
 

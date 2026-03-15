@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   exact, phrase, broad, keywords,
   daily, monthly, eur, usd,
-  geo, languages, weekdays, hours, targeting,
+  geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
+  audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   headlines, descriptions, rsa,
   link, sitelinks, callouts,
   negatives,
@@ -191,6 +192,93 @@ describe('targeting()', () => {
   test('works with no rules', () => {
     const t = targeting()
     expect(t).toEqual({ rules: [] })
+  })
+})
+
+// ─── Audiences ──────────────────────────────────────────────
+
+describe('audiences()', () => {
+  test('creates audience targeting rule in observation mode', () => {
+    const a = audiences(
+      remarketing('123'),
+      inMarket('80432'),
+    )
+    expect(a).toEqual({
+      type: 'audience',
+      audiences: [
+        { kind: 'remarketing', listId: '123' },
+        { kind: 'in-market', categoryId: '80432' },
+      ],
+      mode: 'observation',
+    })
+  })
+})
+
+describe('audienceTargeting()', () => {
+  test('defaults to targeting mode', () => {
+    const a = audienceTargeting(
+      remarketing('456', { name: 'Cart Abandoners' }),
+    )
+    expect(a.mode).toBe('targeting')
+    expect(a.type).toBe('audience')
+    expect(a.audiences).toHaveLength(1)
+  })
+})
+
+describe('remarketing()', () => {
+  test('creates remarketing ref', () => {
+    const ref = remarketing('list-001')
+    expect(ref).toEqual({ kind: 'remarketing', listId: 'list-001' })
+  })
+
+  test('includes optional name and bidAdjustment', () => {
+    const ref = remarketing('list-001', { name: 'All Visitors', bidAdjustment: 0.5 })
+    expect(ref).toEqual({ kind: 'remarketing', listId: 'list-001', name: 'All Visitors', bidAdjustment: 0.5 })
+  })
+})
+
+describe('customAudience()', () => {
+  test('creates custom audience ref with bid adjustment', () => {
+    const ref = customAudience('aud-789', { bidAdjustment: 0.3 })
+    expect(ref).toEqual({ kind: 'custom', audienceId: 'aud-789', bidAdjustment: 0.3 })
+  })
+})
+
+describe('inMarket()', () => {
+  test('creates in-market ref with name', () => {
+    const ref = inMarket('80432', { name: 'Business Software' })
+    expect(ref).toEqual({ kind: 'in-market', categoryId: '80432', name: 'Business Software' })
+  })
+})
+
+describe('affinity()', () => {
+  test('creates affinity ref', () => {
+    const ref = affinity('80101', { name: 'Tech Enthusiasts' })
+    expect(ref).toEqual({ kind: 'affinity', categoryId: '80101', name: 'Tech Enthusiasts' })
+  })
+})
+
+describe('customerMatch()', () => {
+  test('creates customer-match ref', () => {
+    const ref = customerMatch('cm-list-1')
+    expect(ref).toEqual({ kind: 'customer-match', listId: 'cm-list-1' })
+  })
+})
+
+describe('audiences + targeting() composition', () => {
+  test('composes audience rules with other targeting rules', () => {
+    const t = targeting(
+      geo('US'),
+      languages('en'),
+      audiences(
+        remarketing('123', { bidAdjustment: 0.5 }),
+        inMarket('80432', { name: 'Business Software' }),
+      ),
+    )
+    expect(t.rules).toHaveLength(3)
+    expect(t.rules[0]!.type).toBe('geo')
+    expect(t.rules[1]!.type).toBe('language')
+    expect(t.rules[2]!.type).toBe('audience')
   })
 })
 
