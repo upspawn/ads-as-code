@@ -711,8 +711,8 @@ describe('codegenMeta', () => {
 
     expect(code).toContain("genders: ['female']")
     expect(code).toContain('locales: [6, 24]')
-    expect(code).toContain('advantageAudience: true')
-    expect(code).toContain('advantageDetailedTargeting: true')
+    expect(code).toContain("{ _type: 'advantageAudience' as const }")
+    expect(code).toContain("{ _type: 'advantageDetailedTargeting' as const }")
   })
 
   test('connections and excluded connections in targeting', () => {

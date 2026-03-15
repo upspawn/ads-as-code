@@ -303,12 +303,12 @@ function formatMetaTargeting(targeting: Record<string, unknown>, imports: Set<st
     parts.push(`friendsOfConnections: [${args.join(', ')}]`)
   }
 
-  // Advantage+ flags
+  // Advantage+ flags — emitted as marker objects that targeting() understands
   if (targeting.advantageAudience === true) {
-    parts.push(`advantageAudience: true`)
+    parts.push(`{ _type: 'advantageAudience' as const }`)
   }
   if (targeting.advantageDetailedTargeting === true) {
-    parts.push(`advantageDetailedTargeting: true`)
+    parts.push(`{ _type: 'advantageDetailedTargeting' as const }`)
   }
 
   if (parts.length === 0) {

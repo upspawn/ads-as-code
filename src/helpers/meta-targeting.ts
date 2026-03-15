@@ -62,6 +62,8 @@ export type MetaTargetingRule =
   | ExcludedAudienceMarker
   | InterestMarker
   | LookalikeMarker
+  | { readonly _type: 'advantageAudience' }
+  | { readonly _type: 'advantageDetailedTargeting' }
 
 // ─── Helper functions ─────────────────────────────────────
 
@@ -93,6 +95,8 @@ export function metaTargeting(...rules: MetaTargetingRule[]): MetaTargeting {
   const excludedAudiences: string[] = []
   const lookalikeAudiences: string[] = []
   const interests: InterestTarget[] = []
+  let advantageAudience = false
+  let advantageDetailedTargeting = false
 
   for (const rule of rules) {
     if ('type' in rule && rule.type === 'geo') {
@@ -127,6 +131,12 @@ export function metaTargeting(...rules: MetaTargetingRule[]): MetaTargeting {
             : rule.source.id
           lookalikeAudiences.push(sourceRef)
           break
+        case 'advantageAudience':
+          advantageAudience = true
+          break
+        case 'advantageDetailedTargeting':
+          advantageDetailedTargeting = true
+          break
       }
     }
   }
@@ -142,6 +152,8 @@ export function metaTargeting(...rules: MetaTargetingRule[]): MetaTargeting {
     ...(excludedAudiences.length > 0 && { excludedAudiences }),
     ...(lookalikeAudiences.length > 0 && { lookalikeAudiences }),
     ...(interests.length > 0 && { interests }),
+    ...(advantageAudience && { advantageAudience }),
+    ...(advantageDetailedTargeting && { advantageDetailedTargeting }),
   }
 
   return result
