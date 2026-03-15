@@ -128,10 +128,6 @@ export {
   minRoas,
 } from './helpers/meta-bidding.ts'
 
-export {
-  lifetime,
-} from './helpers/meta-budget.ts'
-
 // === AI ===
 
 export { ai } from './ai/index.ts'
