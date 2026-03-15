@@ -85,3 +85,38 @@ export { defineConfig } from './core/config.ts'
 // === Providers ===
 
 export { google } from './google/index.ts'
+
+// === AI ===
+
+export { ai } from './ai/index.ts'
+
+export type {
+  AiMarker,
+  RsaMarker,
+  KeywordsMarker,
+  MetaCopyMarker,
+  InterestsMarker,
+  RsaMarkerInput,
+  MetaCopyMarkerInput,
+  RsaOutput,
+  KeywordsOutput,
+  MetaCopyOutput,
+  InterestsOutput,
+  RsaPromptContext,
+  MetaPromptContext,
+} from './ai/index.ts'
+
+export {
+  isRsaMarker,
+  isKeywordsMarker,
+  isMetaCopyMarker,
+  isInterestsMarker,
+  rsaSchema,
+  keywordsSchema,
+  metaCopySchema,
+  interestsSchema,
+  compileRsaPrompt,
+  compileKeywordsPrompt,
+  compileMetaCopyPrompt,
+  compileInterestsPrompt,
+} from './ai/index.ts'
