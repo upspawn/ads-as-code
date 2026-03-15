@@ -111,6 +111,7 @@ export type Resource = {
   readonly kind: ResourceKind
   readonly path: string
   readonly properties: Record<string, unknown>
+  readonly meta?: Record<string, unknown>  // SDK-internal data: never compared, never sent to API
   readonly platformId?: string
 }
 

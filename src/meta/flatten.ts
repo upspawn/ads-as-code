@@ -21,7 +21,10 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────
 
-function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>): Resource {
+function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, meta?: Record<string, unknown>): Resource {
+  if (meta && Object.keys(meta).length > 0) {
+    return { kind, path, properties, meta }
+  }
   return { kind, path, properties }
 }
 
@@ -123,8 +126,7 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
     ...(campaign.config.spendCap !== undefined && { spendCap: campaign.config.spendCap }),
     ...(campaign.config.specialAdCategories !== undefined && { specialAdCategories: campaign.config.specialAdCategories }),
     ...(campaign.config.buyingType !== undefined && { buyingType: campaign.config.buyingType }),
-    ...(campaignDefaults.length > 0 && { _defaults: campaignDefaults }),
-  }))
+  }, campaignDefaults.length > 0 ? { _defaults: campaignDefaults } : undefined))
 
   // 2. Ad sets + children
   for (const adSet of campaign.adSets) {
@@ -158,8 +160,7 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       ...(adSet.config.conversion !== undefined && { conversion: adSet.config.conversion }),
       ...(adSet.config.dsa !== undefined && { dsa: adSet.config.dsa }),
       ...(adSet.config.promotedObject !== undefined && { promotedObject: adSet.config.promotedObject }),
-      ...(adSetDefaults.length > 0 && { _defaults: adSetDefaults }),
-    }))
+    }, adSetDefaults.length > 0 ? { _defaults: adSetDefaults } : undefined))
 
     // 3. Creatives + Ads
     for (const creative of adSet.content.ads) {
@@ -179,20 +180,22 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       if (ctaDefaulted) adDefaults.push('cta')
 
       // Build creative properties based on format
-      const creativeProps = buildCreativeProperties(creative, resolvedUrl, resolvedCta, adName)
+      const { properties: creativeProps, meta: creativeMeta } = buildCreativeProperties(creative, resolvedUrl, resolvedCta, adName)
 
-      resources.push(resource('creative', creativePath, {
-        ...creativeProps,
-        ...(adDefaults.length > 0 && { _defaults: adDefaults }),
-      }))
+      // Merge SDK-internal metadata: _defaults + any media file paths from creative
+      const creativeMetaFull: Record<string, unknown> = { ...creativeMeta }
+      if (adDefaults.length > 0) creativeMetaFull._defaults = adDefaults
+
+      resources.push(resource('creative', creativePath, creativeProps,
+        Object.keys(creativeMetaFull).length > 0 ? creativeMetaFull : undefined))
 
       // Ad references the creative
+      const adMeta = adDefaults.length > 0 ? { _defaults: adDefaults } : undefined
       resources.push(resource('ad', adPath, {
         name: adName,
         status: adSetStatus,
         creativePath,
-        ...(adDefaults.length > 0 && { _defaults: adDefaults }),
-      }))
+      }, adMeta))
     }
   }
 
@@ -201,61 +204,81 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
 
 // ─── Creative Property Builders ──────────────────────────
 
+type CreativeBuildResult = {
+  properties: Record<string, unknown>
+  meta: Record<string, unknown>
+}
+
 function buildCreativeProperties(
   creative: MetaCreative,
   resolvedUrl: string,
   resolvedCta: MetaCTA,
   adName: string,
-): Record<string, unknown> {
+): CreativeBuildResult {
   switch (creative.format) {
     case 'image':
       return {
-        name: adName,
-        format: 'image',
-        image: creative.image,
-        headline: creative.headline,
-        primaryText: creative.primaryText,
-        ...(creative.description !== undefined && { description: creative.description }),
-        cta: resolvedCta,
-        url: resolvedUrl,
-        ...(creative.urlParameters !== undefined && { urlParameters: creative.urlParameters }),
-        ...(creative.displayLink !== undefined && { displayLink: creative.displayLink }),
+        properties: {
+          name: adName,
+          format: 'image',
+          headline: creative.headline,
+          primaryText: creative.primaryText,
+          ...(creative.description !== undefined && { description: creative.description }),
+          cta: resolvedCta,
+          url: resolvedUrl,
+          ...(creative.urlParameters !== undefined && { urlParameters: creative.urlParameters }),
+          ...(creative.displayLink !== undefined && { displayLink: creative.displayLink }),
+        },
+        // Local file path is SDK-internal — the API works with imageHash
+        meta: { imagePath: creative.image },
       }
 
     case 'video':
       return {
-        name: adName,
-        format: 'video',
-        video: creative.video,
-        ...(creative.thumbnail !== undefined && { thumbnail: creative.thumbnail }),
-        headline: creative.headline,
-        primaryText: creative.primaryText,
-        ...(creative.description !== undefined && { description: creative.description }),
-        cta: resolvedCta,
-        url: resolvedUrl,
-        ...(creative.urlParameters !== undefined && { urlParameters: creative.urlParameters }),
+        properties: {
+          name: adName,
+          format: 'video',
+          headline: creative.headline,
+          primaryText: creative.primaryText,
+          ...(creative.description !== undefined && { description: creative.description }),
+          cta: resolvedCta,
+          url: resolvedUrl,
+          ...(creative.urlParameters !== undefined && { urlParameters: creative.urlParameters }),
+        },
+        // Local file paths are SDK-internal — the API works with videoId/imageHash
+        meta: {
+          videoPath: creative.video,
+          ...(creative.thumbnail !== undefined && { thumbnailPath: creative.thumbnail }),
+        },
       }
 
     case 'carousel':
       return {
-        name: adName,
-        format: 'carousel',
-        cards: creative.cards,
-        primaryText: creative.primaryText,
-        cta: resolvedCta,
-        url: resolvedUrl,
-        ...(creative.endCard !== undefined && { endCard: creative.endCard }),
+        properties: {
+          name: adName,
+          format: 'carousel',
+          cards: creative.cards,
+          primaryText: creative.primaryText,
+          cta: resolvedCta,
+          url: resolvedUrl,
+          ...(creative.endCard !== undefined && { endCard: creative.endCard }),
+        },
+        meta: {},
       }
 
     case 'collection':
       return {
-        name: adName,
-        format: 'collection',
-        ...(creative.coverImage !== undefined && { coverImage: creative.coverImage }),
-        ...(creative.coverVideo !== undefined && { coverVideo: creative.coverVideo }),
-        instantExperience: creative.instantExperience,
-        headline: creative.headline,
-        primaryText: creative.primaryText,
+        properties: {
+          name: adName,
+          format: 'collection',
+          instantExperience: creative.instantExperience,
+          headline: creative.headline,
+          primaryText: creative.primaryText,
+        },
+        meta: {
+          ...(creative.coverImage !== undefined && { coverImagePath: creative.coverImage }),
+          ...(creative.coverVideo !== undefined && { coverVideoPath: creative.coverVideo }),
+        },
       }
   }
 }
