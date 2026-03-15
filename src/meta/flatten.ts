@@ -73,7 +73,7 @@ function resolveAdName(creative: MetaCreative): string {
  * Resolve url for an ad, falling back to ad set content defaults.
  * Throws a validation error if neither is set.
  */
-function resolveUrl(creative: MetaCreative, content: AdSetContent, adSetName: string): { url: string; defaulted: boolean } {
+function resolveUrl(creative: MetaCreative, content: AdSetContent, _adSetName: string): { url: string; defaulted: boolean } {
   if (creative.format === 'collection') {
     // Collections don't need a url (they use instantExperience)
     return { url: '', defaulted: false }
@@ -81,17 +81,15 @@ function resolveUrl(creative: MetaCreative, content: AdSetContent, adSetName: st
   const adUrl = 'url' in creative ? creative.url : undefined
   if (adUrl) return { url: adUrl, defaulted: false }
   if (content.url) return { url: content.url, defaulted: true }
-  const adName = resolveAdName(creative)
-  throw new Error(
-    `Ad "${adName}" in ad set "${adSetName}" has no url — set it on the ad or on the ad set content.`
-  )
+  // Boosted posts and some ad formats don't have URLs
+  return { url: '', defaulted: true }
 }
 
 /**
  * Resolve cta for an ad, falling back to ad set content defaults.
  * Throws a validation error if neither is set.
  */
-function resolveCta(creative: MetaCreative, content: AdSetContent, adSetName: string): { cta: MetaCTA; defaulted: boolean } {
+function resolveCta(creative: MetaCreative, content: AdSetContent, _adSetName: string): { cta: MetaCTA; defaulted: boolean } {
   if (creative.format === 'collection') {
     // Collections don't use a CTA button
     return { cta: 'NO_BUTTON', defaulted: false }
@@ -99,10 +97,8 @@ function resolveCta(creative: MetaCreative, content: AdSetContent, adSetName: st
   const adCta = 'cta' in creative ? creative.cta : undefined
   if (adCta) return { cta: adCta, defaulted: false }
   if (content.cta) return { cta: content.cta, defaulted: true }
-  const adName = resolveAdName(creative)
-  throw new Error(
-    `Ad "${adName}" in ad set "${adSetName}" has no cta — set it on the ad or on the ad set content.`
-  )
+  // Boosted posts and some ad formats don't have CTAs
+  return { cta: 'NO_BUTTON', defaulted: true }
 }
 
 // ─── Flatten ─────────────────────────────────────────────

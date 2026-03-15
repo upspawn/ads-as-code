@@ -436,32 +436,30 @@ describe('flattenMeta() default tracking', () => {
 // ─── Validation Errors ───────────────────────────────────
 
 describe('flattenMeta() validation', () => {
-  test('throws when url missing from both ad and ad set content', () => {
-    expect(() => {
-      flattenMeta(makeCampaign({
-        adSets: [makeAdSet({
-          content: {
-            // no url on content
-            cta: 'SIGN_UP',
-            ads: [makeImageAd()],  // no url on ad
-          },
-        })],
-      }))
-    }).toThrow(/has no url/)
+  test('defaults url to empty when missing from both ad and ad set content', () => {
+    const resources = flattenMeta(makeCampaign({
+      adSets: [makeAdSet({
+        content: {
+          cta: 'SIGN_UP',
+          ads: [makeImageAd()],
+        },
+      })],
+    }))
+    const creative = resources.find((r) => r.kind === 'creative')!
+    expect(creative.properties.url).toBe('')
   })
 
-  test('throws when cta missing from both ad and ad set content', () => {
-    expect(() => {
-      flattenMeta(makeCampaign({
-        adSets: [makeAdSet({
-          content: {
-            url: 'https://renamed.to',
-            // no cta on content
-            ads: [makeImageAd()],  // no cta on ad
-          },
-        })],
-      }))
-    }).toThrow(/has no cta/)
+  test('defaults cta to NO_BUTTON when missing from both ad and ad set content', () => {
+    const resources = flattenMeta(makeCampaign({
+      adSets: [makeAdSet({
+        content: {
+          url: 'https://renamed.to',
+          ads: [makeImageAd()],
+        },
+      })],
+    }))
+    const creative = resources.find((r) => r.kind === 'creative')!
+    expect(creative.properties.cta).toBe('NO_BUTTON')
   })
 
   test('does not throw when url and cta are set on ad directly', () => {
@@ -469,26 +467,11 @@ describe('flattenMeta() validation', () => {
       flattenMeta(makeCampaign({
         adSets: [makeAdSet({
           content: {
-            // no url or cta on content
             ads: [makeImageAd({ url: 'https://renamed.to', cta: 'SIGN_UP' })],
           },
         })],
       }))
     }).not.toThrow()
-  })
-
-  test('error message includes ad name and ad set name', () => {
-    expect(() => {
-      flattenMeta(makeCampaign({
-        adSets: [{
-          name: 'Cold Traffic',
-          config: { targeting: makeTargeting() },
-          content: {
-            ads: [makeImageAd({ name: 'My Hero Ad' })],
-          },
-        }],
-      }))
-    }).toThrow(/My Hero Ad.*Cold Traffic/s)
   })
 })
 
