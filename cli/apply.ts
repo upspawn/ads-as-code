@@ -280,7 +280,13 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     // resolve parent IDs even if import didn't seed the cache properly
     for (const r of actual) {
       if (r.platformId) {
-        cache.setResource('default', r.path, r.platformId)
+        cache.setResource({
+          project: 'default',
+          path: r.path,
+          platformId: r.platformId,
+          kind: r.kind,
+          managedBy: providerName,
+        })
       }
     }
 
