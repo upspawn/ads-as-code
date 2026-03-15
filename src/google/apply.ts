@@ -337,7 +337,7 @@ function buildAdCreate(
 
 function buildSitelinkCreate(
   _customerId: string,
-  campaignResourceName: string,
+  _campaignResourceName: string,
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
@@ -352,13 +352,12 @@ function buildSitelinkCreate(
       },
       final_urls: [props.url],
     },
-    updateMask: campaignResourceName,
   }
 }
 
 function buildCalloutCreate(
   _customerId: string,
-  campaignResourceName: string,
+  _campaignResourceName: string,
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
@@ -370,7 +369,6 @@ function buildCalloutCreate(
         callout_text: props.text,
       },
     },
-    updateMask: campaignResourceName,
   }
 }
 

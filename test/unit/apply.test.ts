@@ -842,6 +842,28 @@ describe('campaign update — dates and tracking', () => {
   })
 })
 
+// ─── Extension Create — No Malformed updateMask ──────────────
+
+describe('extension create — no malformed updateMask', () => {
+  test('sitelink create has no updateMask', () => {
+    const resource = makeResource('sitelink', 'test/sl:free trial', {
+      text: 'Free Trial', url: 'https://renamed.to/trial',
+      description1: 'Try free', description2: 'No CC needed',
+    })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.updateMask).toBeUndefined()
+    expect((assetOp.resource as any).sitelink_asset.link_text).toBe('Free Trial')
+  })
+
+  test('callout create has no updateMask', () => {
+    const resource = makeResource('callout', 'test/co:ai powered', { text: 'AI Powered' })
+    const mutations = changeToMutations({ op: 'create', resource }, '123', new Map([['test', '789']]))
+    const assetOp = mutations.find(m => m.operation === 'asset')!
+    expect(assetOp.updateMask).toBeUndefined()
+  })
+})
+
 // ─── Device Bid Adjustments ────────────────────────────────
 
 describe('device bid adjustments', () => {
