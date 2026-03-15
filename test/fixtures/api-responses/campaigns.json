@@ -5,7 +5,7 @@
       "id": 123456,
       "name": "Search - PDF Renaming",
       "status": 2,
-      "bidding_strategy_type": 10
+      "bidding_strategy_type": 6
     },
     "campaign_budget": {
       "resource_name": "customers/7300967494/campaignBudgets/789",
@@ -21,7 +21,10 @@
       "id": 234567,
       "name": "Search - Google Drive",
       "status": 3,
-      "bidding_strategy_type": 9
+      "bidding_strategy_type": 10,
+      "maximize_clicks": {
+        "cpc_bid_ceiling_micros": 2000000
+      }
     },
     "campaign_budget": {
       "resource_name": "customers/7300967494/campaignBudgets/890",
@@ -37,7 +40,7 @@
       "id": 345678,
       "name": "Search - OneDrive",
       "status": 2,
-      "bidding_strategy_type": 6,
+      "bidding_strategy_type": 9,
       "target_cpa": {
         "target_cpa_micros": 5000000
       }

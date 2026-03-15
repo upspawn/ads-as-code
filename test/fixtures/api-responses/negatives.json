@@ -1,0 +1,35 @@
+[
+  {
+    "campaign": {
+      "name": "Search - PDF Renaming"
+    },
+    "campaign_criterion": {
+      "keyword": {
+        "text": "free pdf editor",
+        "match_type": 4
+      }
+    }
+  },
+  {
+    "campaign": {
+      "name": "Search - PDF Renaming"
+    },
+    "campaign_criterion": {
+      "keyword": {
+        "text": "pdf to word",
+        "match_type": 2
+      }
+    }
+  },
+  {
+    "campaign": {
+      "name": "Search - Google Drive"
+    },
+    "campaign_criterion": {
+      "keyword": {
+        "text": "google drive login",
+        "match_type": 3
+      }
+    }
+  }
+]

@@ -101,6 +101,22 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 // ─── Property Comparison ──────────────────────────────────
 
+/** Check if a value is effectively empty (undefined, null, or an empty-rules targeting object). */
+function isEffectivelyEmpty(value: unknown): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>
+    const keys = Object.keys(obj)
+    // { rules: [] } is effectively empty targeting
+    if (keys.length === 1 && keys[0] === 'rules' && Array.isArray(obj.rules) && (obj.rules as unknown[]).length === 0) {
+      return true
+    }
+    // Empty object {} is effectively empty
+    if (keys.length === 0) return true
+  }
+  return false
+}
+
 /** Compare two property bags and return a list of changes. */
 export function compareProperties(
   desired: Record<string, unknown>,
@@ -113,14 +129,21 @@ export function compareProperties(
     const dVal = desired[key]
     const aVal = actual[key]
 
-    // If field exists only in desired → new property
+    // Treat both-empty as equal (covers undefined vs null vs {rules:[]} vs missing)
+    if (isEffectivelyEmpty(dVal) && isEffectivelyEmpty(aVal)) {
+      continue
+    }
+
+    // If field exists only in desired → new property (but skip if effectively empty)
     if (!(key in actual)) {
+      if (isEffectivelyEmpty(dVal)) continue
       changes.push({ field: key, from: undefined, to: dVal })
       continue
     }
 
-    // If field exists only in actual → removed property
+    // If field exists only in actual → removed property (but skip if effectively empty)
     if (!(key in desired)) {
+      if (isEffectivelyEmpty(aVal)) continue
       changes.push({ field: key, from: aVal, to: undefined })
       continue
     }

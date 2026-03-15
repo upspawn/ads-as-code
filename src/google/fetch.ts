@@ -16,11 +16,11 @@ const STATUS_MAP: Record<number, string> = {
 }
 
 const BIDDING_STRATEGY_MAP: Record<number, string> = {
-  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENHANCED_CPC', 3: 'MANUAL_CPC',
-  4: 'MANUAL_CPM', 5: 'PAGE_ONE_PROMOTED', 6: 'TARGET_CPA',
-  7: 'TARGET_OUTRANK_SHARE', 8: 'TARGET_ROAS', 9: 'TARGET_SPEND',
-  10: 'MAXIMIZE_CONVERSIONS', 11: 'MAXIMIZE_CONVERSION_VALUE',
-  12: 'PERCENT_CPC', 13: 'MANUAL_CPV', 14: 'TARGET_CPM',
+  0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'MANUAL_CPC', 3: 'MANUAL_CPM',
+  4: 'MANUAL_CPV', 5: 'PAGE_ONE_PROMOTED', 6: 'MAXIMIZE_CONVERSIONS',
+  7: 'TARGET_OUTRANK_SHARE', 8: 'TARGET_ROAS', 9: 'TARGET_CPA',
+  10: 'TARGET_SPEND', 11: 'MAXIMIZE_CLICKS',
+  12: 'MAXIMIZE_CONVERSION_VALUE', 13: 'PERCENT_CPC', 14: 'TARGET_CPM',
   15: 'TARGET_IMPRESSION_SHARE',
 }
 
@@ -306,6 +306,48 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
   }, adId)
 }
 
+// ─── Negative Keyword Fetcher ───────────────────────────────
+
+const NEGATIVE_KEYWORD_QUERY = `
+SELECT
+  campaign.name,
+  campaign_criterion.keyword.text,
+  campaign_criterion.keyword.match_type
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'KEYWORD'
+  AND campaign_criterion.negative = TRUE
+  AND campaign.status = 'ENABLED'
+`.trim()
+
+export async function fetchNegativeKeywords(
+  client: GoogleAdsClient,
+  campaignIds?: string[],
+): Promise<Resource[]> {
+  let query = NEGATIVE_KEYWORD_QUERY
+  if (campaignIds?.length) {
+    query += `\n  AND campaign.id IN (${campaignIds.join(', ')})`
+  }
+  const rows = await client.query(query)
+  return rows.map(normalizeNegativeKeywordRow)
+}
+
+function normalizeNegativeKeywordRow(row: GoogleAdsRow): Resource {
+  const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown> | undefined
+  const campaign = row.campaign as Record<string, unknown> | undefined
+
+  const keyword = criterion?.keyword as Record<string, unknown> | undefined
+  const text = str(keyword?.text)
+  const matchType = mapMatchType(keyword?.match_type ?? keyword?.matchType)
+  const campaignName = str(campaign?.name)
+  const campaignSlug = slugify(campaignName)
+  const path = `${campaignSlug}/neg:${text.toLowerCase()}:${matchType}`
+
+  return resource('negative', path, {
+    text,
+    matchType,
+  })
+}
+
 // ─── Extension Fetcher ──────────────────────────────────────
 
 const SITELINK_QUERY = `
@@ -422,10 +464,13 @@ export async function fetchAllState(
     adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
   ])
 
-  // Step 4: Extensions (scoped to campaigns)
-  const extensions = await fetchExtensions(client, campaignIds)
+  // Step 4: Extensions + negative keywords (scoped to campaigns) — can run in parallel
+  const [extensions, negatives] = await Promise.all([
+    fetchExtensions(client, campaignIds),
+    fetchNegativeKeywords(client, campaignIds),
+  ])
 
-  return [...campaigns, ...adGroups, ...keywords, ...ads, ...extensions]
+  return [...campaigns, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(
@@ -458,9 +503,12 @@ export async function fetchKnownState(
       adGroupIds.length > 0 ? fetchKeywords(client, adGroupIds) : Promise.resolve([]),
       adGroupIds.length > 0 ? fetchAds(client, adGroupIds) : Promise.resolve([]),
     ])
-    const extensions = await fetchExtensions(client, knownCampaignIds)
+    const [extensions, negatives] = await Promise.all([
+      fetchExtensions(client, knownCampaignIds),
+      fetchNegativeKeywords(client, knownCampaignIds),
+    ])
 
-    return [...knownCampaigns, ...adGroups, ...keywords, ...ads, ...extensions]
+    return [...knownCampaigns, ...adGroups, ...keywords, ...ads, ...extensions, ...negatives]
   }
 
   // Fallback: fetch everything

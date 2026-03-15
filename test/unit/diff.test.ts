@@ -168,6 +168,38 @@ describe('compareProperties', () => {
     const actual = { url: 'https://renamed.to/pricing/' }
     expect(compareProperties(desired, actual)).toEqual([])
   })
+
+  test('targeting: {rules:[]} vs undefined → no change (noise suppression)', () => {
+    const desired = { name: 'Test', targeting: { rules: [] } }
+    const actual = { name: 'Test' }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('targeting: undefined vs {rules:[]} → no change (noise suppression)', () => {
+    const desired = { name: 'Test' }
+    const actual = { name: 'Test', targeting: { rules: [] } }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('targeting: null vs undefined → no change (noise suppression)', () => {
+    const desired = { name: 'Test', targeting: null }
+    const actual = { name: 'Test', targeting: undefined }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('utm: undefined in one, missing in other → no change (noise suppression)', () => {
+    const desired = { headlines: ['A'], utm: undefined }
+    const actual = { headlines: ['A'] }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('targeting with actual rules → IS a change', () => {
+    const desired = { name: 'Test', targeting: { rules: [{ type: 'geo', countries: ['US'] }] } }
+    const actual = { name: 'Test' }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('targeting')
+  })
 })
 
 // ─── diff ─────────────────────────────────────────────────

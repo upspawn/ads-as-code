@@ -4,6 +4,7 @@ import {
   fetchAdGroups,
   fetchKeywords,
   fetchAds,
+  fetchNegativeKeywords,
   fetchAllState,
 } from '../../src/google/fetch.ts'
 import type { GoogleAdsClient, GoogleAdsRow } from '../../src/google/types.ts'
@@ -12,18 +13,21 @@ import campaignFixtures from '../fixtures/api-responses/campaigns.json'
 import adGroupFixtures from '../fixtures/api-responses/ad-groups.json'
 import keywordFixtures from '../fixtures/api-responses/keywords.json'
 import adFixtures from '../fixtures/api-responses/ads.json'
+import negativeFixtures from '../fixtures/api-responses/negatives.json'
 
 // ─── Mock Client ────────────────────────────────────────────
 
 function createMockClient(responses: Record<string, GoogleAdsRow[]>): GoogleAdsClient {
   const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
     // Match on the FROM clause to determine which fixture to return
-    if (gaql.includes('FROM campaign')) return Promise.resolve(responses.campaigns ?? [])
+    // More specific patterns must be checked before general ones
+    if (gaql.includes('FROM campaign_criterion')) return Promise.resolve(responses.negatives ?? [])
+    if (gaql.includes('FROM campaign_asset') && gaql.includes('SITELINK')) return Promise.resolve(responses.sitelinks ?? [])
+    if (gaql.includes('FROM campaign_asset') && gaql.includes('CALLOUT')) return Promise.resolve(responses.callouts ?? [])
     if (gaql.includes('FROM ad_group_criterion')) return Promise.resolve(responses.keywords ?? [])
     if (gaql.includes('FROM ad_group_ad')) return Promise.resolve(responses.ads ?? [])
     if (gaql.includes('FROM ad_group')) return Promise.resolve(responses.adGroups ?? [])
-    if (gaql.includes('FROM campaign_asset') && gaql.includes('SITELINK')) return Promise.resolve(responses.sitelinks ?? [])
-    if (gaql.includes('FROM campaign_asset') && gaql.includes('CALLOUT')) return Promise.resolve(responses.callouts ?? [])
+    if (gaql.includes('FROM campaign')) return Promise.resolve(responses.campaigns ?? [])
     return Promise.resolve([])
   })
 
@@ -63,6 +67,17 @@ describe('fetchCampaigns', () => {
     expect(bidding.type).toBe('maximize-conversions')
   })
 
+  test('maps maximize-clicks with CPC ceiling from TARGET_SPEND enum', async () => {
+    const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    // Campaign 1: bidding_strategy_type=10 (TARGET_SPEND) with maximize_clicks.cpc_bid_ceiling_micros
+    const drive = resources[1]!
+    const bidding = drive.properties.bidding as { type: string; maxCpc?: number }
+    expect(bidding.type).toBe('maximize-clicks')
+    expect(bidding.maxCpc).toBe(2)
+  })
+
   test('converts micros to amount correctly', async () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
@@ -80,11 +95,11 @@ describe('fetchCampaigns', () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
-    // 6 = MAXIMIZE_CONVERSIONS
+    // 6 = MAXIMIZE_CONVERSIONS → maximize-conversions
     expect((resources[0]!.properties.bidding as { type: string }).type).toBe('maximize-conversions')
     // 10 = TARGET_SPEND → maximize-clicks
     expect((resources[1]!.properties.bidding as { type: string }).type).toBe('maximize-clicks')
-    // 9 = TARGET_CPA
+    // 9 = TARGET_CPA → target-cpa
     expect((resources[2]!.properties.bidding as { type: string }).type).toBe('target-cpa')
   })
 
@@ -220,6 +235,39 @@ describe('fetchAds', () => {
   })
 })
 
+// ─── fetchNegativeKeywords ──────────────────────────────────
+
+describe('fetchNegativeKeywords', () => {
+  test('normalizes campaign-level negative keywords', async () => {
+    const client = createMockClient({ negatives: negativeFixtures as GoogleAdsRow[] })
+    const resources = await fetchNegativeKeywords(client)
+
+    expect(resources).toHaveLength(3)
+
+    const first = resources[0]!
+    expect(first.kind).toBe('negative')
+    expect(first.path).toBe('search-pdf-renaming/neg:free pdf editor:BROAD')
+    expect(first.properties.text).toBe('free pdf editor')
+    expect(first.properties.matchType).toBe('BROAD')
+
+    const second = resources[1]!
+    expect(second.path).toBe('search-pdf-renaming/neg:pdf to word:EXACT')
+    expect(second.properties.matchType).toBe('EXACT')
+
+    const third = resources[2]!
+    expect(third.path).toBe('search-google-drive/neg:google drive login:PHRASE')
+    expect(third.properties.matchType).toBe('PHRASE')
+  })
+
+  test('scopes query by campaignIds when provided', async () => {
+    const client = createMockClient({ negatives: negativeFixtures as GoogleAdsRow[] })
+    await fetchNegativeKeywords(client, ['123456'])
+
+    const queryCall = (client.query as ReturnType<typeof mock>).mock.calls[0]![0] as string
+    expect(queryCall).toContain('campaign.id IN (123456)')
+  })
+})
+
 // ─── fetchAllState ──────────────────────────────────────────
 
 describe('fetchAllState', () => {
@@ -227,6 +275,14 @@ describe('fetchAllState', () => {
     const callOrder: string[] = []
 
     const queryFn = mock((gaql: string): Promise<GoogleAdsRow[]> => {
+      if (gaql.includes('FROM campaign_criterion')) {
+        callOrder.push('negatives')
+        return Promise.resolve([])
+      }
+      if (gaql.includes('FROM campaign_asset')) {
+        callOrder.push('extensions')
+        return Promise.resolve([])
+      }
       if (gaql.includes('FROM campaign')) {
         callOrder.push('campaigns')
         return Promise.resolve(campaignFixtures as GoogleAdsRow[])
@@ -243,10 +299,6 @@ describe('fetchAllState', () => {
         callOrder.push('adGroups')
         return Promise.resolve(adGroupFixtures as GoogleAdsRow[])
       }
-      if (gaql.includes('FROM campaign_asset')) {
-        callOrder.push('extensions')
-        return Promise.resolve([])
-      }
       return Promise.resolve([])
     })
 
@@ -261,12 +313,13 @@ describe('fetchAllState', () => {
     // Should have campaigns + ad groups + keywords + ads
     expect(resources.length).toBeGreaterThan(0)
 
-    // Campaigns first, then ad groups, then keywords+ads (parallel), then extensions
+    // Campaigns first, then ad groups, then keywords+ads (parallel), then extensions+negatives (parallel)
     expect(callOrder[0]).toBe('campaigns')
     expect(callOrder[1]).toBe('adGroups')
     // keywords and ads run in parallel — order may vary
     expect(callOrder).toContain('keywords')
     expect(callOrder).toContain('ads')
+    expect(callOrder).toContain('negatives')
   })
 
   test('returns empty when no campaigns', async () => {
@@ -282,6 +335,7 @@ describe('fetchAllState', () => {
       adGroups: adGroupFixtures as GoogleAdsRow[],
       keywords: keywordFixtures as GoogleAdsRow[],
       ads: adFixtures as GoogleAdsRow[],
+      negatives: negativeFixtures as GoogleAdsRow[],
       sitelinks: [],
       callouts: [],
     })
@@ -293,5 +347,6 @@ describe('fetchAllState', () => {
     expect(kinds.has('adGroup')).toBe(true)
     expect(kinds.has('keyword')).toBe(true)
     expect(kinds.has('ad')).toBe(true)
+    expect(kinds.has('negative')).toBe(true)
   })
 })
