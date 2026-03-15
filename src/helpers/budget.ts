@@ -6,7 +6,9 @@ type Currency = 'EUR' | 'USD'
  * Create a daily budget.
  *
  * @param amount - Budget amount per day (must be positive)
- * @param currency - Currency code, defaults to `'EUR'`
+ * @param currency - Currency code, defaults to `'EUR'`. Note: the fetch layer
+ *   resolves the real account currency at runtime (from config or Meta API),
+ *   so this default only affects the code-side declaration.
  * @returns A daily budget object
  * @throws If amount is zero or negative
  *
