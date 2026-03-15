@@ -1,4 +1,4 @@
-import type { Resource, Changeset, AdsConfig } from './types.ts'
+import type { Resource, Changeset, ApplyResult, AdsConfig } from './types.ts'
 import type { DiscoveredCampaign } from './discovery.ts'
 import type { Cache } from './cache.ts'
 
@@ -26,7 +26,7 @@ export type ProviderModule = {
     config: AdsConfig,
     cache: Cache,
     project: string,
-  ) => Promise<unknown>
+  ) => Promise<ApplyResult>
 
   /** Generate TypeScript campaign file source from fetched Resource[]. */
   readonly codegen: (resources: Resource[], campaignName: string) => string

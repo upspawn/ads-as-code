@@ -1,10 +1,8 @@
 import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
-import { flattenAll } from '../src/google/flatten.ts'
+import { getProvider, resolveProviders } from '../src/core/providers.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
-import { createGoogleClient } from '../src/google/api.ts'
-import type { GoogleSearchCampaign } from '../src/google/types.ts'
-import type { Changeset, Change, Resource } from '../src/core/types.ts'
+import type { Changeset, Change, Resource, ApplyResult } from '../src/core/types.ts'
 import type { GlobalFlags } from './init.ts'
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -104,7 +102,7 @@ function printPlan(changeset: Changeset, campaignNames: Map<string, string>): vo
 
     if (campaignDrift.length > 0) {
       console.log()
-      console.log('  Drift (changed in Google Ads UI):')
+      console.log('  Drift (changed in platform UI):')
       for (const change of campaignDrift) {
         if (change.op !== 'drift') continue
         for (const pc of change.changes) {
@@ -151,6 +149,50 @@ async function confirm(message: string): Promise<boolean> {
   return response === 'y' || response === 'yes'
 }
 
+/** Merge multiple changesets into one. */
+function mergeChangesets(changesets: Changeset[]): Changeset {
+  return {
+    creates: changesets.flatMap(c => c.creates),
+    updates: changesets.flatMap(c => c.updates),
+    deletes: changesets.flatMap(c => c.deletes),
+    drift: changesets.flatMap(c => c.drift),
+  }
+}
+
+/** Build a slug -> display name map from desired resources. */
+function buildCampaignNames(desired: Resource[]): Map<string, string> {
+  const names = new Map<string, string>()
+  for (const r of desired) {
+    if (r.kind === 'campaign' && typeof r.properties['name'] === 'string') {
+      names.set(r.path, r.properties['name'])
+    }
+  }
+  return names
+}
+
+/** Convert drift changes into updates that overwrite platform with code values. */
+function reconcileChangeset(changeset: Changeset): Changeset {
+  const reconciledUpdates: Change[] = changeset.drift.map(change => {
+    if (change.op !== 'drift') return change
+    return {
+      op: 'update' as const,
+      resource: change.resource,
+      changes: change.changes.map(pc => ({
+        field: pc.field,
+        from: pc.from,
+        to: pc.to,
+      })),
+    }
+  })
+
+  return {
+    creates: changeset.creates,
+    updates: [...changeset.updates, ...reconciledUpdates],
+    deletes: changeset.deletes,
+    drift: [],
+  }
+}
+
 // ─── Apply Command ───────────────────────────────────────────────
 
 type ApplyOptions = {
@@ -159,6 +201,7 @@ type ApplyOptions = {
   dryRun?: boolean
   reconcile?: boolean
   verbose?: boolean
+  provider?: string
 }
 
 export async function runApply(rootDir: string, options: ApplyOptions = {}): Promise<void> {
@@ -184,69 +227,70 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     return
   }
 
-  // 3. Flatten desired state
-  const googleCampaigns = discovery.campaigns
-    .filter(c => c.provider === 'google')
-    .map(c => c.campaign as GoogleSearchCampaign)
+  // 3. Group campaigns by provider, respecting --provider filter
+  const providerGroups = resolveProviders(discovery.campaigns, options.provider)
 
-  const desired = flattenAll(googleCampaigns)
-
-  // Build campaign slug -> name map
-  const campaignNames = new Map<string, string>()
-  for (const c of googleCampaigns) {
-    const slug = desired.find(r => r.kind === 'campaign' && r.properties['name'] === c.name)?.path
-    if (slug) {
-      campaignNames.set(slug, c.name)
-    }
-  }
-
-  // 4. Create Google client
-  const client = await createGoogleClient({ type: 'env' })
-
-  // 5. Open cache
+  // 4. Open cache
   const cachePath = config.cache ?? `${rootDir}/.ads/cache.db`
   const cacheDir = cachePath.substring(0, cachePath.lastIndexOf('/'))
   await Bun.write(`${cacheDir}/.keep`, '')
   const cache = new Cache(cachePath)
 
-  // 6. Fetch live state
-  // Dynamic import path constructed at runtime to avoid compile-time resolution errors
-  // when the fetch module doesn't exist yet (being built by another agent).
-  let actual: Resource[] = []
-  try {
-    const fetchModulePath = ['..', 'src', 'google', 'fetch.ts'].join('/')
-    const fetchModule = await import(fetchModulePath) as Record<string, unknown>
-    if (typeof fetchModule['fetchAllState'] === 'function') {
-      actual = await (fetchModule['fetchAllState'] as (client: unknown) => Promise<Resource[]>)(client)
-    } else if (typeof fetchModule['fetchKnownState'] === 'function') {
-      const cachedPaths = cache.getManagedPaths('default', 'ads-as-code')
-      actual = await (fetchModule['fetchKnownState'] as (client: unknown, paths: string[]) => Promise<Resource[]>)(client, cachedPaths)
+  // 5. For each provider: flatten, fetch, diff
+  const allDesired: Resource[] = []
+  const providerChangesets: Changeset[] = []
+  const campaignNames = new Map<string, string>()
+
+  for (const [providerName, campaigns] of providerGroups) {
+    if (!options.json) {
+      const label = providerGroups.size > 1 ? `[${providerName}] ` : ''
+      console.log(`${label}Loading ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}...`)
     }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ERR_MODULE_NOT_FOUND' ||
-        (err as Error)?.message?.includes('Cannot find module') ||
-        (err as Error)?.message?.includes('Module not found')) {
-      console.warn('Warning: src/google/fetch.ts not available — comparing against empty state.')
-      console.warn('The fetch module is being built by another agent. Proceeding with local-only plan.')
-    } else {
-      throw err
+
+    const provider = await getProvider(providerName)
+
+    // Flatten desired state
+    const desired = provider.flatten(campaigns.map(c => c.campaign))
+    allDesired.push(...desired)
+
+    // Build campaign name map for display
+    for (const [slug, name] of buildCampaignNames(desired)) {
+      campaignNames.set(slug, name)
     }
+
+    // Fetch live state from platform
+    let actual: Resource[] = []
+    try {
+      actual = await provider.fetchAll(config, cache)
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('Cannot find module') || errMsg.includes('Module not found') ||
+          errMsg.includes('not implemented yet')) {
+        console.warn(`Warning: ${providerName} fetch not available — comparing against empty state.`)
+      } else {
+        throw err
+      }
+    }
+
+    // Get managed paths and platformId mapping from cache
+    const resourceMap = cache.getResourceMap('default')
+    const managedPaths = new Set(resourceMap.map(r => r.path))
+    const pathToPlatformId = new Map<string, string>()
+    for (const row of resourceMap) {
+      if (row.platformId) {
+        pathToPlatformId.set(row.path, row.platformId)
+      }
+    }
+
+    // Run diff
+    const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
+    providerChangesets.push(changeset)
   }
 
-  // 7. Get managed paths and platformId mapping from cache
-  const resourceMap = cache.getResourceMap('default')
-  const managedPaths = new Set(resourceMap.map(r => r.path))
-  const pathToPlatformId = new Map<string, string>()
-  for (const row of resourceMap) {
-    if (row.platformId) {
-      pathToPlatformId.set(row.path, row.platformId)
-    }
-  }
+  // 6. Merge all provider changesets
+  let changeset = mergeChangesets(providerChangesets)
 
-  // 8. Run diff
-  let changeset = diff(desired, actual, managedPaths, pathToPlatformId)
-
-  // 9. Check if there are any changes
+  // 7. Check if there are any changes
   const totalChanges = changeset.creates.length + changeset.updates.length + changeset.deletes.length + changeset.drift.length
   if (totalChanges === 0) {
     if (options.json) {
@@ -258,82 +302,29 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     return
   }
 
-  // 10. Display plan
+  // 8. Display plan
   if (!options.json) {
     printPlan(changeset, campaignNames)
     console.log()
   }
 
-  // 11. Dry run — stop here. With --verbose, dump actual API mutations.
+  // 9. Dry run — stop here
   if (options.dryRun) {
-    if (options.verbose) {
-      console.log('\n=== API Mutations (what would be sent to Google Ads) ===\n')
-      try {
-        const applyModulePath = ['..', 'src', 'google', 'apply.ts'].join('/')
-        const applyModule = await import(applyModulePath) as Record<string, unknown>
-        const changeToMutationsFn = applyModule['changeToMutations'] as
-          ((change: Change, customerId: string, resourceMap: Map<string, string>) => unknown[]) | undefined
-
-        if (changeToMutationsFn) {
-          const resourceMap = new Map<string, string>()
-          for (const row of cache.getResourceMap('default')) {
-            if (row.platformId) resourceMap.set(row.path, row.platformId)
-          }
-
-          const allChanges = [
-            ...changeset.creates.map(c => ({ ...c, _phase: 'CREATE' })),
-            ...changeset.updates.map(c => ({ ...c, _phase: 'UPDATE' })),
-            ...changeset.deletes.map(c => ({ ...c, _phase: 'DELETE' })),
-          ]
-
-          for (const change of allChanges) {
-            const { _phase, ...cleanChange } = change
-            const mutations = changeToMutationsFn(cleanChange as Change, client.customerId, resourceMap)
-            for (const mut of mutations) {
-              const m = mut as Record<string, unknown>
-              console.log(`[${_phase}] ${(m.op as string ?? '').toUpperCase()} ${m.operation}`)
-              console.log(JSON.stringify(m.resource, null, 2))
-              console.log()
-            }
-          }
-        }
-      } catch {
-        console.log('(could not generate mutation preview — apply module not available)')
-      }
-    }
-
     if (options.json) {
       console.log(JSON.stringify({ status: 'dry_run', changeset }, null, 2))
-    } else if (!options.verbose) {
+    } else {
       console.log('Dry run — no changes applied.')
     }
-    console.log('Dry run — no changes applied.')
     cache.close()
     return
   }
 
-  // 12. Reconcile mode — convert drift to updates
+  // 10. Reconcile mode — convert drift to updates
   if (options.reconcile) {
-    const reconciledUpdates: Change[] = changeset.drift.map(change => {
-      if (change.op !== 'drift') return change
-      // Swap from/to: we want to overwrite platform with code values
-      const reversedChanges = change.changes.map(pc => ({
-        field: pc.field,
-        from: pc.from,
-        to: pc.to,
-      }))
-      return { op: 'update' as const, resource: change.resource, changes: reversedChanges }
-    })
-
-    changeset = {
-      creates: changeset.creates,
-      updates: [...changeset.updates, ...reconciledUpdates],
-      deletes: changeset.deletes,
-      drift: [],
-    }
-
+    const driftCount = changeset.drift.length
+    changeset = reconcileChangeset(changeset)
     if (!options.json) {
-      console.log(`Reconcile mode: ${reconciledUpdates.length} drift change${reconciledUpdates.length !== 1 ? 's' : ''} will be overwritten with code values.`)
+      console.log(`Reconcile mode: ${driftCount} drift change${driftCount !== 1 ? 's' : ''} will be overwritten with code values.`)
       console.log()
     }
   }
@@ -349,7 +340,7 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     return
   }
 
-  // 13. Confirm
+  // 11. Confirm
   if (!options.yes) {
     const confirmed = await confirm(`Apply ${actionableCount} change${actionableCount !== 1 ? 's' : ''}? (y/N)`)
     if (!confirmed) {
@@ -359,40 +350,52 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     }
   }
 
-  // 14. Execute via google/apply.ts
-  type ApplyResult = { path: string; op: string; success: boolean; error?: string; platformId?: string }
-  const results: ApplyResult[] = []
+  // 12. Apply via provider modules, grouped by provider
+  type ResultEntry = { path: string; op: string; success: boolean; error?: string; platformId?: string }
+  const results: ResultEntry[] = []
 
-  try {
-    const applyModulePath = ['..', 'src', 'google', 'apply.ts'].join('/')
-    const applyModule = await import(applyModulePath) as Record<string, unknown>
-    if (typeof applyModule['applyChangeset'] === 'function') {
-      const applyFn = applyModule['applyChangeset'] as (client: unknown, changeset: Changeset, cache: unknown, project: string) => Promise<{ succeeded: Change[]; failed: { change: Change; error: Error }[]; skipped: Change[] }>
-      const applyResult = await applyFn(client, changeset, cache, 'default')
+  for (const [providerName, campaigns] of providerGroups) {
+    const provider = await getProvider(providerName)
+
+    // Build a provider-scoped changeset by filtering to paths that belong to this provider's campaigns
+    const providerDesired = provider.flatten(campaigns.map(c => c.campaign))
+    const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
+
+    const belongsToProvider = (change: Change): boolean => {
+      const slug = campaignFromPath(change.resource.path)
+      return providerSlugs.has(slug)
+    }
+
+    const providerChangeset: Changeset = {
+      creates: changeset.creates.filter(belongsToProvider),
+      updates: changeset.updates.filter(belongsToProvider),
+      deletes: changeset.deletes.filter(belongsToProvider),
+      drift: changeset.drift.filter(belongsToProvider),
+    }
+
+    const providerActionable = providerChangeset.creates.length + providerChangeset.updates.length + providerChangeset.deletes.length
+    if (providerActionable === 0) continue
+
+    try {
+      const applyResult: ApplyResult = await provider.applyChangeset(providerChangeset, config, cache, 'default')
+
       for (const change of applyResult.succeeded) {
         results.push({ path: change.resource.path, op: change.op, success: true, platformId: change.resource.platformId })
       }
       for (const { change, error } of applyResult.failed) {
         results.push({ path: change.resource.path, op: change.op, success: false, error: error.message })
       }
-    } else {
-      throw new Error('applyChangeset not found in module')
-    }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ERR_MODULE_NOT_FOUND' ||
-        (err as Error)?.message?.includes('Cannot find module') ||
-        (err as Error)?.message?.includes('Module not found') ||
-        (err as Error)?.message === 'applyChangeset not found in module') {
-      console.error('Error: src/google/apply.ts not available.')
-      console.error('The apply module is being built by another agent. Cannot apply changes yet.')
-      cache.close()
-      process.exit(1)
-    } else {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('not implemented yet')) {
+        console.error(`Error: ${providerName} apply is not implemented yet. Skipping.`)
+        continue
+      }
       throw err
     }
   }
 
-  // 15. Print results
+  // 13. Print results
   if (options.json) {
     console.log(JSON.stringify({ status: 'applied', results }, null, 2))
   } else {
@@ -414,10 +417,10 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     console.log(`${successCount} succeeded, ${failCount} failed.`)
   }
 
-  // 16. Update cache with results
+  // 14. Update cache with results
   for (const result of results) {
     if (result.success && result.platformId) {
-      const resource = desired.find(r => r.path === result.path)
+      const resource = allDesired.find(r => r.path === result.path)
       if (resource) {
         cache.setResource({
           project: 'default',
@@ -450,5 +453,6 @@ export async function runApplyCommand(args: string[], flags: GlobalFlags): Promi
     dryRun: args.includes('--dry-run'),
     reconcile: args.includes('--reconcile'),
     verbose: args.includes('--verbose') || args.includes('-v'),
+    provider: flags.provider,
   })
 }

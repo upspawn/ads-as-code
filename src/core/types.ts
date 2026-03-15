@@ -133,6 +133,14 @@ export type Changeset = {
   readonly drift: Change[]
 }
 
+// === Apply Result ===
+
+export type ApplyResult = {
+  readonly succeeded: Change[]
+  readonly failed: { change: Change; error: Error }[]
+  readonly skipped: Change[]
+}
+
 // === Config ===
 
 import type { AiConfig } from '../ai/types.ts'

@@ -1,15 +1,9 @@
-import type { Change, Changeset, Resource, ResourceKind } from '../core/types.ts'
+import type { Change, Changeset, Resource, ResourceKind, ApplyResult } from '../core/types.ts'
 import type { GoogleAdsClient, MutateOperation, MutateResult } from './types.ts'
 import type { Cache } from '../core/cache.ts'
 import { LANGUAGE_CRITERIA, GEO_TARGETS } from './constants.ts'
 
-// ─── Types ──────────────────────────────────────────────────
-
-export type ApplyResult = {
-  readonly succeeded: Change[]
-  readonly failed: { change: Change; error: Error }[]
-  readonly skipped: Change[]
-}
+export type { ApplyResult }
 
 // ─── Constants ──────────────────────────────────────────────
 
