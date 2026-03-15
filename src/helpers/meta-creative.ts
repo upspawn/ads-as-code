@@ -77,18 +77,18 @@ type CarouselAdConfig = {
  * })
  * ```
  */
-export function image(filePath: string, config: ImageAdConfig): ImageAd {
+export function image(filePath: string, config?: Partial<ImageAdConfig>): ImageAd {
   return {
     format: 'image' as const,
     image: filePath,
-    name: config.name ?? nameFromFile(filePath),
-    headline: config.headline,
-    primaryText: config.primaryText,
-    ...(config.description !== undefined && { description: config.description }),
-    ...(config.cta !== undefined && { cta: config.cta }),
-    ...(config.url !== undefined && { url: config.url }),
-    ...(config.urlParameters !== undefined && { urlParameters: config.urlParameters }),
-    ...(config.displayLink !== undefined && { displayLink: config.displayLink }),
+    name: config?.name ?? nameFromFile(filePath),
+    headline: config?.headline ?? '',
+    primaryText: config?.primaryText ?? '',
+    ...(config?.description !== undefined && { description: config.description }),
+    ...(config?.cta !== undefined && { cta: config.cta }),
+    ...(config?.url !== undefined && { url: config.url }),
+    ...(config?.urlParameters !== undefined && { urlParameters: config.urlParameters }),
+    ...(config?.displayLink !== undefined && { displayLink: config.displayLink }),
   }
 }
 
@@ -111,18 +111,18 @@ export function image(filePath: string, config: ImageAdConfig): ImageAd {
  * })
  * ```
  */
-export function video(filePath: string, config: VideoAdConfig): VideoAd {
+export function video(filePath: string, config?: Partial<VideoAdConfig>): VideoAd {
   return {
     format: 'video' as const,
     video: filePath,
-    name: config.name ?? nameFromFile(filePath),
-    headline: config.headline,
-    primaryText: config.primaryText,
-    ...(config.thumbnail !== undefined && { thumbnail: config.thumbnail }),
-    ...(config.description !== undefined && { description: config.description }),
-    ...(config.cta !== undefined && { cta: config.cta }),
-    ...(config.url !== undefined && { url: config.url }),
-    ...(config.urlParameters !== undefined && { urlParameters: config.urlParameters }),
+    name: config?.name ?? nameFromFile(filePath),
+    headline: config?.headline ?? '',
+    primaryText: config?.primaryText ?? '',
+    ...(config?.thumbnail !== undefined && { thumbnail: config.thumbnail }),
+    ...(config?.description !== undefined && { description: config.description }),
+    ...(config?.cta !== undefined && { cta: config.cta }),
+    ...(config?.url !== undefined && { url: config.url }),
+    ...(config?.urlParameters !== undefined && { urlParameters: config.urlParameters }),
   }
 }
 
