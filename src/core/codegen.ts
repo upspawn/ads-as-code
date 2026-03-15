@@ -116,6 +116,25 @@ function formatBudget(budget: Record<string, unknown>): string {
 
 // ─── Targeting ───────────────────────────────────────────
 
+/** Detect which targeting helper imports are needed from the formatted targeting string. */
+function addTargetingImports(targetingStr: string, imports: Set<string>): void {
+  if (targetingStr.includes('geo(')) imports.add('geo')
+  if (targetingStr.includes('languages(')) imports.add('languages')
+  if (targetingStr.includes('weekdays(')) imports.add('weekdays')
+  if (targetingStr.includes('hours(')) imports.add('hours')
+  if (targetingStr.includes('device(')) imports.add('device')
+  if (targetingStr.includes('demographics(')) imports.add('demographics')
+  if (targetingStr.includes('scheduleBid(')) imports.add('scheduleBid')
+  if (targetingStr.includes('audiences(')) imports.add('audiences')
+  if (targetingStr.includes('audienceTargeting(')) imports.add('audienceTargeting')
+  if (targetingStr.includes('remarketing(')) imports.add('remarketing')
+  if (targetingStr.includes('inMarket(')) imports.add('inMarket')
+  if (targetingStr.includes('affinity(')) imports.add('affinity')
+  if (targetingStr.includes('customAudience(')) imports.add('customAudience')
+  if (targetingStr.includes('customerMatch(')) imports.add('customerMatch')
+  if (targetingStr.includes('targeting(')) imports.add('targeting')
+}
+
 function formatTargeting(targeting: Record<string, unknown>): string | null {
   const rules = targeting.rules as Array<Record<string, unknown>> | undefined
   if (!rules || rules.length === 0) return null
@@ -125,7 +144,13 @@ function formatTargeting(targeting: Record<string, unknown>): string | null {
     const type = rule.type as string
     if (type === 'geo') {
       const countries = rule.countries as string[]
-      parts.push(`geo(${countries.map(quote).join(', ')})`)
+      const bidAdjustments = rule.bidAdjustments as Record<string, number> | undefined
+      if (bidAdjustments && Object.keys(bidAdjustments).length > 0) {
+        const bidEntries = Object.entries(bidAdjustments).map(([k, v]) => `${quote(k)}: ${v}`).join(', ')
+        parts.push(`geo(${countries.map(quote).join(', ')}, { bidAdjustments: { ${bidEntries} } })`)
+      } else {
+        parts.push(`geo(${countries.map(quote).join(', ')})`)
+      }
     } else if (type === 'language') {
       const langs = rule.languages as string[]
       parts.push(`languages(${langs.map(quote).join(', ')})`)
@@ -148,6 +173,46 @@ function formatTargeting(targeting: Record<string, unknown>): string | null {
       const deviceType = rule.device as string
       const bidAdj = rule.bidAdjustment as number
       parts.push(`device('${deviceType}', ${bidAdj})`)
+    } else if (type === 'demographic') {
+      const opts: string[] = []
+      if (rule.ageRanges) opts.push(`ageRanges: [${(rule.ageRanges as string[]).map(v => quote(v)).join(', ')}]`)
+      if (rule.genders) opts.push(`genders: [${(rule.genders as string[]).map(v => quote(v)).join(', ')}]`)
+      if (rule.incomes) opts.push(`incomes: [${(rule.incomes as string[]).map(v => quote(v)).join(', ')}]`)
+      if (rule.parentalStatuses) opts.push(`parentalStatuses: [${(rule.parentalStatuses as string[]).map(v => quote(v)).join(', ')}]`)
+      if (opts.length > 0) parts.push(`demographics({ ${opts.join(', ')} })`)
+    } else if (type === 'schedule-bid') {
+      const day = rule.day as string
+      const sh = rule.startHour as number
+      const eh = rule.endHour as number
+      const bidAdj = rule.bidAdjustment as number
+      parts.push(`scheduleBid('${day}', ${sh}, ${eh}, ${bidAdj})`)
+    } else if (type === 'audience') {
+      const refs = rule.audiences as Array<Record<string, unknown>>
+      const mode = rule.mode as string
+      const refParts = refs.map(ref => {
+        const kind = ref.kind as string
+        const id = (ref.listId ?? ref.audienceId ?? ref.categoryId) as string
+        const name = ref.name as string | undefined
+        const bidAdj = ref.bidAdjustment as number | undefined
+        const optsParts = [
+          name ? `name: ${quote(name)}` : null,
+          bidAdj !== undefined ? `bidAdjustment: ${bidAdj}` : null,
+        ].filter(Boolean)
+        const optsStr = optsParts.length > 0 ? `, { ${optsParts.join(', ')} }` : ''
+        switch (kind) {
+          case 'remarketing': return `remarketing(${quote(id)}${optsStr})`
+          case 'in-market': return `inMarket(${quote(id)}${optsStr})`
+          case 'affinity': return `affinity(${quote(id)}${optsStr})`
+          case 'custom': return `customAudience(${quote(id)}${optsStr})`
+          case 'customer-match': return `customerMatch(${quote(id)}${optsStr})`
+          default: return `remarketing(${quote(id)}${optsStr})`
+        }
+      })
+      if (mode === 'targeting') {
+        parts.push(`audienceTargeting(${refParts.join(', ')})`)
+      } else {
+        parts.push(`audiences(${refParts.join(', ')})`)
+      }
     }
   }
 
@@ -200,13 +265,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   if (targeting) {
     targetingStr = formatTargeting(targeting)
     if (targetingStr) {
-      // Parse which targeting helpers we need
-      if (targetingStr.includes('geo(')) imports.add('geo')
-      if (targetingStr.includes('languages(')) imports.add('languages')
-      if (targetingStr.includes('weekdays(')) imports.add('weekdays')
-      if (targetingStr.includes('hours(')) imports.add('hours')
-      if (targetingStr.includes('device(')) imports.add('device')
-      if (targetingStr.includes('targeting(')) imports.add('targeting')
+      addTargetingImports(targetingStr, imports)
     }
   }
 
@@ -379,12 +438,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     if (groupTargeting) {
       groupTargetingStr = formatTargeting(groupTargeting)
       if (groupTargetingStr) {
-        if (groupTargetingStr.includes('geo(')) imports.add('geo')
-        if (groupTargetingStr.includes('languages(')) imports.add('languages')
-        if (groupTargetingStr.includes('weekdays(')) imports.add('weekdays')
-        if (groupTargetingStr.includes('hours(')) imports.add('hours')
-        if (groupTargetingStr.includes('device(')) imports.add('device')
-        if (groupTargetingStr.includes('targeting(')) imports.add('targeting')
+        addTargetingImports(groupTargetingStr, imports)
       }
     }
 
