@@ -242,12 +242,14 @@ function formatCreative(
     const videoPath = (props.video as string) || `./assets/imported/${slugify(name || 'video')}.mp4`
     const thumbnail = props.thumbnail as string | undefined
     if (thumbnail) parts.push(`thumbnail: ${quote(thumbnail)}`)
+    if (parts.length === 0) return `video(${quote(videoPath)})`
     return `video(${quote(videoPath)}, {\n      ${parts.join(',\n      ')},\n    })`
   }
 
   // Default: image
   imports.add('image')
   const imagePath = (props.image as string) || `./assets/imported/${slugify(name || 'image')}.png`
+  if (parts.length === 0) return `image(${quote(imagePath)})`
   return `image(${quote(imagePath)}, {\n      ${parts.join(',\n      ')},\n    })`
 }
 

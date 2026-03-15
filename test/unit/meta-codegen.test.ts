@@ -532,6 +532,29 @@ describe('codegenMeta', () => {
     expect(code).not.toContain("'Line one.")
   })
 
+  test('creative with no properties omits empty object', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        // Overwrite all properties to undefined/missing
+        headline: undefined,
+        primaryText: undefined,
+        description: undefined,
+        cta: undefined,
+        url: undefined,
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Should not produce empty object with trailing comma
+    expect(code).not.toContain('{,')
+    expect(code).not.toContain('{\n      ,')
+    // Should just be image('path')
+    expect(code).toContain("image('./assets/imported/hero-abc123.png')")
+  })
+
   test('custom audiences in targeting', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),
