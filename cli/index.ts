@@ -20,6 +20,8 @@ Commands:
   optimize      AI-powered campaign optimization analysis
   doctor        Run diagnostic checks on project setup
   cache         Manage the local cache (clear, stats)
+  search        Search Meta interests or behaviors for targeting
+  audiences     List Meta custom audiences in account
   generate      Generate AI-powered ad copy and keywords
   diff          Compare local vs platform state (not implemented yet)
   destroy       Remove all managed resources (not implemented yet)
@@ -140,6 +142,16 @@ async function main() {
         process.exit(1)
       }
       await runCache(process.cwd(), action)
+      break
+    }
+    case 'search': {
+      const { runSearch } = await import('./search.ts')
+      await runSearch(args.slice(1), flags)
+      break
+    }
+    case 'audiences': {
+      const { runAudiences } = await import('./audiences.ts')
+      await runAudiences(args.slice(1), flags)
       break
     }
     case 'diff':
