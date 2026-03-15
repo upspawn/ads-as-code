@@ -177,7 +177,8 @@ function normalizeAdGroupRow(row: GoogleAdsRow): Resource {
   const status = mapStatus(adGroup?.status)
   const campaignName = str(campaign?.name)
   const campaignPath = slugify(campaignName)
-  const path = `${campaignPath}/${name}`
+  const groupSlug = slugify(name)
+  const path = `${campaignPath}/${groupSlug}`
 
   return resource('adGroup', path, {
     status,
@@ -227,7 +228,8 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   const campaignName = str(campaign?.name)
 
   const campaignPath = slugify(campaignName)
-  const path = `${campaignPath}/${adGroupName}/kw:${text.toLowerCase()}:${matchType}`
+  const groupSlug = slugify(adGroupName)
+  const path = `${campaignPath}/${groupSlug}/kw:${text.toLowerCase()}:${matchType}`
 
   return resource('keyword', path, {
     text,
@@ -288,13 +290,14 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
   const adGroupName = str(adGroup?.name)
   const campaignName = str(campaign?.name)
   const campaignPath = slugify(campaignName)
+  const groupSlug = slugify(adGroupName)
 
   // Generate a stable hash matching flatten.ts's rsaHash
   const payload = JSON.stringify({ headlines: [...headlines].sort(), descriptions: [...descriptions].sort(), finalUrl })
   const h = Bun.hash(payload)
   const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
 
-  const path = `${campaignPath}/${adGroupName}/rsa:${hash}`
+  const path = `${campaignPath}/${groupSlug}/rsa:${hash}`
 
   return resource('ad', path, {
     headlines,

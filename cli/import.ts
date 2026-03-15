@@ -1,9 +1,11 @@
 import { mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig } from '../src/core/discovery.ts'
+import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
 import { createGoogleClient } from '../src/google/api.ts'
 import { Cache } from '../src/core/cache.ts'
 import { generateCampaignFile, extractSharedConfig, campaignToFilename } from '../src/core/codegen.ts'
+import { flattenAll } from '../src/core/flatten.ts'
+import type { GoogleSearchCampaign } from '../src/google/types.ts'
 import type { Resource } from '../src/core/types.ts'
 import type { GlobalFlags } from './init.ts'
 
@@ -454,23 +456,92 @@ export async function runImport(args: string[], flags: GlobalFlags) {
     written.push('negatives.ts')
   }
 
-  // 8. Update cache
+  // 8. Update cache — re-flatten generated files to guarantee path consistency
+  //    This ensures the cache paths match exactly what `ads plan` would generate
+  //    when it flattens the same .ts files via flattenAll().
   const cacheDir = join(rootDir, '.ads')
   if (!existsSync(cacheDir)) {
     mkdirSync(cacheDir, { recursive: true })
   }
   const cache = new Cache(join(cacheDir, 'cache.db'))
 
-  for (const [_, { resources }] of campaigns) {
-    for (const resource of resources) {
-      cache.setResource({
-        project: 'default',
-        path: resource.path,
-        platformId: resource.platformId ?? null,
-        kind: resource.kind,
-        managedBy: 'imported',
-      })
+  // Build a platformId lookup from the import resources (keyed by kind + content)
+  // so we can associate platformIds with the re-flattened paths.
+  const platformIdByKey = new Map<string, string>()
+  for (const [_, { resources: importResources }] of campaigns) {
+    for (const r of importResources) {
+      if (!r.platformId) continue
+      // Use kind + a content-based key for matching
+      if (r.kind === 'campaign') {
+        const name = (r.properties.name as string) ?? ''
+        platformIdByKey.set(`campaign:${name}`, r.platformId)
+      } else if (r.kind === 'adGroup') {
+        // Path format: campaignSlug/groupSlug — use properties if available, fall back to path
+        platformIdByKey.set(`adGroup:${r.path}`, r.platformId)
+      } else if (r.kind === 'keyword') {
+        const text = (r.properties.text as string)?.toLowerCase() ?? ''
+        const matchType = (r.properties.matchType as string) ?? ''
+        // Include campaign+group context from path prefix
+        const pathPrefix = r.path.split('/').slice(0, 2).join('/')
+        platformIdByKey.set(`keyword:${pathPrefix}:${text}:${matchType}`, r.platformId)
+      } else if (r.kind === 'ad') {
+        const headlines = ((r.properties.headlines as string[]) ?? []).sort().join('|')
+        const descriptions = ((r.properties.descriptions as string[]) ?? []).sort().join('|')
+        const finalUrl = (r.properties.finalUrl as string) ?? ''
+        const pathPrefix = r.path.split('/').slice(0, 2).join('/')
+        platformIdByKey.set(`ad:${pathPrefix}:${headlines}:${descriptions}:${finalUrl}`, r.platformId)
+      } else if (r.kind === 'sitelink') {
+        const text = (r.properties.text as string)?.toLowerCase() ?? ''
+        platformIdByKey.set(`sitelink:${r.path.split('/')[0]}:${text}`, r.platformId)
+      } else if (r.kind === 'callout') {
+        const text = (r.properties.text as string)?.toLowerCase() ?? ''
+        platformIdByKey.set(`callout:${r.path.split('/')[0]}:${text}`, r.platformId)
+      }
     }
+  }
+
+  // Re-discover and flatten the generated campaign files to get canonical paths
+  const discovery = await discoverCampaigns(rootDir)
+  const googleCampaigns = discovery.campaigns
+    .filter(c => c.provider === 'google')
+    .map(c => c.campaign as GoogleSearchCampaign)
+  const flatResources = flattenAll(googleCampaigns)
+
+  // Seed cache with flattened paths + platformIds from import
+  for (const r of flatResources) {
+    let platformId: string | null = null
+
+    if (r.kind === 'campaign') {
+      const name = (r.properties.name as string) ?? ''
+      platformId = platformIdByKey.get(`campaign:${name}`) ?? null
+    } else if (r.kind === 'adGroup') {
+      platformId = platformIdByKey.get(`adGroup:${r.path}`) ?? null
+    } else if (r.kind === 'keyword') {
+      const text = (r.properties.text as string)?.toLowerCase() ?? ''
+      const matchType = (r.properties.matchType as string) ?? ''
+      const pathPrefix = r.path.split('/').slice(0, 2).join('/')
+      platformId = platformIdByKey.get(`keyword:${pathPrefix}:${text}:${matchType}`) ?? null
+    } else if (r.kind === 'ad') {
+      const headlines = ((r.properties.headlines as string[]) ?? []).sort().join('|')
+      const descriptions = ((r.properties.descriptions as string[]) ?? []).sort().join('|')
+      const finalUrl = (r.properties.finalUrl as string) ?? ''
+      const pathPrefix = r.path.split('/').slice(0, 2).join('/')
+      platformId = platformIdByKey.get(`ad:${pathPrefix}:${headlines}:${descriptions}:${finalUrl}`) ?? null
+    } else if (r.kind === 'sitelink') {
+      const text = (r.properties.text as string)?.toLowerCase() ?? ''
+      platformId = platformIdByKey.get(`sitelink:${r.path.split('/')[0]}:${text}`) ?? null
+    } else if (r.kind === 'callout') {
+      const text = (r.properties.text as string)?.toLowerCase() ?? ''
+      platformId = platformIdByKey.get(`callout:${r.path.split('/')[0]}:${text}`) ?? null
+    }
+
+    cache.setResource({
+      project: 'default',
+      path: r.path,
+      platformId,
+      kind: r.kind,
+      managedBy: 'imported',
+    })
   }
   cache.close()
 
