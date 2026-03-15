@@ -423,10 +423,13 @@ function generateMetaCampaignFile(
     }
   }
 
-  // Build import statement — map Meta creative helpers to their aliased exports
+  // Build import statement — map codegen names to their actual SDK export names.
+  // The codegen uses short names (image, video, targeting) in the body,
+  // so we import with aliases: `metaImage as image`, etc.
   const IMPORT_ALIASES: Record<string, string> = {
     image: 'metaImage as image',
     video: 'metaVideo as video',
+    targeting: 'metaTargeting as targeting',
   }
   const importList = Array.from(imports).sort().map((i) => IMPORT_ALIASES[i] ?? i)
   const importLine = `import { ${importList.join(', ')} } from '@upspawn/ads'`

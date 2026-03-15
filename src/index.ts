@@ -85,6 +85,52 @@ export { defineConfig } from './core/config.ts'
 // === Providers ===
 
 export { google } from './google/index.ts'
+export { meta, MetaCampaignBuilder } from './meta/index.ts'
+export type { MetaCampaign, MetaAdSet } from './meta/index.ts'
+export type {
+  Objective,
+  MetaTargeting,
+  MetaCTA,
+  BidStrategy,
+  MetaCreative,
+  ImageAd,
+  VideoAd,
+  CarouselAd,
+  MetaCampaignConfig,
+  AdSetConfig,
+  AdSetContent,
+} from './meta/types.ts'
+
+// === Meta Helpers ===
+
+export {
+  image as metaImage,
+  video as metaVideo,
+  carousel,
+} from './helpers/meta-creative.ts'
+
+export {
+  age,
+  audience,
+  excludeAudience,
+  interests,
+  metaTargeting,
+} from './helpers/meta-targeting.ts'
+
+export {
+  manual,
+} from './helpers/meta-placement.ts'
+
+export {
+  lowestCost,
+  costCap,
+  bidCap,
+  minRoas,
+} from './helpers/meta-bidding.ts'
+
+export {
+  lifetime,
+} from './helpers/meta-budget.ts'
 
 // === AI ===
 
