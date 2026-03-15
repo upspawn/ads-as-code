@@ -238,8 +238,11 @@ function buildCreativeProperties(
           ...(creative.urlParameters !== undefined && { urlParameters: creative.urlParameters }),
           ...(creative.displayLink !== undefined && { displayLink: creative.displayLink }),
         },
-        // Local file path is SDK-internal — the API works with imageHash
-        meta: { imagePath: creative.image },
+        // Local file path is SDK-internal — the API works with imageHash.
+        // A `hash:` prefix means the image is already uploaded to Meta.
+        meta: creative.image.startsWith('hash:')
+          ? { imageHash: creative.image.slice(5) }
+          : { imagePath: creative.image },
       }
 
     case 'video':

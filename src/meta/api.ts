@@ -107,6 +107,18 @@ type PaginatedResponse<T> = {
   }
 }
 
+/**
+ * Parse a JSON response body, preserving large numeric ID fields as strings.
+ * Meta IDs can exceed Number.MAX_SAFE_INTEGER (2^53 - 1); standard JSON.parse
+ * would silently truncate them, causing off-by-one errors in campaign references.
+ */
+async function safeParseJson(response: Response): Promise<unknown> {
+  const text = await response.text()
+  // Wrap bare large-integer values on any key ending with "id" in quotes
+  // before parsing. Already-quoted values won't match (digit won't follow colon+space).
+  return JSON.parse(text.replace(/"(\w*id)"\s*:\s*(\d{15,})/gi, '"$1":"$2"'))
+}
+
 export function createMetaClient(config: MetaProviderConfig): MetaClient {
   const apiVersion = config.apiVersion ?? 'v21.0'
   const baseUrl = `https://graph.facebook.com/${apiVersion}`
@@ -146,7 +158,7 @@ export function createMetaClient(config: MetaProviderConfig): MetaClient {
       throw new MetaApiError({ type: 'api', code: 0, message: `Unsupported HTTP method: ${method}` })
     }
 
-    const body = await response.json()
+    const body = await safeParseJson(response)
 
     if (!response.ok) {
       throw new MetaApiError(mapMetaError(body, response.status))
@@ -179,7 +191,7 @@ export function createMetaClient(config: MetaProviderConfig): MetaClient {
     // Follow pagination cursors
     while (nextUrl) {
       const response = await fetch(nextUrl)
-      const body = await response.json()
+      const body = await safeParseJson(response)
 
       if (!response.ok) {
         throw new MetaApiError(mapMetaError(body, response.status))
@@ -196,4 +208,4 @@ export function createMetaClient(config: MetaProviderConfig): MetaClient {
   return { graphGet, graphPost, graphDelete, graphGetAll }
 }
 
-export { MetaApiError, mapMetaError, resolveAccessToken }
+export { MetaApiError, mapMetaError, resolveAccessToken, safeParseJson }

@@ -62,6 +62,8 @@ function biddingToApiParams(bidding: Record<string, unknown>): Record<string, st
 
   switch (type) {
     case 'LOWEST_COST_WITHOUT_CAP':
+      // Must send explicitly — Meta infers a bid-cap strategy for some objectives
+      // (e.g. OUTCOME_SALES) when omitted, which then requires bid_amount.
       params['bid_strategy'] = 'LOWEST_COST_WITHOUT_CAP'
       break
     case 'LOWEST_COST_WITH_BID_CAP':
@@ -236,6 +238,13 @@ function buildTargetingSpec(targeting: Record<string, unknown>): Record<string, 
   const locales = targeting.locales as number[] | undefined
   if (locales && locales.length > 0) {
     spec['locales'] = locales
+  }
+
+  // Advantage+ audience — Meta requires this flag for some objectives (e.g. OUTCOME_SALES).
+  // Always include it to avoid "Advantage Audience Flag Required" errors.
+  const advantageAudience = targeting.advantageAudience as boolean | undefined
+  spec['targeting_automation'] = {
+    advantage_audience: advantageAudience ? 1 : 0,
   }
 
   return spec
@@ -415,9 +424,10 @@ async function uploadPendingImages(
 
     const meta = change.resource.meta
     const imagePath = meta?.imagePath as string | undefined
-    const pendingUpload = meta?.pendingUpload as boolean | undefined
+    const imageHash = meta?.imageHash as string | undefined
 
-    if (pendingUpload && imagePath) {
+    // Upload when there's a local image path but no hash yet
+    if (imagePath && !imageHash) {
       try {
         const result = await uploadImage(
           imagePath,
@@ -429,7 +439,6 @@ async function uploadPendingImages(
         // We use a mutable cast because the Resource type is readonly,
         // but we need to inject the uploaded hash before the create call.
         ;(meta as Record<string, unknown>)['imageHash'] = result.imageHash
-        ;(meta as Record<string, unknown>)['pendingUpload'] = false
       } catch (err) {
         errors.push({
           change,

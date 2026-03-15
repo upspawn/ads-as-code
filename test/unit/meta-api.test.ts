@@ -1,6 +1,64 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { MetaApiError, mapMetaError, resolveAccessToken, createMetaClient } from '../../src/meta/api.ts'
+import { MetaApiError, mapMetaError, resolveAccessToken, createMetaClient, safeParseJson } from '../../src/meta/api.ts'
 import type { MetaProviderConfig } from '../../src/core/types.ts'
+
+// === safeParseJson Tests ===
+
+describe('safeParseJson', () => {
+  function mockResponse(body: string): Response {
+    return new Response(body, { status: 200 })
+  }
+
+  test('preserves large numeric id as string', async () => {
+    // Meta campaign IDs exceed Number.MAX_SAFE_INTEGER
+    const body = '{"id": 120243045932140561}'
+    const result = await safeParseJson(mockResponse(body)) as { id: string }
+    expect(result.id).toBe('120243045932140561')
+    expect(typeof result.id).toBe('string')
+  })
+
+  test('leaves already-quoted id as string', async () => {
+    const body = '{"id": "120243045932140561"}'
+    const result = await safeParseJson(mockResponse(body)) as { id: string }
+    expect(result.id).toBe('120243045932140561')
+  })
+
+  test('preserves small numeric id as number', async () => {
+    // Small IDs (< 15 digits) don't need protection
+    const body = '{"id": 12345}'
+    const result = await safeParseJson(mockResponse(body)) as { id: number }
+    expect(result.id).toBe(12345)
+  })
+
+  test('handles compound id fields (campaign_id, adset_id)', async () => {
+    const body = '{"campaign_id": 120243045932140561, "adset_id": 120243045932140999}'
+    const result = await safeParseJson(mockResponse(body)) as Record<string, string>
+    expect(result.campaign_id).toBe('120243045932140561')
+    expect(result.adset_id).toBe('120243045932140999')
+  })
+
+  test('does not touch non-id numeric fields', async () => {
+    const body = '{"bid_amount": 250, "error_subcode": 4834011}'
+    const result = await safeParseJson(mockResponse(body)) as Record<string, number>
+    expect(result.bid_amount).toBe(250)
+    expect(result.error_subcode).toBe(4834011)
+  })
+
+  test('handles nested objects with large ids', async () => {
+    const body = '{"data": [{"id": 120243045932140561, "name": "Test"}]}'
+    const result = await safeParseJson(mockResponse(body)) as { data: Array<{ id: string; name: string }> }
+    expect(result.data[0]!.id).toBe('120243045932140561')
+    expect(result.data[0]!.name).toBe('Test')
+  })
+
+  test('preserves precision of borderline ids', async () => {
+    // Number.MAX_SAFE_INTEGER = 9007199254740991 (16 digits)
+    // IDs with 15+ digits should be protected
+    const body = '{"id": 900719925474099123}'
+    const result = await safeParseJson(mockResponse(body)) as { id: string }
+    expect(result.id).toBe('900719925474099123')
+  })
+})
 
 // === mapMetaError Tests ===
 

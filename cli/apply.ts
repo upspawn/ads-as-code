@@ -361,12 +361,17 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
             console.log(`    ${call.method} /${call.endpoint}`)
             if (call.params && Object.keys(call.params).length > 0) {
               for (const [key, value] of Object.entries(call.params)) {
-                // Pretty-print JSON values, keep short strings inline
+                // Pretty-print JSON objects/arrays, keep plain values inline.
+                // Don't JSON.parse plain numeric strings — it loses precision for large IDs.
                 let displayValue: string
-                try {
-                  const parsed = JSON.parse(value)
-                  displayValue = JSON.stringify(parsed, null, 2).split('\n').join('\n      ')
-                } catch {
+                const trimmed = value.trim()
+                if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                  try {
+                    displayValue = JSON.stringify(JSON.parse(value), null, 2).split('\n').join('\n      ')
+                  } catch {
+                    displayValue = value
+                  }
+                } else {
                   displayValue = value
                 }
                 console.log(`      ${key}: ${displayValue}`)
