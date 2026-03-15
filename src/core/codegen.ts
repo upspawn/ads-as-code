@@ -281,6 +281,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   // Partition resources by kind
   const campaign = resources.find((r) => r.kind === 'campaign')
   const adGroups = resources.filter((r) => r.kind === 'adGroup')
+  const assetGroupResources = resources.filter((r) => r.kind === 'assetGroup')
   const keywords = resources.filter((r) => r.kind === 'keyword')
   const ads = resources.filter((r) => r.kind === 'ad')
   const sitelinkResources = resources.filter((r) => r.kind === 'sitelink')
@@ -357,6 +358,12 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   if (customParameters && Object.keys(customParameters).length > 0) {
     const entries = Object.entries(customParameters).map(([k, v]) => `${k}: ${quote(v)}`).join(', ')
     configParts.push(`customParameters: { ${entries} },`)
+  }
+
+  // URL expansion (PMax-specific)
+  const urlExpansion = props.urlExpansion as boolean | undefined
+  if (urlExpansion !== undefined) {
+    configParts.push(`urlExpansion: ${urlExpansion},`)
   }
 
   // Build the campaign header
@@ -635,16 +642,51 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
 
   // Campaign declaration — detect channel type
   const channelType = props.channelType as string | undefined
-  const builderMethod = channelType === 'display' ? 'display' : 'search'
+  const builderMethod = channelType === 'display' ? 'display' : channelType === 'performance-max' ? 'performanceMax' : 'search'
   lines.push(`export default google.${builderMethod}(${quote(campaignName)}, {`)
   for (const part of configParts) {
     lines.push(`  ${part}`)
   }
   lines.push(`})`)
 
-  // Chain groups
-  for (const gl of groupLines) {
-    lines.push(gl)
+  // Chain asset groups (PMax) or ad groups (Search/Display)
+  if (channelType === 'performance-max') {
+    for (const ag of assetGroupResources) {
+      const agKey = ag.path.replace(`${campaignSlug}/`, '')
+      const agProps = ag.properties
+
+      const agParts: string[] = []
+      agParts.push(`finalUrls: [${(agProps.finalUrls as string[]).map(quote).join(', ')}],`)
+      agParts.push(`headlines: [${formatStringList(agProps.headlines as string[])}],`)
+      agParts.push(`longHeadlines: [${formatStringList(agProps.longHeadlines as string[])}],`)
+      agParts.push(`descriptions: [${formatStringList(agProps.descriptions as string[])}],`)
+      agParts.push(`businessName: ${quote(agProps.businessName as string)},`)
+
+      // Optional fields
+      if (agProps.finalMobileUrls) {
+        agParts.push(`finalMobileUrls: [${(agProps.finalMobileUrls as string[]).map(quote).join(', ')}],`)
+      }
+      if (agProps.videos) {
+        agParts.push(`videos: [${(agProps.videos as string[]).map(quote).join(', ')}],`)
+      }
+      if (agProps.callToAction) {
+        agParts.push(`callToAction: ${quote(agProps.callToAction as string)},`)
+      }
+      if (agProps.path1) agParts.push(`path1: ${quote(agProps.path1 as string)},`)
+      if (agProps.path2) agParts.push(`path2: ${quote(agProps.path2 as string)},`)
+
+      // Status (only emit if paused — enabled is default)
+      const agStatus = agProps.status as string | undefined
+      if (agStatus === 'paused') {
+        agParts.push(`status: 'paused',`)
+      }
+
+      lines.push(`  .assetGroup(${quote(agKey)}, {\n    ${agParts.join('\n    ')}\n  })`)
+    }
+  } else {
+    for (const gl of groupLines) {
+      lines.push(gl)
+    }
   }
 
   // Chain sitelinks

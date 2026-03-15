@@ -10,6 +10,7 @@ export type { ApplyResult }
 /** Dependency order for resource creation (parent → child) */
 const CREATION_ORDER: ResourceKind[] = [
   'campaign',
+  'assetGroup',
   'adGroup',
   'keyword',
   'ad',
@@ -137,8 +138,9 @@ function buildCampaignCreate(
   resource: Resource,
 ): MutateOperation {
   const props = resource.properties
-  // Channel type: 2=SEARCH, 3=DISPLAY
-  const channelType = (props.channelType as string) === 'display' ? 3 : 2
+  // Channel type: 2=SEARCH, 3=DISPLAY, 10=PERFORMANCE_MAX
+  const channelTypeStr = props.channelType as string | undefined
+  const channelType = channelTypeStr === 'display' ? 3 : channelTypeStr === 'performance-max' ? 10 : 2
 
   const campaign: Record<string, unknown> = {
     resource_name: `customers/${customerId}/campaigns/${tempCampaignId}`,
@@ -662,6 +664,64 @@ function buildCallExtensionCreate(
   ]
 }
 
+// ─── Asset Group Builder (PMax) ─────────────────────────────
+
+function buildAssetGroupCreate(
+  customerId: string,
+  campaignResourceName: string,
+  resource: Resource,
+): MutateOperation[] {
+  const props = resource.properties
+  const tempId = `-${Date.now()}`
+  const agResourceName = `customers/${customerId}/assetGroups/${tempId}`
+
+  const ops: MutateOperation[] = []
+
+  // 1. Create asset group
+  ops.push({
+    operation: 'asset_group',
+    op: 'create',
+    resource: {
+      resource_name: agResourceName,
+      campaign: campaignResourceName,
+      name: props.name as string,
+      status: (props.status as string) === 'paused' ? 3 : 2,
+      final_urls: props.finalUrls as string[],
+      ...(props.finalMobileUrls ? { final_mobile_urls: props.finalMobileUrls } : {}),
+      ...(props.path1 ? { path1: props.path1 } : {}),
+      ...(props.path2 ? { path2: props.path2 } : {}),
+    },
+  })
+
+  // 2. Create text assets and link them to the asset group
+  let assetCounter = 0
+  const createTextAssetAndLink = (text: string, fieldType: string) => {
+    const assetTempId = `-${Date.now() + (++assetCounter)}`
+    const assetRN = `customers/${customerId}/assets/${assetTempId}`
+    ops.push({
+      operation: 'asset',
+      op: 'create',
+      resource: { resource_name: assetRN, text_asset: { text } },
+    })
+    ops.push({
+      operation: 'asset_group_asset',
+      op: 'create',
+      resource: {
+        asset_group: agResourceName,
+        asset: assetRN,
+        field_type: fieldType,
+      },
+    })
+  }
+
+  for (const h of (props.headlines as string[])) createTextAssetAndLink(h, 'HEADLINE')
+  for (const lh of (props.longHeadlines as string[])) createTextAssetAndLink(lh, 'LONG_HEADLINE')
+  for (const d of (props.descriptions as string[])) createTextAssetAndLink(d, 'DESCRIPTION')
+  createTextAssetAndLink(props.businessName as string, 'BUSINESS_NAME')
+
+  return ops
+}
+
 // ─── Delete Builders ────────────────────────────────────────
 
 function buildDeleteOperation(
@@ -1036,6 +1096,16 @@ function buildCreateMutations(
         const campaignResourceName = `customers/${customerId}/campaigns/${tempCampaignId}`
         ops.push(...buildTargetingOperations(customerId, campaignResourceName, targeting))
       }
+      break
+    }
+
+    case 'assetGroup': {
+      const campaignPath = extractCampaignPath(resource.path)
+      const campaignPlatformId = resourceMap.get(campaignPath)
+      const campaignResourceName = campaignPlatformId
+        ? resolveResourceName(customerId, 'campaigns', campaignPlatformId)
+        : `customers/${customerId}/campaigns/-1`
+      ops.push(...buildAssetGroupCreate(customerId, campaignResourceName, resource))
       break
     }
 
