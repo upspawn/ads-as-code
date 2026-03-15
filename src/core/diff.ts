@@ -31,17 +31,79 @@ export function setEqual(a: string[], b: string[]): boolean {
   return sortedA.every((v, i) => v === sortedB[i])
 }
 
+/** Compare two arrays of objects as unordered sets, using a key field for identity. */
+export function objectSetEqual<T extends Record<string, unknown>>(
+  a: T[],
+  b: T[],
+  key: string,
+): boolean {
+  if (a.length !== b.length) return false
+  const aById = new Map(a.map((item) => [String(item[key]), item]))
+  const bById = new Map(b.map((item) => [String(item[key]), item]))
+  if (aById.size !== bById.size) return false
+  for (const [id, aItem] of aById) {
+    const bItem = bById.get(id)
+    if (!bItem || !deepEqual(aItem, bItem)) return false
+  }
+  return true
+}
+
+/**
+ * Deep equality with arrays sorted before comparison.
+ * Used for targeting objects where nested arrays (interests, behaviors, etc.)
+ * can return in any order from the API.
+ */
+export function deepEqualSorted(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return a === b
+  if (typeof a !== typeof b) return false
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    const sortedA = [...a].sort(stableSort)
+    const sortedB = [...b].sort(stableSort)
+    return sortedA.every((v, i) => deepEqualSorted(v, sortedB[i]))
+  }
+
+  if (typeof a === 'object' && typeof b === 'object') {
+    const keysA = Object.keys(a as Record<string, unknown>)
+    const keysB = Object.keys(b as Record<string, unknown>)
+    if (keysA.length !== keysB.length) return false
+    return keysA.every((k) =>
+      deepEqualSorted(
+        (a as Record<string, unknown>)[k],
+        (b as Record<string, unknown>)[k],
+      ),
+    )
+  }
+
+  return false
+}
+
+/** Deterministic sort for mixed-type arrays: stringify each element for comparison. */
+function stableSort(a: unknown, b: unknown): number {
+  const sa = JSON.stringify(a) ?? ''
+  const sb = JSON.stringify(b) ?? ''
+  return sa < sb ? -1 : sa > sb ? 1 : 0
+}
+
 // ─── Semantic Comparison ──────────────────────────────────
 
 /** Deep equality with semantic awareness for known ad resource fields. */
 function semanticEqual(field: string, desired: unknown, actual: unknown): boolean {
-  // Budget: compare in micros to avoid float precision issues
+  // Budget: compare in micros to avoid float precision issues, then deep-compare remaining fields
   if (field === 'budget' && isBudget(desired) && isBudget(actual)) {
-    return (
-      toMicros(desired.amount) === toMicros(actual.amount) &&
-      desired.currency === actual.currency &&
-      desired.period === actual.period
-    )
+    if (
+      toMicros(desired.amount) !== toMicros(actual.amount) ||
+      desired.currency !== actual.currency ||
+      desired.period !== actual.period
+    ) {
+      return false
+    }
+    // Compare any extra fields (e.g., endTime for lifetime budgets)
+    const { amount: _da, currency: _dc, period: _dp, ...desiredRest } = desired as Record<string, unknown>
+    const { amount: _aa, currency: _ac, period: _ap, ...actualRest } = actual as Record<string, unknown>
+    return deepEqual(desiredRest, actualRest)
   }
 
   // Headlines/descriptions: order-independent comparison
@@ -57,6 +119,28 @@ function semanticEqual(field: string, desired: unknown, actual: unknown): boolea
   // URLs: normalize before comparing
   if ((field === 'finalUrl' || field === 'url') && typeof desired === 'string' && typeof actual === 'string') {
     return normalizeUrl(desired) === normalizeUrl(actual)
+  }
+
+  // Interests: order-independent comparison by `id` property.
+  // Meta API returns interest arrays in arbitrary order.
+  if (field === 'interests' && Array.isArray(desired) && Array.isArray(actual)) {
+    return objectSetEqual(
+      desired as Record<string, unknown>[],
+      actual as Record<string, unknown>[],
+      'id',
+    )
+  }
+
+  // Custom/excluded audiences: order-independent string set comparison.
+  if ((field === 'customAudiences' || field === 'excludedAudiences') && Array.isArray(desired) && Array.isArray(actual)) {
+    return setEqual(desired as string[], actual as string[])
+  }
+
+  // Targeting: deep compare with sorted sub-arrays.
+  // The targeting object has nested arrays (interests, behaviors, etc.)
+  // that can return in any order from the Meta API.
+  if (field === 'targeting' && typeof desired === 'object' && desired !== null && typeof actual === 'object' && actual !== null) {
+    return deepEqualSorted(desired, actual)
   }
 
   // Default: deep structural equality
