@@ -32,6 +32,10 @@ import type {
 function normalizeBidding(input: BiddingInput): BiddingStrategy {
   if (typeof input === 'string') {
     switch (input) {
+      case 'manual-cpm':
+        return { type: 'manual-cpm' }
+      case 'target-cpm':
+        return { type: 'target-cpm' }
       case 'target-roas':
         return { type: 'target-roas', targetRoas: 1.0 }
       case 'target-impression-share':

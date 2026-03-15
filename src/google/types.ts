@@ -16,12 +16,14 @@ export type BiddingStrategy =
   | { readonly type: 'maximize-conversions' }
   | { readonly type: 'maximize-clicks'; readonly maxCpc?: number }
   | { readonly type: 'manual-cpc'; readonly enhancedCpc?: boolean }
+  | { readonly type: 'manual-cpm' }
   | { readonly type: 'target-cpa'; readonly targetCpa: number }
+  | { readonly type: 'target-cpm' }
   | { readonly type: 'target-roas'; readonly targetRoas: number }
   | { readonly type: 'target-impression-share'; readonly location: 'anywhere' | 'top' | 'absolute-top'; readonly targetPercent: number; readonly maxCpc?: number }
   | { readonly type: 'maximize-conversion-value'; readonly targetRoas?: number }
 
-export type BiddingInput = 'maximize-conversions' | 'maximize-clicks' | 'manual-cpc' | 'target-roas' | 'target-impression-share' | 'maximize-conversion-value' | BiddingStrategy
+export type BiddingInput = 'maximize-conversions' | 'maximize-clicks' | 'manual-cpc' | 'manual-cpm' | 'target-cpm' | 'target-roas' | 'target-impression-share' | 'maximize-conversion-value' | BiddingStrategy
 
 // === Ads ===
 
