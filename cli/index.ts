@@ -11,6 +11,7 @@ Commands:
   validate      Validate campaign files and report errors
   auth          Authenticate with ad platforms
   import        Import campaigns from Google Ads as TypeScript files
+  generate      Generate expanded campaign variants (translations, ICP)
   plan          Show what changes would be applied
   apply         Apply changes to ad platforms
   pull          Pull live state and detect drift from code
@@ -74,6 +75,11 @@ async function main() {
     case 'import': {
       const { runImport } = await import('./import.ts')
       await runImport(args.slice(1), flags)
+      break
+    }
+    case 'generate': {
+      const { runGenerate } = await import('./generate.ts')
+      await runGenerate(args.slice(1), flags)
       break
     }
     case 'plan': {

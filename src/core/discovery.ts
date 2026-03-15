@@ -1,4 +1,5 @@
 import type { AdsConfig } from './types.ts'
+import type { ExpandEntry } from '../ai/expand.ts'
 
 // === Types ===
 
@@ -55,6 +56,78 @@ export async function discoverCampaigns(rootDir: string): Promise<DiscoveryResul
   }
 
   // Sort for deterministic order
+  files.sort()
+
+  for (const file of files) {
+    try {
+      const mod = await import(file)
+
+      for (const [exportName, value] of Object.entries(mod)) {
+        if (isCampaignLike(value)) {
+          campaigns.push({
+            file,
+            exportName,
+            provider: value.provider,
+            kind: value.kind,
+            campaign: value,
+          })
+        }
+      }
+    } catch (err) {
+      errors.push({
+        file,
+        message: err instanceof Error ? err.message : String(err),
+        cause: err,
+      })
+    }
+  }
+
+  return { campaigns, errors }
+}
+
+// === Generate Matrix Loading ===
+
+/**
+ * Load the expansion matrix from ads.generate.ts in the project root.
+ * Returns null if the file doesn't exist.
+ *
+ * The file should export a default array of ExpandEntry objects, e.g.:
+ * ```ts
+ * import { expand } from '@upspawn/ads/ai'
+ * export default [
+ *   expand('campaigns/search-dropbox.ts', { translate: ['de', 'fr'] }),
+ * ]
+ * ```
+ */
+export async function loadGenerateMatrix(rootDir: string): Promise<ExpandEntry[] | null> {
+  const configPath = `${rootDir}/ads.generate.ts`
+  const file = Bun.file(configPath)
+  const exists = await file.exists()
+  if (!exists) return null
+
+  const mod = await import(configPath)
+  const entries = mod.default
+  if (!Array.isArray(entries)) return null
+  return entries as ExpandEntry[]
+}
+
+// === Generated Campaign Discovery ===
+
+/**
+ * Scan generated/**\/*.ts under rootDir and collect campaign exports.
+ * Same logic as discoverCampaigns but scans the generated/ directory.
+ */
+export async function discoverGeneratedCampaigns(rootDir: string): Promise<DiscoveryResult> {
+  const campaigns: DiscoveredCampaign[] = []
+  const errors: DiscoveryError[] = []
+
+  const glob = new Bun.Glob('generated/**/*.ts')
+  const files: string[] = []
+
+  for await (const match of glob.scan({ cwd: rootDir, absolute: true })) {
+    files.push(match)
+  }
+
   files.sort()
 
   for (const file of files) {

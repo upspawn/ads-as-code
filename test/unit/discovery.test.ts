@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from 'bun:test'
 import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { discoverCampaigns, loadConfig } from '../../src/core/discovery.ts'
+import { discoverCampaigns, loadConfig, loadGenerateMatrix, discoverGeneratedCampaigns } from '../../src/core/discovery.ts'
 import { enrichError, AdsEnrichedError } from '../../src/core/errors.ts'
 
 // ─── Discovery ──────────────────────────────────────────────
@@ -150,6 +150,88 @@ describe('loadConfig()', () => {
   test('returns undefined when no config exists', async () => {
     const config = await loadConfig(tmpDir)
     expect(config).toBeUndefined()
+  })
+})
+
+// ─── Generate Matrix Loading ────────────────────────────────
+
+describe('loadGenerateMatrix()', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ads-genmatrix-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(tmpDir, { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  test('returns null when ads.generate.ts does not exist', async () => {
+    const result = await loadGenerateMatrix(tmpDir)
+    expect(result).toBeNull()
+  })
+
+  test('loads expand entries from ads.generate.ts', async () => {
+    await Bun.write(
+      join(tmpDir, 'ads.generate.ts'),
+      `export default [
+        { seed: 'campaigns/search-dropbox.ts', config: { translate: ['de', 'fr'] } },
+      ]\n`
+    )
+
+    const result = await loadGenerateMatrix(tmpDir)
+    expect(result).toHaveLength(1)
+    expect(result![0]!.seed).toBe('campaigns/search-dropbox.ts')
+    expect(result![0]!.config.translate).toEqual(['de', 'fr'])
+  })
+
+  test('returns null when default export is not an array', async () => {
+    await Bun.write(
+      join(tmpDir, 'ads.generate.ts'),
+      `export default 'not an array'\n`
+    )
+
+    const result = await loadGenerateMatrix(tmpDir)
+    expect(result).toBeNull()
+  })
+})
+
+// ─── Generated Campaign Discovery ──────────────────────────
+
+describe('discoverGeneratedCampaigns()', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ads-gendisc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(join(tmpDir, 'generated'), { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  test('discovers campaigns in generated/ directory', async () => {
+    await Bun.write(
+      join(tmpDir, 'generated', 'search-dropbox.de.ts'),
+      `export default { provider: 'google', kind: 'search', name: 'Search - Dropbox [DE]' }\n`
+    )
+
+    const result = await discoverGeneratedCampaigns(tmpDir)
+    expect(result.campaigns).toHaveLength(1)
+    expect(result.campaigns[0]!.provider).toBe('google')
+  })
+
+  test('returns empty when generated/ does not exist', async () => {
+    const emptyDir = join(tmpdir(), `ads-emptygen-${Date.now()}`)
+    mkdirSync(emptyDir, { recursive: true })
+
+    try {
+      const result = await discoverGeneratedCampaigns(emptyDir)
+      expect(result.campaigns).toHaveLength(0)
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true })
+    }
   })
 })
 
