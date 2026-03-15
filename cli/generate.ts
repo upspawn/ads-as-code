@@ -1,313 +1,319 @@
-import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
-import { isRsaMarker, isKeywordsMarker } from '../src/ai/types.ts'
-import { readLockFile, writeLockFile, pinValue, unpinValue } from '../src/ai/lockfile.ts'
-import { generateForCampaign, generateAll } from '../src/ai/generate.ts'
-import type { GenerateResult } from '../src/ai/generate.ts'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import type { GlobalFlags } from './init.ts'
+import { loadGenerateMatrix, discoverCampaigns } from '../src/core/discovery.ts'
+import { slugify } from '../src/core/flatten.ts'
+import { computeExpansionTargets, type ExpansionTarget } from '../src/ai/expand.ts'
+import { generateExpandedCode, type ExpandedCampaignData, type ExpandedAdGroup } from '../src/ai/codegen-expanded.ts'
+import { readManifest, writeManifest, updateManifestEntry, type Manifest, type ManifestEntry } from '../src/ai/manifest.ts'
+import type { GoogleSearchCampaign } from '../src/google/types.ts'
 
-// ─── Flag Parsing ───────────────────────────────────────────────────
+const GENERATE_USAGE = `
+ads generate — Generate expanded campaign variants using AI
 
-type GenerateFlags = {
-  dryRun: boolean
-  reroll?: string
-  pin?: string
-  unpin?: string
-  seed?: string
-  filter?: string
-  yes: boolean
+Reads ads.generate.ts from the project root, loads seed campaigns,
+computes expansion targets (translations, ICP variations, cross products),
+and generates standalone TypeScript campaign files in the generated/ directory.
+
+Usage:
+  ads generate                     Generate all missing variants
+  ads generate --reroll <file>     Re-generate a specific file
+  ads generate --seed <name>       Re-expand all variants from a seed
+  ads generate --filter <pattern>  Only generate targets matching a pattern
+  ads generate --dry-run           Show what would be generated without writing
+
+Flags:
+  --reroll <file>   Re-generate a specific expanded file
+  --seed <name>     Re-expand all variants from a named seed
+  --filter <pat>    Only process targets whose file names match
+  --dry-run         Preview targets without generating
+  --model <model>   AI model to use (default: gpt-4.1-mini)
+  --json            Output results as JSON
+  --help, -h        Show this help message
+`.trim()
+
+// ─── Seed Campaign Loading ──────────────────────────────
+
+/**
+ * Load a seed campaign from its file path. Resolves relative to rootDir.
+ * Returns the first Google Search campaign found in the file's exports.
+ */
+async function loadSeedCampaign(
+  rootDir: string,
+  seedPath: string,
+): Promise<GoogleSearchCampaign | null> {
+  const absPath = resolve(rootDir, seedPath)
+  if (!existsSync(absPath)) return null
+
+  try {
+    const mod = await import(absPath)
+    // Check default export first, then named exports
+    for (const value of Object.values(mod)) {
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        'provider' in value &&
+        (value as Record<string, unknown>).provider === 'google' &&
+        'kind' in value &&
+        (value as Record<string, unknown>).kind === 'search'
+      ) {
+        return value as GoogleSearchCampaign
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
-function parseGenerateFlags(args: string[]): { flags: GenerateFlags; positional: string | undefined } {
-  const flags: GenerateFlags = {
-    dryRun: args.includes('--dry-run'),
-    yes: args.includes('--yes') || args.includes('-y'),
-    reroll: getFlag(args, '--reroll'),
-    pin: getFlag(args, '--pin'),
-    unpin: getFlag(args, '--unpin'),
-    seed: getFlag(args, '--seed'),
-    filter: getFlag(args, '--filter'),
+// ─── Campaign Data Extraction ───────────────────────────
+
+/**
+ * Convert a GoogleSearchCampaign + ExpansionTarget into ExpandedCampaignData.
+ * This is the "transform" step that adapts the seed for the target variant.
+ *
+ * For now, this produces a structural copy. The AI generation step
+ * (generateExpandedCampaign) would be called externally to produce
+ * the actual translated/varied content. This function serves as the
+ * non-AI fallback that preserves seed structure.
+ */
+function seedToExpandedData(
+  seed: GoogleSearchCampaign,
+  target: ExpansionTarget,
+): ExpandedCampaignData {
+  const groups: ExpandedAdGroup[] = []
+
+  for (const [key, group] of Object.entries(seed.groups)) {
+    const firstAd = group.ads[0]
+    if (!firstAd) continue
+
+    groups.push({
+      key,
+      keywords: group.keywords.map((kw) => ({
+        text: kw.text,
+        matchType: kw.matchType,
+      })),
+      ad: {
+        headlines: [...firstAd.headlines],
+        descriptions: [...firstAd.descriptions],
+        finalUrl: firstAd.finalUrl,
+      },
+    })
   }
 
-  // First positional arg (not a flag) is the campaign path
-  const positional = args.find((a) => !a.startsWith('--') && !a.startsWith('-') && !isValueOfFlag(args, a))
+  // Adapt targeting for translations
+  let targetingRules = seed.targeting.rules.map((r) => ({ ...r }))
+  if (target.translate) {
+    // Replace language targeting with the target language
+    const langCode = target.translate
+    const hasLang = targetingRules.some((r) => r.type === 'language')
+    if (hasLang) {
+      targetingRules = targetingRules.map((r) =>
+        r.type === 'language' ? { type: 'language' as const, languages: [langCode] } : r,
+      )
+    } else {
+      targetingRules.push({ type: 'language' as const, languages: [langCode] })
+    }
+  }
 
-  return { flags, positional }
+  return {
+    name: seed.name,
+    budget: { ...seed.budget },
+    bidding: { ...seed.bidding },
+    targeting: { rules: targetingRules as Array<{ type: string; [key: string]: unknown }> },
+    negatives: seed.negatives.map((n) => ({ text: n.text, matchType: n.matchType })),
+    groups,
+  }
+}
+
+// ─── Variant Suffix ─────────────────────────────────────
+
+function buildVariantSuffix(target: ExpansionTarget): string {
+  const parts: string[] = []
+  if (target.vary) parts.push(target.vary.name.toUpperCase())
+  if (target.translate) parts.push(target.translate.toUpperCase())
+  return parts.length > 0 ? `[${parts.join('-')}]` : ''
+}
+
+// ─── Glob Matching ──────────────────────────────────────
+
+function matchesFilter(fileName: string, pattern: string): boolean {
+  const regex = new RegExp(
+    '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$',
+    'i',
+  )
+  return regex.test(fileName)
+}
+
+// ─── Main Command ───────────────────────────────────────
+
+export async function runGenerate(args: string[], flags: GlobalFlags) {
+  if (flags.help) {
+    console.log(GENERATE_USAGE)
+    return
+  }
+
+  const rootDir = process.cwd()
+  const dryRun = args.includes('--dry-run')
+  const model = getFlag(args, '--model') ?? 'gpt-4.1-mini'
+  const rerollFile = getFlag(args, '--reroll')
+  const seedFilter = getFlag(args, '--seed')
+  const filter = getFlag(args, '--filter')
+
+  // 1. Load the generate matrix
+  const matrix = await loadGenerateMatrix(rootDir)
+  if (!matrix || matrix.length === 0) {
+    console.error('No ads.generate.ts found or it exports an empty array.')
+    console.error('')
+    console.error('Create ads.generate.ts in your project root:')
+    console.error('')
+    console.error("  import { expand } from '@upspawn/ads/ai'")
+    console.error('  export default [')
+    console.error("    expand('campaigns/search-dropbox.ts', { translate: ['de', 'fr'] }),")
+    console.error('  ]')
+    process.exit(1)
+  }
+
+  // 2. Ensure generated/ directory exists
+  const generatedDir = join(rootDir, 'generated')
+  if (!dryRun && !existsSync(generatedDir)) {
+    mkdirSync(generatedDir, { recursive: true })
+  }
+
+  // 3. Load existing manifest
+  let manifest: Manifest = (await readManifest(generatedDir)) ?? {}
+
+  // 4. Process each expand entry
+  const results: Array<{ file: string; seed: string; status: 'created' | 'skipped' | 'rerolled' }> = []
+
+  for (const entry of matrix) {
+    // Filter by --seed if specified
+    if (seedFilter) {
+      const seedSlug = slugify(entry.seed.replace(/^campaigns\//, '').replace(/\.ts$/, ''))
+      if (!seedSlug.includes(seedFilter) && !entry.seed.includes(seedFilter)) {
+        continue
+      }
+    }
+
+    // Load the seed campaign
+    const seedCampaign = await loadSeedCampaign(rootDir, entry.seed)
+    if (!seedCampaign) {
+      console.error(`Warning: Could not load seed campaign from ${entry.seed}, skipping.`)
+      continue
+    }
+
+    // Compute the seed slug from the campaign name
+    const seedSlug = slugify(seedCampaign.name)
+
+    // Compute expansion targets
+    const targets = computeExpansionTargets(seedSlug, entry.config)
+
+    for (const target of targets) {
+      // Filter by --filter if specified
+      if (filter && !matchesFilter(target.fileName, filter)) {
+        continue
+      }
+
+      // Filter by --reroll if specified
+      if (rerollFile && target.fileName !== rerollFile) {
+        continue
+      }
+
+      // Skip existing files unless rerolling
+      const filePath = join(generatedDir, target.fileName)
+      const existingEntry = manifest[target.fileName]
+      if (existingEntry && !rerollFile) {
+        results.push({ file: target.fileName, seed: entry.seed, status: 'skipped' })
+        continue
+      }
+
+      if (dryRun) {
+        results.push({
+          file: target.fileName,
+          seed: entry.seed,
+          status: existingEntry ? 'rerolled' : 'created',
+        })
+        continue
+      }
+
+      // Transform seed data for this target
+      const expandedData = seedToExpandedData(seedCampaign, target)
+      const suffix = buildVariantSuffix(target)
+
+      // Generate the code
+      const code = generateExpandedCode(seedSlug, expandedData, suffix)
+
+      // Write the file
+      await Bun.write(filePath, code)
+
+      // Update manifest
+      const round = existingEntry ? existingEntry.round + 1 : 1
+      const transform: Record<string, string> = {}
+      if (target.translate) transform.translate = target.translate
+      if (target.vary) transform.vary = target.vary.name
+
+      const manifestEntry: ManifestEntry = {
+        seed: seedSlug,
+        transform,
+        model,
+        generatedAt: new Date().toISOString(),
+        round,
+      }
+      manifest = updateManifestEntry(manifest, target.fileName, manifestEntry)
+
+      results.push({
+        file: target.fileName,
+        seed: entry.seed,
+        status: existingEntry ? 'rerolled' : 'created',
+      })
+    }
+  }
+
+  // 5. Write updated manifest
+  if (!dryRun && results.some((r) => r.status !== 'skipped')) {
+    await writeManifest(generatedDir, manifest)
+  }
+
+  // 6. Output results
+  const created = results.filter((r) => r.status === 'created')
+  const rerolled = results.filter((r) => r.status === 'rerolled')
+  const skipped = results.filter((r) => r.status === 'skipped')
+
+  if (flags.json) {
+    console.log(JSON.stringify({ results, dryRun }, null, 2))
+  } else {
+    if (dryRun) {
+      console.log('Dry run — no files written.\n')
+    }
+
+    if (created.length > 0) {
+      console.log(`${dryRun ? 'Would create' : 'Created'} ${created.length} file(s):`)
+      for (const r of created) {
+        console.log(`  + generated/${r.file}`)
+      }
+    }
+
+    if (rerolled.length > 0) {
+      console.log(`\n${dryRun ? 'Would re-generate' : 'Re-generated'} ${rerolled.length} file(s):`)
+      for (const r of rerolled) {
+        console.log(`  ~ generated/${r.file}`)
+      }
+    }
+
+    if (skipped.length > 0 && !rerollFile) {
+      console.log(`\nSkipped ${skipped.length} existing file(s) (use --reroll to regenerate)`)
+    }
+
+    if (results.length === 0) {
+      console.log('No targets matched.')
+    }
+
+    console.log()
+  }
 }
 
 function getFlag(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag)
   if (index === -1) return undefined
   return args[index + 1]
-}
-
-/** Check if a value is the argument of a preceding flag. */
-function isValueOfFlag(args: string[], value: string): boolean {
-  const index = args.indexOf(value)
-  if (index <= 0) return false
-  const prev = args[index - 1]!
-  return prev.startsWith('--') && !prev.startsWith('--no-')
-}
-
-// ─── Marker Counting ────────────────────────────────────────────────
-
-type MarkerScan = {
-  rsaCount: number
-  keywordsCount: number
-  slotKeys: string[]
-}
-
-function scanMarkers(campaign: { groups: Record<string, { keywords: readonly unknown[]; ads: readonly unknown[] }> }): MarkerScan {
-  let rsaCount = 0
-  let keywordsCount = 0
-  const slotKeys: string[] = []
-
-  for (const [groupKey, group] of Object.entries(campaign.groups)) {
-    for (const ad of group.ads) {
-      if (isRsaMarker(ad)) {
-        rsaCount++
-        slotKeys.push(`${groupKey}.ad`)
-      }
-    }
-    for (const kw of group.keywords) {
-      if (isKeywordsMarker(kw)) {
-        keywordsCount++
-        slotKeys.push(`${groupKey}.keywords`)
-      }
-    }
-  }
-
-  return { rsaCount, keywordsCount, slotKeys }
-}
-
-// ─── Output Formatting ─────────────────────────────────────────────
-
-function formatResult(result: GenerateResult): string {
-  const lines: string[] = []
-
-  lines.push(`Generation complete.`)
-  lines.push(`  Slots generated: ${result.slotsGenerated}`)
-  lines.push(`  Slots skipped:   ${result.slotsSkipped}`)
-  lines.push(`  Input tokens:    ${result.totalInputTokens.toLocaleString()}`)
-  lines.push(`  Output tokens:   ${result.totalOutputTokens.toLocaleString()}`)
-
-  return lines.join('\n')
-}
-
-// ─── Main Entry Point ───────────────────────────────────────────────
-
-const GENERATE_USAGE = `
-ads generate — AI-powered ad copy and keyword generation
-
-Usage:
-  ads generate [campaign-path] [options]
-
-Options:
-  --dry-run        Scan markers, report what would be generated, exit
-  --reroll <slot>  Regenerate a specific slot (e.g. "main.ad")
-  --pin <slot>     Pin a slot value in the lock file
-  --unpin <slot>   Unpin a slot value in the lock file
-  --seed <path>    Path to a seed file for generation context
-  --filter <glob>  Filter campaigns by glob pattern
-  --yes, -y        Skip confirmation prompt
-  --help, -h       Show this help message
-`.trim()
-
-export async function runGenerate(args: string[], globalFlags: GlobalFlags): Promise<void> {
-  if (globalFlags.help) {
-    console.log(GENERATE_USAGE)
-    return
-  }
-
-  const { flags, positional } = parseGenerateFlags(args)
-  const rootDir = process.cwd()
-
-  // Load config
-  const config = await loadConfig(rootDir)
-  if (!config) {
-    console.error('No ads.config.ts found. Run "ads init" first.')
-    process.exit(1)
-  }
-
-  if (!config.ai) {
-    console.error('No "ai" section in ads.config.ts. Configure an AI model to use generation.')
-    console.error('')
-    console.error('Example:')
-    console.error('  import { anthropic } from "@ai-sdk/anthropic"')
-    console.error('  export default defineConfig({')
-    console.error('    ai: { model: anthropic("claude-sonnet-4-20250514") },')
-    console.error('  })')
-    process.exit(1)
-  }
-
-  // Discover campaigns
-  const discovery = await discoverCampaigns(rootDir)
-  if (discovery.errors.length > 0) {
-    console.error('Campaign discovery errors:')
-    for (const err of discovery.errors) {
-      console.error(`  ${err.file}: ${err.message}`)
-    }
-    process.exit(1)
-  }
-
-  // Filter to specific campaign if positional arg provided
-  let campaigns = discovery.campaigns
-  if (positional) {
-    campaigns = campaigns.filter((c) => c.file.includes(positional))
-    if (campaigns.length === 0) {
-      console.error(`No campaign found matching "${positional}"`)
-      process.exit(1)
-    }
-  }
-
-  if (flags.filter) {
-    const pattern = new Bun.Glob(flags.filter)
-    campaigns = campaigns.filter((c) => pattern.match(c.file))
-  }
-
-  if (campaigns.length === 0) {
-    console.log('No campaigns found in campaigns/**/*.ts')
-    return
-  }
-
-  // Pin/unpin mode — modify lock file and exit
-  if (flags.pin !== undefined) {
-    await handlePinUnpin(campaigns, flags.pin, 'pin')
-    return
-  }
-
-  if (flags.unpin !== undefined) {
-    await handlePinUnpin(campaigns, flags.unpin, 'unpin')
-    return
-  }
-
-  // Scan all markers for dry-run and confirmation
-  type CampaignLike = { groups: Record<string, { keywords: readonly unknown[]; ads: readonly unknown[] }> }
-  let totalSlots = 0
-  const campaignScans: Array<{ name: string; scan: MarkerScan }> = []
-
-  for (const c of campaigns) {
-    const campaign = c.campaign as CampaignLike & { name: string }
-    const scan = scanMarkers(campaign)
-    totalSlots += scan.slotKeys.length
-    campaignScans.push({ name: campaign.name, scan })
-  }
-
-  if (totalSlots === 0) {
-    console.log('No AI markers found in campaigns. Nothing to generate.')
-    return
-  }
-
-  // Dry-run mode
-  if (flags.dryRun) {
-    console.log('Dry run — would generate the following slots:\n')
-    for (const { name, scan } of campaignScans) {
-      if (scan.slotKeys.length === 0) continue
-      console.log(`  Campaign "${name}":`)
-      for (const key of scan.slotKeys) {
-        console.log(`    - ${key}`)
-      }
-    }
-    console.log(`\n  Total: ${totalSlots} slot${totalSlots !== 1 ? 's' : ''}`)
-    return
-  }
-
-  // Confirmation prompt for large operations
-  if (totalSlots > 10 && !flags.yes) {
-    console.log(`About to generate ${totalSlots} AI slots across ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''}.`)
-    console.log('This will call the AI model and incur token costs.')
-    console.log('Run with --yes or -y to skip this prompt.\n')
-
-    process.stdout.write('Continue? (y/N) ')
-    const response = await readLine()
-    if (response.toLowerCase() !== 'y') {
-      console.log('Aborted.')
-      return
-    }
-  }
-
-  // Run generation
-  const aiConfig = config.ai
-  const discovered = campaigns.map((c) => ({
-    file: c.file,
-    campaign: c.campaign as { name: string; groups: Record<string, { keywords: readonly unknown[]; ads: readonly unknown[] }> },
-  }))
-
-  const judgeConfig = aiConfig.judge ? { prompt: aiConfig.judge.prompt } : undefined
-
-  const result = await generateAll(
-    discovered,
-    { model: aiConfig.model, judge: judgeConfig },
-    { reroll: flags.reroll },
-  )
-
-  console.log(formatResult(result))
-}
-
-// ─── Pin/Unpin Handler ──────────────────────────────────────────────
-
-async function handlePinUnpin(
-  campaigns: Array<{ file: string; campaign: unknown }>,
-  slotSpec: string,
-  mode: 'pin' | 'unpin',
-): Promise<void> {
-  // slotSpec format: "slot:index" e.g. "main.ad:0" or just "main.ad" (pin all)
-  const [slotKey, indexStr] = slotSpec.split(':')
-  if (!slotKey) {
-    console.error(`Invalid slot spec: "${slotSpec}". Use format "group.ad:index".`)
-    process.exit(1)
-  }
-
-  const index = indexStr !== undefined ? parseInt(indexStr, 10) : undefined
-  if (indexStr !== undefined && (index === undefined || isNaN(index))) {
-    console.error(`Invalid index in slot spec: "${slotSpec}". Index must be a number.`)
-    process.exit(1)
-  }
-
-  // Find the campaign containing this slot
-  for (const c of campaigns) {
-    let lockFile = await readLockFile(c.file)
-    if (!lockFile) continue
-
-    const slot = lockFile.slots[slotKey]
-    if (!slot) continue
-
-    if (index !== undefined) {
-      lockFile = mode === 'pin' ? pinValue(lockFile, slotKey, index) : unpinValue(lockFile, slotKey, index)
-    } else {
-      // Pin/unpin all values
-      const result = slot.result as Record<string, unknown>
-      const items = Array.isArray(result['headlines'])
-        ? result['headlines']
-        : Array.isArray(result['keywords'])
-          ? result['keywords']
-          : []
-
-      for (let i = 0; i < items.length; i++) {
-        lockFile = mode === 'pin' ? pinValue(lockFile, slotKey, i) : unpinValue(lockFile, slotKey, i)
-      }
-    }
-
-    await writeLockFile(c.file, lockFile)
-    const action = mode === 'pin' ? 'Pinned' : 'Unpinned'
-    const target = index !== undefined ? `index ${index} in` : 'all values in'
-    console.log(`${action} ${target} slot "${slotKey}"`)
-    return
-  }
-
-  console.error(`Slot "${slotKey}" not found in any campaign lock file.`)
-  process.exit(1)
-}
-
-// ─── Stdin Helper ───────────────────────────────────────────────────
-
-function readLine(): Promise<string> {
-  return new Promise((resolve) => {
-    const stdin = process.stdin
-    stdin.resume()
-    stdin.setEncoding('utf8')
-    stdin.once('data', (data: string) => {
-      stdin.pause()
-      resolve(data.trim())
-    })
-  })
 }
