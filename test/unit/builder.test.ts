@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { google } from '../../src/google/index.ts'
 import { defineConfig } from '../../src/core/config.ts'
 import type { Headline, Description, Keyword, Budget, Targeting, CalloutText } from '../../src/core/types.ts'
-import type { GoogleAd, Sitelink, BiddingStrategy } from '../../src/google/types.ts'
+import type { GoogleAd, Sitelink, BiddingStrategy, StructuredSnippet, CallExtension, PriceExtension, PromotionExtension, ImageExtension } from '../../src/google/types.ts'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -234,6 +234,44 @@ describe('chaining', () => {
   })
 })
 
+// ─── Ad Group Negatives ─────────────────────────────────────────────
+
+describe('ad group negatives in builder', () => {
+  test('.group() passes through ad group negatives', () => {
+    const agNegatives: Keyword[] = [
+      { text: 'free trial', matchType: 'BROAD' },
+      { text: 'open source', matchType: 'EXACT' },
+    ]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).group('main', { keywords, ad, negatives: agNegatives })
+
+    expect(campaign.groups['main']!.negatives).toEqual(agNegatives)
+  })
+
+  test('.locale() passes through ad group negatives', () => {
+    const agNegatives: Keyword[] = [{ text: 'cheap', matchType: 'BROAD' }]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).locale('en-us', usTargeting, { keywords, ad, negatives: agNegatives })
+
+    expect(campaign.groups['en-us']!.negatives).toEqual(agNegatives)
+  })
+
+  test('ad group without negatives has no negatives field', () => {
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).group('main', { keywords, ad })
+
+    expect(campaign.groups['main']!.negatives).toBeUndefined()
+  })
+})
+
 // ─── .sitelinks() ──────────────────────────────────────────────────
 
 describe('.sitelinks()', () => {
@@ -282,6 +320,131 @@ describe('.callouts()', () => {
     }).callouts(text)
 
     expect(campaign.extensions?.callouts).toHaveLength(1)
+  })
+})
+
+// ─── .snippets() ───────────────────────────────────────────────────
+
+describe('.snippets()', () => {
+  test('sets structured snippet extensions', () => {
+    const snippets: StructuredSnippet[] = [
+      { header: 'Types', values: ['Files', 'Folders', 'Documents'] },
+    ]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).snippets(...snippets)
+
+    expect(campaign.extensions?.structuredSnippets).toEqual(snippets)
+  })
+})
+
+// ─── .calls() ──────────────────────────────────────────────────────
+
+describe('.calls()', () => {
+  test('sets call extensions', () => {
+    const calls: CallExtension[] = [
+      { phoneNumber: '+1-800-555-0123', countryCode: 'US' },
+    ]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).calls(...calls)
+
+    expect(campaign.extensions?.calls).toEqual(calls)
+  })
+})
+
+// ─── .prices() ─────────────────────────────────────────────────────
+
+describe('.prices()', () => {
+  test('sets price extensions', () => {
+    const prices: PriceExtension[] = [{
+      items: [
+        { header: 'Starter', description: 'For individuals', price: '$9/mo', url: '/pricing' },
+        { header: 'Pro', description: 'For teams', price: '$29/mo', url: '/pricing' },
+        { header: 'Enterprise', description: 'Custom', price: '$99/mo', url: '/pricing' },
+      ],
+    }]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).prices(...prices)
+
+    expect(campaign.extensions?.prices).toEqual(prices)
+  })
+})
+
+// ─── .promotions() ─────────────────────────────────────────────────
+
+describe('.promotions()', () => {
+  test('sets promotion extensions', () => {
+    const promos: PromotionExtension[] = [{
+      discountType: 'percent',
+      discountPercent: 20,
+      url: 'https://renamed.to/pricing',
+    }]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).promotions(...promos)
+
+    expect(campaign.extensions?.promotions).toEqual(promos)
+  })
+})
+
+// ─── .images() ─────────────────────────────────────────────────────
+
+describe('.images()', () => {
+  test('sets image extensions', () => {
+    const imgs: ImageExtension[] = [
+      { imageUrl: 'https://example.com/ad.png', altText: 'Product screenshot' },
+    ]
+
+    const campaign = google.search('Test', {
+      budget,
+      bidding: 'maximize-conversions',
+    }).images(...imgs)
+
+    expect(campaign.extensions?.images).toEqual(imgs)
+  })
+})
+
+// ─── Builder chaining with new extensions ──────────────────────────
+
+describe('chaining with new extensions', () => {
+  test('full chain with all extension types', () => {
+    const campaign = google.search('Full Extensions', {
+      budget,
+      bidding: 'maximize-conversions',
+    })
+      .group('main', { keywords, ad })
+      .sitelinks({ text: 'Pricing', url: '/pricing' })
+      .callouts('Free Trial')
+      .snippets({ header: 'Types', values: ['Files', 'Folders', 'Docs'] })
+      .calls({ phoneNumber: '+1-800-555-0123', countryCode: 'US' })
+      .prices({
+        items: [
+          { header: 'Starter', description: 'For individuals', price: '$9/mo', url: '/p' },
+          { header: 'Pro', description: 'For teams', price: '$29/mo', url: '/p' },
+          { header: 'Enterprise', description: 'Custom', price: '$99/mo', url: '/p' },
+        ],
+      })
+      .promotions({ discountType: 'percent', discountPercent: 20, url: '/pricing' })
+      .images({ imageUrl: 'https://example.com/ad.png' })
+
+    expect(campaign.extensions?.sitelinks).toHaveLength(1)
+    expect(campaign.extensions?.callouts).toHaveLength(1)
+    expect(campaign.extensions?.structuredSnippets).toHaveLength(1)
+    expect(campaign.extensions?.calls).toHaveLength(1)
+    expect(campaign.extensions?.prices).toHaveLength(1)
+    expect(campaign.extensions?.promotions).toHaveLength(1)
+    expect(campaign.extensions?.images).toHaveLength(1)
+    expect(Object.keys(campaign.groups)).toEqual(['main'])
   })
 })
 

@@ -1,8 +1,9 @@
 import type { Headline, Description } from '../core/types.ts'
-import type { RSAd } from '../google/types.ts'
+import type { RSAd, PinnedHeadline, PinnedDescription } from '../google/types.ts'
 
 const HEADLINE_MAX = 30
 const DESCRIPTION_MAX = 90
+const PATH_MAX = 15
 
 /**
  * Create validated RSA headlines. Each headline must be 30 characters or fewer.
@@ -54,6 +55,18 @@ export function descriptions(...texts: string[]): Description[] {
 }
 
 /**
+ * Optional RSA configuration for pinning, display paths, and mobile URLs.
+ */
+export type RSAOptions = {
+  readonly pinnedHeadlines?: PinnedHeadline[]
+  readonly pinnedDescriptions?: PinnedDescription[]
+  readonly path1?: string
+  readonly path2?: string
+  readonly mobileUrl?: string
+  readonly trackingTemplate?: string
+}
+
+/**
  * Build a Responsive Search Ad from validated headlines, descriptions, and a URL.
  *
  * Google requires 3-15 headlines and 2-4 descriptions per RSA.
@@ -61,8 +74,10 @@ export function descriptions(...texts: string[]): Description[] {
  * @param headlineList - Validated headlines (3-15 required)
  * @param descriptionList - Validated descriptions (2-4 required)
  * @param urlResult - URL object from the `url()` helper, with optional UTM params
+ * @param options - Optional RSA config: pinning, display paths, mobile URL, tracking template
  * @returns A complete RSA definition
  * @throws If headline count is outside 3-15 or description count is outside 2-4
+ * @throws If path1 or path2 exceeds 15 characters
  *
  * @example
  * ```ts
@@ -70,6 +85,11 @@ export function descriptions(...texts: string[]): Description[] {
  *   headlines('Rename Files Fast', 'AI File Renamer', 'Batch Rename Tool'),
  *   descriptions('Rename files in seconds.', 'Try free today.'),
  *   url('https://renamed.to'),
+ *   {
+ *     pinnedHeadlines: [{ text: 'Rename Files Fast', position: 1 }],
+ *     path1: 'rename',
+ *     path2: 'files',
+ *   },
  * )
  * ```
  */
@@ -77,6 +97,7 @@ export function rsa(
   headlineList: Headline[],
   descriptionList: Description[],
   urlResult: { finalUrl: string; utm?: RSAd['utm'] },
+  options?: RSAOptions,
 ): RSAd {
   if (headlineList.length < 3) {
     throw new Error(`RSA requires at least 3 headlines, got ${headlineList.length}`)
@@ -90,11 +111,25 @@ export function rsa(
   if (descriptionList.length > 4) {
     throw new Error(`RSA allows at most 4 descriptions, got ${descriptionList.length}`)
   }
+
+  if (options?.path1 && options.path1.length > PATH_MAX) {
+    throw new Error(`path1 "${options.path1}" exceeds ${PATH_MAX} chars (got ${options.path1.length})`)
+  }
+  if (options?.path2 && options.path2.length > PATH_MAX) {
+    throw new Error(`path2 "${options.path2}" exceeds ${PATH_MAX} chars (got ${options.path2.length})`)
+  }
+
   return {
     type: 'rsa' as const,
     headlines: headlineList,
     descriptions: descriptionList,
     finalUrl: urlResult.finalUrl,
     ...(urlResult.utm ? { utm: urlResult.utm } : {}),
+    ...(options?.pinnedHeadlines ? { pinnedHeadlines: options.pinnedHeadlines } : {}),
+    ...(options?.pinnedDescriptions ? { pinnedDescriptions: options.pinnedDescriptions } : {}),
+    ...(options?.path1 ? { path1: options.path1 } : {}),
+    ...(options?.path2 ? { path2: options.path2 } : {}),
+    ...(options?.mobileUrl ? { mobileUrl: options.mobileUrl } : {}),
+    ...(options?.trackingTemplate ? { trackingTemplate: options.trackingTemplate } : {}),
   }
 }

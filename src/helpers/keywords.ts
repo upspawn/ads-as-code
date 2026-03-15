@@ -1,57 +1,94 @@
-import type { ExactKeyword, PhraseKeyword, BroadKeyword, Keyword } from '../core/types.ts'
+import type { ExactKeyword, PhraseKeyword, BroadKeyword, Keyword, KeywordInput } from '../core/types.ts'
 
 /**
- * Create exact-match keywords from one or more text strings.
+ * Create exact-match keywords from strings or keyword input objects.
  *
- * Each text is trimmed and tagged with `matchType: 'EXACT'`.
+ * Each argument can be a plain string (trimmed) or an object with optional
+ * `bid`, `finalUrl`, and `status` overrides.
  *
- * @param texts - Keyword texts to wrap as exact match
+ * @param args - Keyword texts or input objects to wrap as exact match
  * @returns Array of exact-match keyword objects
  *
  * @example
  * ```ts
  * exact('rename files', 'batch rename')
- * // [{ text: 'rename files', matchType: 'EXACT' }, { text: 'batch rename', matchType: 'EXACT' }]
+ * exact({ text: 'rename files', bid: 1.50, finalUrl: 'https://...' })
+ * exact('rename files', { text: 'batch rename', bid: 2.00 })
  * ```
  */
-export function exact(...texts: string[]): ExactKeyword[] {
-  return texts.map(text => ({ text: text.trim(), matchType: 'EXACT' as const }))
+export function exact(...args: KeywordInput[]): ExactKeyword[] {
+  return args.map(arg => {
+    if (typeof arg === 'string') {
+      return { text: arg.trim(), matchType: 'EXACT' as const }
+    }
+    return {
+      text: arg.text.trim(),
+      matchType: 'EXACT' as const,
+      ...(arg.bid !== undefined && { bid: arg.bid }),
+      ...(arg.finalUrl !== undefined && { finalUrl: arg.finalUrl }),
+      ...(arg.status !== undefined && { status: arg.status }),
+    }
+  })
 }
 
 /**
- * Create phrase-match keywords from one or more text strings.
+ * Create phrase-match keywords from strings or keyword input objects.
  *
- * Each text is trimmed and tagged with `matchType: 'PHRASE'`.
+ * Each argument can be a plain string (trimmed) or an object with optional
+ * `bid`, `finalUrl`, and `status` overrides.
  *
- * @param texts - Keyword texts to wrap as phrase match
+ * @param args - Keyword texts or input objects to wrap as phrase match
  * @returns Array of phrase-match keyword objects
  *
  * @example
  * ```ts
  * phrase('file renaming tool', 'rename pdf')
- * // [{ text: 'file renaming tool', matchType: 'PHRASE' }, { text: 'rename pdf', matchType: 'PHRASE' }]
+ * phrase({ text: 'file renaming tool', bid: 1.00 })
  * ```
  */
-export function phrase(...texts: string[]): PhraseKeyword[] {
-  return texts.map(text => ({ text: text.trim(), matchType: 'PHRASE' as const }))
+export function phrase(...args: KeywordInput[]): PhraseKeyword[] {
+  return args.map(arg => {
+    if (typeof arg === 'string') {
+      return { text: arg.trim(), matchType: 'PHRASE' as const }
+    }
+    return {
+      text: arg.text.trim(),
+      matchType: 'PHRASE' as const,
+      ...(arg.bid !== undefined && { bid: arg.bid }),
+      ...(arg.finalUrl !== undefined && { finalUrl: arg.finalUrl }),
+      ...(arg.status !== undefined && { status: arg.status }),
+    }
+  })
 }
 
 /**
- * Create broad-match keywords from one or more text strings.
+ * Create broad-match keywords from strings or keyword input objects.
  *
- * Each text is trimmed and tagged with `matchType: 'BROAD'`.
+ * Each argument can be a plain string (trimmed) or an object with optional
+ * `bid`, `finalUrl`, and `status` overrides.
  *
- * @param texts - Keyword texts to wrap as broad match
+ * @param args - Keyword texts or input objects to wrap as broad match
  * @returns Array of broad-match keyword objects
  *
  * @example
  * ```ts
  * broad('file organization', 'document management')
- * // [{ text: 'file organization', matchType: 'BROAD' }, { text: 'document management', matchType: 'BROAD' }]
+ * broad({ text: 'file organization', bid: 0.50 })
  * ```
  */
-export function broad(...texts: string[]): BroadKeyword[] {
-  return texts.map(text => ({ text: text.trim(), matchType: 'BROAD' as const }))
+export function broad(...args: KeywordInput[]): BroadKeyword[] {
+  return args.map(arg => {
+    if (typeof arg === 'string') {
+      return { text: arg.trim(), matchType: 'BROAD' as const }
+    }
+    return {
+      text: arg.text.trim(),
+      matchType: 'BROAD' as const,
+      ...(arg.bid !== undefined && { bid: arg.bid }),
+      ...(arg.finalUrl !== undefined && { finalUrl: arg.finalUrl }),
+      ...(arg.status !== undefined && { status: arg.status }),
+    }
+  })
 }
 
 /**

@@ -5,7 +5,7 @@ import {
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   headlines, descriptions, rsa,
-  link, sitelinks, callouts,
+  link, sitelinks, callouts, snippet, call, price, promotion, image,
   negatives,
   url,
 } from '../../src/helpers/index.ts'
@@ -38,6 +38,54 @@ describe('broad()', () => {
   test('creates broad-match keywords', () => {
     const result = broad('rename')
     expect(result).toEqual([{ text: 'rename', matchType: 'BROAD' }])
+  })
+})
+
+// ─── Keyword Overrides ──────────────────────────────────────
+
+describe('keyword overrides', () => {
+  test('exact() with bid override', () => {
+    const result = exact({ text: 'rename files', bid: 1.50 })
+    expect(result).toEqual([{ text: 'rename files', matchType: 'EXACT', bid: 1.50 }])
+  })
+
+  test('exact() with finalUrl override', () => {
+    const result = exact({ text: 'rename pdf', finalUrl: 'https://renamed.to/pdf-renamer' })
+    expect(result).toEqual([{ text: 'rename pdf', matchType: 'EXACT', finalUrl: 'https://renamed.to/pdf-renamer' }])
+  })
+
+  test('exact() with status override', () => {
+    const result = exact({ text: 'paused kw', status: 'paused' })
+    expect(result).toEqual([{ text: 'paused kw', matchType: 'EXACT', status: 'paused' }])
+  })
+
+  test('mixed string + object keyword args', () => {
+    const result = exact('simple keyword', { text: 'override keyword', bid: 2.00 })
+    expect(result).toEqual([
+      { text: 'simple keyword', matchType: 'EXACT' },
+      { text: 'override keyword', matchType: 'EXACT', bid: 2.00 },
+    ])
+  })
+
+  test('phrase() with bid override', () => {
+    const result = phrase({ text: 'file renaming', bid: 0.75 })
+    expect(result).toEqual([{ text: 'file renaming', matchType: 'PHRASE', bid: 0.75 }])
+  })
+
+  test('broad() with all overrides', () => {
+    const result = broad({ text: 'document management', bid: 0.50, finalUrl: 'https://renamed.to', status: 'paused' })
+    expect(result).toEqual([{
+      text: 'document management',
+      matchType: 'BROAD',
+      bid: 0.50,
+      finalUrl: 'https://renamed.to',
+      status: 'paused',
+    }])
+  })
+
+  test('object input trims text', () => {
+    const result = exact({ text: '  padded text  ' })
+    expect(result[0]!.text).toBe('padded text')
   })
 })
 
@@ -176,6 +224,160 @@ describe('hours()', () => {
   })
 })
 
+
+describe('device()', () => {
+  test('creates device target with bid adjustment', () => {
+    const d = device('mobile', -0.5)
+    expect(d).toEqual({ type: 'device', device: 'mobile', bidAdjustment: -0.5 })
+  })
+
+  test('creates device target to exclude mobile', () => {
+    const d = device('mobile', -1.0)
+    expect(d).toEqual({ type: 'device', device: 'mobile', bidAdjustment: -1.0 })
+  })
+
+  test('creates desktop target with positive bid', () => {
+    const d = device('desktop', 0.2)
+    expect(d).toEqual({ type: 'device', device: 'desktop', bidAdjustment: 0.2 })
+  })
+
+  test('creates tablet target with no change', () => {
+    const d = device('tablet', 0)
+    expect(d).toEqual({ type: 'device', device: 'tablet', bidAdjustment: 0 })
+  })
+
+  test('throws for bid adjustment below -1', () => {
+    expect(() => device('mobile', -1.5)).toThrow('between -1.0 and 9.0')
+  })
+
+  test('throws for bid adjustment above 9', () => {
+    expect(() => device('mobile', 10)).toThrow('between -1.0 and 9.0')
+  })
+})
+
+describe('regions()', () => {
+  test('creates region target', () => {
+    const r = regions('California', 'New York')
+    expect(r).toEqual({ type: 'region', regions: ['California', 'New York'] })
+  })
+
+  test('throws with no regions', () => {
+    expect(() => regions()).toThrow('at least one')
+  })
+})
+
+describe('cities()', () => {
+  test('creates city target', () => {
+    const c = cities('Berlin', 'Munich', 'Hamburg')
+    expect(c).toEqual({ type: 'city', cities: ['Berlin', 'Munich', 'Hamburg'] })
+  })
+
+  test('throws with no cities', () => {
+    expect(() => cities()).toThrow('at least one')
+  })
+})
+
+describe('radius()', () => {
+  test('creates radius target with coordinates', () => {
+    const r = radius(52.52, 13.405, 50)
+    expect(r).toEqual({ type: 'radius', latitude: 52.52, longitude: 13.405, radiusKm: 50 })
+  })
+
+  test('throws for zero radius', () => {
+    expect(() => radius(0, 0, 0)).toThrow('positive')
+  })
+
+  test('throws for negative radius', () => {
+    expect(() => radius(0, 0, -10)).toThrow('positive')
+  })
+})
+
+describe('presence()', () => {
+  test('creates presence-only target', () => {
+    const p = presence('presence')
+    expect(p).toEqual({ type: 'presence', mode: 'presence' })
+  })
+
+  test('creates presence-or-interest target', () => {
+    const p = presence('presence-or-interest')
+    expect(p).toEqual({ type: 'presence', mode: 'presence-or-interest' })
+  })
+})
+
+describe('demographics()', () => {
+  test('creates target with age ranges', () => {
+    const d = demographics({ ageRanges: ['25-34', '35-44'] })
+    expect(d).toEqual({ type: 'demographic', ageRanges: ['25-34', '35-44'] })
+  })
+
+  test('creates target with genders', () => {
+    const d = demographics({ genders: ['male', 'female'] })
+    expect(d).toEqual({ type: 'demographic', genders: ['male', 'female'] })
+  })
+
+  test('creates target with incomes', () => {
+    const d = demographics({ incomes: ['top-10%', '11-20%'] })
+    expect(d).toEqual({ type: 'demographic', incomes: ['top-10%', '11-20%'] })
+  })
+
+  test('creates target with parental statuses', () => {
+    const d = demographics({ parentalStatuses: ['parent'] })
+    expect(d).toEqual({ type: 'demographic', parentalStatuses: ['parent'] })
+  })
+
+  test('creates target with all demographic options', () => {
+    const d = demographics({
+      ageRanges: ['25-34'],
+      genders: ['female'],
+      incomes: ['top-10%'],
+      parentalStatuses: ['not-parent'],
+    })
+    expect(d).toEqual({
+      type: 'demographic',
+      ageRanges: ['25-34'],
+      genders: ['female'],
+      incomes: ['top-10%'],
+      parentalStatuses: ['not-parent'],
+    })
+  })
+
+  test('creates target with empty options', () => {
+    const d = demographics({})
+    expect(d).toEqual({ type: 'demographic' })
+  })
+})
+
+describe('scheduleBid()', () => {
+  test('creates schedule bid target', () => {
+    const sb = scheduleBid('mon', 9, 17, 0.2)
+    expect(sb).toEqual({ type: 'schedule-bid', day: 'mon', startHour: 9, endHour: 17, bidAdjustment: 0.2 })
+  })
+
+  test('creates schedule bid with negative adjustment', () => {
+    const sb = scheduleBid('sat', 0, 24, -0.5)
+    expect(sb).toEqual({ type: 'schedule-bid', day: 'sat', startHour: 0, endHour: 24, bidAdjustment: -0.5 })
+  })
+
+  test('throws for invalid start hour', () => {
+    expect(() => scheduleBid('mon', -1, 10, 0)).toThrow('0-23')
+    expect(() => scheduleBid('mon', 24, 24, 0)).toThrow('0-23')
+  })
+
+  test('throws for invalid end hour', () => {
+    expect(() => scheduleBid('mon', 0, 25, 0)).toThrow('1-24')
+    expect(() => scheduleBid('mon', 0, 0, 0)).toThrow('1-24')
+  })
+
+  test('throws when start >= end', () => {
+    expect(() => scheduleBid('mon', 17, 9, 0)).toThrow('less than')
+  })
+
+  test('throws for bid adjustment out of range', () => {
+    expect(() => scheduleBid('mon', 9, 17, -1.5)).toThrow('between -1.0 and 9.0')
+    expect(() => scheduleBid('mon', 9, 17, 10)).toThrow('between -1.0 and 9.0')
+  })
+})
+
 describe('targeting()', () => {
   test('composes multiple rules', () => {
     const t = targeting(
@@ -192,6 +394,31 @@ describe('targeting()', () => {
   test('works with no rules', () => {
     const t = targeting()
     expect(t).toEqual({ rules: [] })
+  })
+
+  test('composes all new rule types together', () => {
+    const t = targeting(
+      geo('US', 'DE'),
+      languages('en'),
+      weekdays(),
+      hours(9, 17),
+      device('mobile', -1.0),
+      device('desktop', 0.2),
+      regions('California'),
+      cities('Berlin'),
+      radius(52.52, 13.405, 50),
+      presence('presence'),
+      demographics({ ageRanges: ['25-34'], genders: ['male'] }),
+      scheduleBid('mon', 9, 17, 0.2),
+    )
+    expect(t.rules).toHaveLength(12)
+    expect(t.rules[4]!.type).toBe('device')
+    expect(t.rules[6]!.type).toBe('region')
+    expect(t.rules[7]!.type).toBe('city')
+    expect(t.rules[8]!.type).toBe('radius')
+    expect(t.rules[9]!.type).toBe('presence')
+    expect(t.rules[10]!.type).toBe('demographic')
+    expect(t.rules[11]!.type).toBe('schedule-bid')
   })
 })
 
@@ -362,6 +589,80 @@ describe('rsa()', () => {
     const d = descriptions('D1 text')
     expect(() => rsa(h, d, url('https://renamed.to'))).toThrow('at least 2 descriptions')
   })
+
+  test('creates RSA with pinned headlines', () => {
+    const h = headlines('Headline One', 'Headline Two', 'Headline Three')
+    const d = descriptions('Description one for the ad.', 'Description two for the ad.')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u, {
+      pinnedHeadlines: [{ text: 'Headline One', position: 1 }],
+    })
+    expect(ad.pinnedHeadlines).toEqual([{ text: 'Headline One', position: 1 }])
+  })
+
+  test('creates RSA with pinned descriptions', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u, {
+      pinnedDescriptions: [{ text: 'D1 text', position: 1 }],
+    })
+    expect(ad.pinnedDescriptions).toEqual([{ text: 'D1 text', position: 1 }])
+  })
+
+  test('creates RSA with path1 and path2', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u, { path1: 'rename', path2: 'files' })
+    expect(ad.path1).toBe('rename')
+    expect(ad.path2).toBe('files')
+  })
+
+  test('throws when path1 exceeds 15 chars', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    expect(() => rsa(h, d, u, { path1: 'A'.repeat(16) })).toThrow('path1')
+    expect(() => rsa(h, d, u, { path1: 'A'.repeat(16) })).toThrow('exceeds 15 chars')
+  })
+
+  test('throws when path2 exceeds 15 chars', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    expect(() => rsa(h, d, u, { path2: 'B'.repeat(16) })).toThrow('path2')
+    expect(() => rsa(h, d, u, { path2: 'B'.repeat(16) })).toThrow('exceeds 15 chars')
+  })
+
+  test('path1/path2 at exactly 15 chars passes', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u, { path1: 'A'.repeat(15), path2: 'B'.repeat(15) })
+    expect(ad.path1).toBe('A'.repeat(15))
+    expect(ad.path2).toBe('B'.repeat(15))
+  })
+
+  test('creates RSA with mobileUrl', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u, { mobileUrl: 'https://m.renamed.to' })
+    expect(ad.mobileUrl).toBe('https://m.renamed.to')
+  })
+
+  test('RSA without options has no extra fields', () => {
+    const h = headlines('H1 text', 'H2 text', 'H3 text')
+    const d = descriptions('D1 text', 'D2 text')
+    const u = url('https://renamed.to')
+    const ad = rsa(h, d, u)
+    expect(ad.pinnedHeadlines).toBeUndefined()
+    expect(ad.pinnedDescriptions).toBeUndefined()
+    expect(ad.path1).toBeUndefined()
+    expect(ad.path2).toBeUndefined()
+    expect(ad.mobileUrl).toBeUndefined()
+  })
 })
 
 // ─── Extensions ─────────────────────────────────────────────
@@ -421,6 +722,150 @@ describe('callouts()', () => {
   test('at exactly 25 chars passes', () => {
     const text = 'C'.repeat(25)
     expect(() => callouts(text)).not.toThrow()
+  })
+})
+
+// ─── Structured Snippets ────────────────────────────────────
+
+describe('snippet()', () => {
+  test('creates a structured snippet with valid values', () => {
+    const s = snippet('Types', 'Files', 'Folders', 'Documents')
+    expect(s).toEqual({ header: 'Types', values: ['Files', 'Folders', 'Documents'] })
+  })
+
+  test('throws when a value exceeds 25 chars', () => {
+    const longValue = 'A'.repeat(26)
+    expect(() => snippet('Types', 'Files', 'Folders', longValue)).toThrow('exceeds 25 chars')
+  })
+
+  test('value at exactly 25 chars passes', () => {
+    const value = 'A'.repeat(25)
+    const s = snippet('Types', value, 'Folders', 'Documents')
+    expect(s.values[0]).toBe(value)
+  })
+
+  test('throws with fewer than 3 values', () => {
+    expect(() => snippet('Types', 'Files', 'Folders', 'Documents')).not.toThrow()
+    expect(() => snippet('Types', 'Files', 'Folders')).toThrow('at least 3')
+    expect(() => snippet('Types', 'Files')).toThrow('at least 3')
+    expect(() => snippet('Types')).toThrow('at least 3')
+  })
+
+  test('throws with more than 10 values', () => {
+    const values = Array.from({ length: 11 }, (_, i) => `Value ${i}`)
+    expect(() => snippet('Types', ...values)).toThrow('at most 10')
+  })
+
+  test('allows exactly 10 values', () => {
+    const values = Array.from({ length: 10 }, (_, i) => `Val ${i}`)
+    expect(() => snippet('Types', ...values)).not.toThrow()
+  })
+})
+
+// ─── Call Extension ─────────────────────────────────────────
+
+describe('call()', () => {
+  test('creates a call extension', () => {
+    const c = call('+1-800-555-0123', 'US')
+    expect(c).toEqual({ phoneNumber: '+1-800-555-0123', countryCode: 'US' })
+  })
+
+  test('includes callOnly when specified', () => {
+    const c = call('+49-30-1234567', 'DE', true)
+    expect(c).toEqual({ phoneNumber: '+49-30-1234567', countryCode: 'DE', callOnly: true })
+  })
+
+  test('omits callOnly when not specified', () => {
+    const c = call('+1-800-555-0123', 'US')
+    expect(c).not.toHaveProperty('callOnly')
+  })
+})
+
+// ─── Price Extension ────────────────────────────────────────
+
+describe('price()', () => {
+  const validItems = [
+    { header: 'Starter', description: 'For individuals', price: '$9/mo', url: '/pricing' },
+    { header: 'Pro', description: 'For teams', price: '$29/mo', url: '/pricing' },
+    { header: 'Enterprise', description: 'Custom pricing', price: '$99/mo', url: '/pricing' },
+  ]
+
+  test('creates a price extension with valid items', () => {
+    const p = price(validItems)
+    expect(p.items).toHaveLength(3)
+    expect(p.items[0]!.header).toBe('Starter')
+  })
+
+  test('includes qualifier when specified', () => {
+    const p = price(validItems, 'from')
+    expect(p.priceQualifier).toBe('from')
+  })
+
+  test('throws with fewer than 3 items', () => {
+    expect(() => price(validItems.slice(0, 2))).toThrow('at least 3')
+  })
+
+  test('throws with more than 8 items', () => {
+    const tooMany = Array.from({ length: 9 }, (_, i) => ({
+      header: `Plan ${i}`, description: 'Desc', price: '$1', url: '/p',
+    }))
+    expect(() => price(tooMany)).toThrow('at most 8')
+  })
+
+  test('throws when header exceeds 25 chars', () => {
+    const items = [
+      { header: 'A'.repeat(26), description: 'Desc', price: '$1', url: '/p' },
+      ...validItems.slice(1),
+    ]
+    expect(() => price(items)).toThrow('exceeds 25 chars')
+  })
+})
+
+// ─── Promotion Extension ───────────────────────────────────
+
+describe('promotion()', () => {
+  test('creates a promotion extension', () => {
+    const p = promotion({
+      discountType: 'percent',
+      discountPercent: 20,
+      occasion: 'BLACK_FRIDAY',
+      url: 'https://renamed.to/pricing',
+    })
+    expect(p.discountType).toBe('percent')
+    expect(p.discountPercent).toBe(20)
+    expect(p.occasion).toBe('BLACK_FRIDAY')
+    expect(p.url).toBe('https://renamed.to/pricing')
+  })
+
+  test('creates a monetary promotion', () => {
+    const p = promotion({
+      discountType: 'monetary',
+      discountAmount: 10,
+      promotionCode: 'SAVE10',
+      url: 'https://renamed.to/pricing',
+    })
+    expect(p.discountType).toBe('monetary')
+    expect(p.discountAmount).toBe(10)
+    expect(p.promotionCode).toBe('SAVE10')
+  })
+})
+
+// ─── Image Extension ───────────────────────────────────────
+
+describe('image()', () => {
+  test('creates an image extension', () => {
+    const img = image('https://example.com/ad.png')
+    expect(img).toEqual({ imageUrl: 'https://example.com/ad.png' })
+  })
+
+  test('includes altText when specified', () => {
+    const img = image('https://example.com/ad.png', 'Product screenshot')
+    expect(img).toEqual({ imageUrl: 'https://example.com/ad.png', altText: 'Product screenshot' })
+  })
+
+  test('omits altText when not specified', () => {
+    const img = image('https://example.com/ad.png')
+    expect(img).not.toHaveProperty('altText')
   })
 })
 

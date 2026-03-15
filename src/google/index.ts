@@ -48,6 +48,7 @@ function normalizeAdGroup(input: AdGroupInput, targetingOverride?: Targeting): G
   const group: GoogleAdGroup = {
     keywords: input.keywords,
     ads,
+    ...(input.negatives !== undefined && input.negatives.length > 0 && { negatives: input.negatives }),
     ...(input.status !== undefined && { status: input.status }),
     ...(targetingOverride ?? input.targeting
       ? { targeting: targetingOverride ?? input.targeting }

@@ -308,6 +308,270 @@ describe('RSA hash stability', () => {
   })
 })
 
+// ─── flatten — keyword overrides ─────────────────────────
+
+describe('flatten() keyword overrides', () => {
+  test('keyword with bid override is included in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [
+            { text: 'rename pdf', matchType: 'EXACT', bid: 1.50 },
+          ],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const kw = resources.find(r => r.kind === 'keyword')!
+    expect(kw.properties.bid).toBe(1.50)
+  })
+
+  test('keyword with finalUrl override is included in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [
+            { text: 'rename pdf', matchType: 'EXACT', finalUrl: 'https://renamed.to/pdf' },
+          ],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const kw = resources.find(r => r.kind === 'keyword')!
+    expect(kw.properties.finalUrl).toBe('https://renamed.to/pdf')
+  })
+
+  test('keyword with status override is included in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [
+            { text: 'rename pdf', matchType: 'EXACT', status: 'paused' },
+          ],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const kw = resources.find(r => r.kind === 'keyword')!
+    expect(kw.properties.status).toBe('paused')
+  })
+
+  test('keyword without overrides omits extra properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [
+            { text: 'rename pdf', matchType: 'EXACT' },
+          ],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const kw = resources.find(r => r.kind === 'keyword')!
+    expect(kw.properties).not.toHaveProperty('bid')
+    expect(kw.properties).not.toHaveProperty('finalUrl')
+    expect(kw.properties).not.toHaveProperty('status')
+  })
+})
+
+// ─── flatten — RSA pinning and paths ─────────────────────
+
+describe('flatten() RSA pinning and paths', () => {
+  test('RSA with pinned headlines includes them in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+            pinnedHeadlines: [{ text: 'H1', position: 1 }],
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const ad = resources.find(r => r.kind === 'ad')!
+    expect(ad.properties.pinnedHeadlines).toEqual([{ text: 'H1', position: 1 }])
+  })
+
+  test('RSA with path1/path2 includes them in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+            path1: 'rename',
+            path2: 'files',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const ad = resources.find(r => r.kind === 'ad')!
+    expect(ad.properties.path1).toBe('rename')
+    expect(ad.properties.path2).toBe('files')
+  })
+
+  test('RSA with mobileUrl includes it in properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+            mobileUrl: 'https://m.example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const ad = resources.find(r => r.kind === 'ad')!
+    expect(ad.properties.mobileUrl).toBe('https://m.example.com')
+  })
+
+  test('RSA without extra fields omits them from properties', () => {
+    const campaign = makeCampaign({
+      groups: {
+        test: {
+          keywords: [],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const ad = resources.find(r => r.kind === 'ad')!
+    expect(ad.properties).not.toHaveProperty('pinnedHeadlines')
+    expect(ad.properties).not.toHaveProperty('pinnedDescriptions')
+    expect(ad.properties).not.toHaveProperty('path1')
+    expect(ad.properties).not.toHaveProperty('path2')
+    expect(ad.properties).not.toHaveProperty('mobileUrl')
+  })
+})
+
+// ─── flatten — ad group negatives ─────────────────────────
+
+describe('flatten() ad group negatives', () => {
+  test('ad group negatives produce negative resources under the ad group path', () => {
+    const campaign = makeCampaign({
+      groups: {
+        'pdf-core': {
+          keywords: [
+            { text: 'rename pdf', matchType: 'EXACT' },
+          ],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+          negatives: [
+            { text: 'free pdf', matchType: 'BROAD' },
+            { text: 'pdf viewer', matchType: 'EXACT' },
+          ],
+        },
+      },
+      extensions: undefined,
+      negatives: [],
+    })
+    const resources = flatten(campaign)
+    const negatives = resources.filter(r => r.kind === 'negative')
+    expect(negatives).toHaveLength(2)
+
+    const paths = negatives.map(r => r.path).sort()
+    expect(paths).toContain('search-pdf-renaming/pdf-core/neg:free pdf:BROAD')
+    expect(paths).toContain('search-pdf-renaming/pdf-core/neg:pdf viewer:EXACT')
+  })
+
+  test('ad group negatives are separate from campaign negatives', () => {
+    const campaign = makeCampaign({
+      groups: {
+        'pdf-core': {
+          keywords: [],
+          ads: [{
+            type: 'rsa',
+            headlines: ['H1' as Headline, 'H2' as Headline, 'H3' as Headline],
+            descriptions: ['D1' as Description, 'D2' as Description],
+            finalUrl: 'https://example.com',
+          }],
+          negatives: [
+            { text: 'ag negative', matchType: 'BROAD' },
+          ],
+        },
+      },
+      extensions: undefined,
+      negatives: [
+        { text: 'campaign negative', matchType: 'BROAD' },
+      ],
+    })
+    const resources = flatten(campaign)
+    const negatives = resources.filter(r => r.kind === 'negative')
+    expect(negatives).toHaveLength(2)
+
+    // Ad group negative is under the ad group path
+    const agNeg = negatives.find(r => r.path.includes('pdf-core/neg:'))!
+    expect(agNeg.path).toBe('search-pdf-renaming/pdf-core/neg:ag negative:BROAD')
+
+    // Campaign negative is at campaign level
+    const cNeg = negatives.find(r => !r.path.includes('pdf-core/neg:'))!
+    expect(cNeg.path).toBe('search-pdf-renaming/neg:campaign negative:BROAD')
+  })
+})
+
 // ─── flatten — edge cases ─────────────────────────────────
 
 describe('flatten() edge cases', () => {

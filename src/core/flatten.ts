@@ -72,6 +72,9 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
       resources.push(resource('keyword', kwPath, {
         text: kw.text,
         matchType: kw.matchType,
+        ...(kw.bid !== undefined && { bid: kw.bid }),
+        ...(kw.finalUrl !== undefined && { finalUrl: kw.finalUrl }),
+        ...(kw.status !== undefined && { status: kw.status }),
       }))
     }
 
@@ -84,7 +87,24 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
         descriptions: [...ad.descriptions].sort(),
         finalUrl: ad.finalUrl,
         utm: ad.utm,
+        ...(ad.pinnedHeadlines && { pinnedHeadlines: ad.pinnedHeadlines }),
+        ...(ad.pinnedDescriptions && { pinnedDescriptions: ad.pinnedDescriptions }),
+        ...(ad.path1 && { path1: ad.path1 }),
+        ...(ad.path2 && { path2: ad.path2 }),
+        ...(ad.mobileUrl && { mobileUrl: ad.mobileUrl }),
+        ...(ad.trackingTemplate && { trackingTemplate: ad.trackingTemplate }),
       }))
+    }
+
+    // Ad group negatives
+    if (group.negatives) {
+      for (const neg of group.negatives) {
+        const negPath = `${adGroupPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`
+        resources.push(resource('negative', negPath, {
+          text: neg.text,
+          matchType: neg.matchType,
+        }))
+      }
     }
   }
 
@@ -111,7 +131,7 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     }
   }
 
-  // 5. Negatives
+  // 5. Campaign-level negatives
   for (const neg of campaign.negatives) {
     const negPath = `${campaignPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`
     resources.push(resource('negative', negPath, {
