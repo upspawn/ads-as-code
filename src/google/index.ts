@@ -8,20 +8,29 @@ import type {
   BiddingStrategy,
   CallExtension,
   CampaignBuilder,
+  DemandGenAdGroup,
+  DemandGenAdGroupInput,
+  DemandGenCampaignBuilder,
+  DemandGenCampaignInput,
   DisplayAdGroupInput,
   DisplayCampaignBuilder,
   DisplayCampaignInput,
   GoogleAdGroupUnresolved,
+  GoogleDemandGenCampaign,
   GoogleDisplayAdGroup,
   GoogleDisplayCampaign,
   GooglePMaxCampaign,
   GoogleSearchCampaignUnresolved,
+  GoogleShoppingCampaign,
   ImageExtension,
   PMaxCampaignBuilder,
   PMaxCampaignInput,
   PriceExtension,
   PromotionExtension,
   SearchCampaignInput,
+  ShoppingAdGroup,
+  ShoppingCampaignBuilder,
+  ShoppingCampaignInput,
   Sitelink,
   StructuredSnippet,
 } from './types.ts'
@@ -319,6 +328,85 @@ function createPMaxBuilder(campaign: GooglePMaxCampaign): PMaxCampaignBuilder {
   return builder
 }
 
+// ─── Shopping Builder ────────────────────────────────────────
+
+/**
+ * Create a ShoppingCampaignBuilder that wraps a GoogleShoppingCampaign with chained methods.
+ */
+function createShoppingBuilder(campaign: GoogleShoppingCampaign): ShoppingCampaignBuilder {
+  const builder: ShoppingCampaignBuilder = Object.create(null)
+
+  const keys = Object.keys(campaign) as (keyof GoogleShoppingCampaign)[]
+  for (const key of keys) {
+    Object.defineProperty(builder, key, {
+      value: campaign[key],
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    })
+  }
+
+  /**
+   * Add an ad group to the Shopping campaign.
+   * Shopping ad groups are simple — just an optional bid and status.
+   * The ad creative comes from the Merchant Center feed.
+   */
+  builder.group = function (key: string, input: ShoppingAdGroup): ShoppingCampaignBuilder {
+    const newGroups = { ...campaign.groups, [key]: input }
+    return createShoppingBuilder({ ...campaign, groups: newGroups })
+  }
+
+  return builder
+}
+
+// ─── Demand Gen Builder ─────────────────────────────────────
+
+/**
+ * Normalize DemandGenAdGroupInput into a DemandGenAdGroup.
+ */
+function normalizeDemandGenAdGroup(input: DemandGenAdGroupInput, targetingOverride?: Targeting): DemandGenAdGroup {
+  const ads = Array.isArray(input.ad) ? input.ad : [input.ad]
+
+  const group: DemandGenAdGroup = {
+    ads,
+    ...(input.status !== undefined && { status: input.status }),
+    ...(targetingOverride ?? input.targeting
+      ? { targeting: targetingOverride ?? input.targeting }
+      : {}),
+    ...(input.channels ? { channels: input.channels } : {}),
+  }
+  return group
+}
+
+/**
+ * Create a DemandGenCampaignBuilder that wraps a GoogleDemandGenCampaign with chained methods.
+ */
+function createDemandGenBuilder(campaign: GoogleDemandGenCampaign): DemandGenCampaignBuilder {
+  const builder: DemandGenCampaignBuilder = Object.create(null)
+
+  const keys = Object.keys(campaign) as (keyof GoogleDemandGenCampaign)[]
+  for (const key of keys) {
+    Object.defineProperty(builder, key, {
+      value: campaign[key],
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    })
+  }
+
+  /**
+   * Add an ad group to the Demand Gen campaign.
+   * Ad groups contain multi-asset or carousel ads with optional channel controls.
+   */
+  builder.group = function (key: string, input: DemandGenAdGroupInput): DemandGenCampaignBuilder {
+    const group = normalizeDemandGenAdGroup(input)
+    const newGroups = { ...campaign.groups, [key]: group }
+    return createDemandGenBuilder({ ...campaign, groups: newGroups })
+  }
+
+  return builder
+}
+
 /**
  * Google Ads campaign builder namespace.
  *
@@ -470,5 +558,102 @@ export const google = {
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
     }
     return createPMaxBuilder(campaign)
+  },
+
+  /**
+   * Create a Google Shopping campaign with a chainable builder API.
+   *
+   * Shopping campaigns display product ads from a Merchant Center feed.
+   * Ad groups are simpler than Search — no keywords or ads to manage,
+   * just optional bids and status.
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration (budget, bidding, targeting, merchantId, etc.)
+   * @returns A ShoppingCampaignBuilder for adding ad groups
+   *
+   * @example
+   * ```ts
+   * const campaign = google.shopping('Shopping - Products', {
+   *   budget: daily(10),
+   *   bidding: 'maximize-clicks',
+   *   targeting: targeting(geo('US', 'DE'), languages('en', 'de')),
+   *   merchantId: 123456789,
+   *   campaignPriority: 1,
+   * })
+   * .group('all-products', {})
+   * .group('electronics', { bid: 0.75 })
+   * ```
+   */
+  shopping(name: string, input: ShoppingCampaignInput): ShoppingCampaignBuilder {
+    const campaign: GoogleShoppingCampaign = {
+      provider: 'google',
+      kind: 'shopping',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      bidding: normalizeBidding(input.bidding),
+      targeting: input.targeting ?? { rules: [] },
+      shoppingSetting: {
+        merchantId: input.merchantId,
+        ...(input.campaignPriority !== undefined && { campaignPriority: input.campaignPriority }),
+        ...(input.enableLocal !== undefined && { enableLocal: input.enableLocal }),
+        ...(input.feedLabel !== undefined && { feedLabel: input.feedLabel }),
+      },
+      groups: {},
+      negatives: input.negatives ?? [],
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
+      ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+      ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+    }
+    return createShoppingBuilder(campaign)
+  },
+
+  /**
+   * Create a Google Demand Gen campaign with a chainable builder API.
+   *
+   * Demand Gen campaigns serve across YouTube, Discover, Gmail, and Display
+   * with multi-asset and carousel ad formats. They use audience-based targeting
+   * rather than keywords.
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration (budget, bidding, targeting, negatives, status)
+   * @returns A DemandGenCampaignBuilder for adding ad groups
+   *
+   * @example
+   * ```ts
+   * const campaign = google.demandGen('Demand Gen - Remarketing', {
+   *   budget: daily(10),
+   *   bidding: 'maximize-clicks',
+   *   targeting: targeting(geo('US', 'DE'), languages('en', 'de')),
+   * })
+   * .group('remarketing', {
+   *   ad: demandGenMultiAsset({
+   *     headlines: ['Rename Files Fast'],
+   *     descriptions: ['AI-powered file renaming'],
+   *     businessName: 'renamed.to',
+   *     finalUrl: 'https://renamed.to',
+   *   }),
+   * })
+   * ```
+   */
+  demandGen(name: string, input: DemandGenCampaignInput): DemandGenCampaignBuilder {
+    const campaign: GoogleDemandGenCampaign = {
+      provider: 'google',
+      kind: 'demand-gen',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      bidding: normalizeBidding(input.bidding),
+      targeting: input.targeting ?? { rules: [] },
+      groups: {},
+      negatives: input.negatives ?? [],
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
+      ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+    }
+    return createDemandGenBuilder(campaign)
   },
 }

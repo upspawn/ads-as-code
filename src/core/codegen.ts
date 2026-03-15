@@ -397,6 +397,16 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     // Find the group key from the path: campaignSlug/groupKey
     const groupKey = ag.path.replace(`${campaignSlug}/`, '')
 
+    // Shopping ad groups are simple — just optional bid and status
+    if ((ag.properties.adGroupType as string) === 'shopping') {
+      const shoppingParts: string[] = []
+      if (ag.properties.bid !== undefined) shoppingParts.push(`bid: ${ag.properties.bid}`)
+      if ((ag.properties.status as string) === 'paused') shoppingParts.push(`status: 'paused'`)
+      const body = shoppingParts.length > 0 ? `{ ${shoppingParts.join(', ')} }` : '{}'
+      groupLines.push(`  .group(${quote(groupKey)}, ${body})`)
+      continue
+    }
+
     // Keywords for this group
     const groupKeywords = keywords.filter((k) => k.path.startsWith(`${ag.path}/`))
     // Ads for this group
@@ -429,12 +439,86 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     }
     const keywordsLine = `keywords: [${keywordParts.join(', ')}],`
 
-    // Ads — detect RSA vs RDA
+    // Ads — detect RSA vs RDA vs Demand Gen
     let adLines = ''
     if (groupAds.length > 0) {
+      const isDemandGen = groupAds[0]?.properties.type === 'demand-gen-multi-asset' || groupAds[0]?.properties.type === 'demand-gen-carousel'
       const isRDA = groupAds[0]?.properties.adType === 'responsive-display'
 
-      if (isRDA) {
+      if (isDemandGen) {
+        const formatOneDemandGenAd = (adRes: Resource): string => {
+          const adType = adRes.properties.type as string
+          if (adType === 'demand-gen-multi-asset') {
+            imports.add('demandGenMultiAsset')
+            const hl = adRes.properties.headlines as string[]
+            const desc = adRes.properties.descriptions as string[]
+            const bn = adRes.properties.businessName as string
+            const adFinalUrl = adRes.properties.finalUrl as string
+            const callToAction = adRes.properties.callToAction as string | undefined
+            const marketingImgs = adRes.properties.marketingImages as Array<Record<string, unknown>> | undefined
+            const squareImgs = adRes.properties.squareMarketingImages as Array<Record<string, unknown>> | undefined
+            const portraitImgs = adRes.properties.portraitMarketingImages as Array<Record<string, unknown>> | undefined
+            const logoImgs = adRes.properties.logoImages as Array<Record<string, unknown>> | undefined
+
+            const parts: string[] = [
+              `headlines: [${hl.map(quote).join(', ')}],`,
+              `descriptions: [${desc.map(quote).join(', ')}],`,
+              `businessName: ${quote(bn)},`,
+              `finalUrl: ${quote(adFinalUrl)},`,
+            ]
+            if (marketingImgs && marketingImgs.length > 0) {
+              parts.push(`marketingImages: [${marketingImgs.map(img => formatImageRef(img, imports)).join(', ')}],`)
+            }
+            if (squareImgs && squareImgs.length > 0) {
+              parts.push(`squareMarketingImages: [${squareImgs.map(img => formatImageRef(img, imports)).join(', ')}],`)
+            }
+            if (portraitImgs && portraitImgs.length > 0) {
+              parts.push(`portraitMarketingImages: [${portraitImgs.map(img => formatImageRef(img, imports)).join(', ')}],`)
+            }
+            if (logoImgs && logoImgs.length > 0) {
+              parts.push(`logoImages: [${logoImgs.map(img => formatImageRef(img, imports)).join(', ')}],`)
+            }
+            if (callToAction) parts.push(`callToAction: ${quote(callToAction)},`)
+
+            return `demandGenMultiAsset({\n      ${parts.join('\n      ')}\n    })`
+          } else {
+            // demand-gen-carousel
+            imports.add('demandGenCarousel')
+            imports.add('carouselCard')
+            const hl = adRes.properties.headline as string
+            const desc = adRes.properties.description as string
+            const bn = adRes.properties.businessName as string
+            const adFinalUrl = adRes.properties.finalUrl as string
+            const callToAction = adRes.properties.callToAction as string | undefined
+            const cards = adRes.properties.cards as Array<Record<string, unknown>>
+
+            const parts: string[] = [
+              `headline: ${quote(hl)},`,
+              `description: ${quote(desc)},`,
+              `businessName: ${quote(bn)},`,
+              `finalUrl: ${quote(adFinalUrl)},`,
+            ]
+            if (callToAction) parts.push(`callToAction: ${quote(callToAction)},`)
+
+            const cardStrs = cards.map(card => {
+              const cardParts: string[] = [`headline: ${quote(card.headline as string)}`]
+              cardParts.push(`finalUrl: ${quote(card.finalUrl as string)}`)
+              if (card.callToAction) cardParts.push(`callToAction: ${quote(card.callToAction as string)}`)
+              return `carouselCard({ ${cardParts.join(', ')} })`
+            })
+            parts.push(`cards: [\n        ${cardStrs.join(',\n        ')},\n      ],`)
+
+            return `demandGenCarousel({\n      ${parts.join('\n      ')}\n    })`
+          }
+        }
+
+        if (groupAds.length === 1) {
+          adLines = `ad: ${formatOneDemandGenAd(groupAds[0]!)},`
+        } else {
+          const formatted = groupAds.map(a => formatOneDemandGenAd(a))
+          adLines = `ad: [\n      ${formatted.join(',\n      ')},\n    ],`
+        }
+      } else if (isRDA) {
         const formatOneRDA = (adRes: Resource): string => {
           imports.add('responsiveDisplay')
 
@@ -557,13 +641,35 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
     }
 
     // Determine whether to use .group() or .locale()
+    const adGroupType = ag.properties.adGroupType as string | undefined
+    const skipKeywords = adGroupType === 'display' || adGroupType === 'demand-gen'
     const negLine = groupNegLine ? `\n    ${groupNegLine}` : ''
+
+    // Channel controls (Demand Gen only)
+    const channels = ag.properties.channels as Record<string, boolean> | undefined
+    let channelsLine = ''
+    if (channels) {
+      const channelEntries = Object.entries(channels)
+        .filter(([_, v]) => v !== true) // only emit non-default (false) values
+        .map(([k, v]) => `${k}: ${v}`)
+      if (channelEntries.length > 0) {
+        channelsLine = `\n    channels: { ${channelEntries.join(', ')} },`
+      }
+    }
+
+    // Build the group body parts
+    const bodyParts = [
+      ...(skipKeywords ? [] : [keywordsLine]),
+      adLines,
+    ].filter(Boolean).join('\n    ')
+    const extras = `${channelsLine}${negLine}`
+
     if (groupTargetingStr) {
       groupLines.push(
-        `  .locale(${quote(groupKey)}, ${groupTargetingStr}, {\n    ${keywordsLine}\n    ${adLines}${negLine}\n  })`,
+        `  .locale(${quote(groupKey)}, ${groupTargetingStr}, {\n    ${bodyParts}${extras}\n  })`,
       )
     } else {
-      groupLines.push(`  .group(${quote(groupKey)}, {\n    ${keywordsLine}\n    ${adLines}${negLine}\n  })`)
+      groupLines.push(`  .group(${quote(groupKey)}, {\n    ${bodyParts}${extras}\n  })`)
     }
   }
 
@@ -640,9 +746,30 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
   )
   lines.push('')
 
-  // Campaign declaration — detect channel type
+  // Shopping settings — add merchantId etc. to config
   const channelType = props.channelType as string | undefined
-  const builderMethod = channelType === 'display' ? 'display' : channelType === 'performance-max' ? 'performanceMax' : 'search'
+  if (channelType === 'shopping') {
+    const shoppingSetting = props.shoppingSetting as Record<string, unknown> | undefined
+    if (shoppingSetting) {
+      configParts.push(`merchantId: ${shoppingSetting.merchantId},`)
+      if (shoppingSetting.campaignPriority !== undefined) {
+        configParts.push(`campaignPriority: ${shoppingSetting.campaignPriority},`)
+      }
+      if (shoppingSetting.enableLocal !== undefined) {
+        configParts.push(`enableLocal: ${shoppingSetting.enableLocal},`)
+      }
+      if (shoppingSetting.feedLabel !== undefined) {
+        configParts.push(`feedLabel: ${quote(shoppingSetting.feedLabel as string)},`)
+      }
+    }
+  }
+
+  // Campaign declaration — detect channel type
+  const builderMethod = channelType === 'display' ? 'display'
+    : channelType === 'performance-max' ? 'performanceMax'
+    : channelType === 'shopping' ? 'shopping'
+    : channelType === 'demand-gen' ? 'demandGen'
+    : 'search'
   lines.push(`export default google.${builderMethod}(${quote(campaignName)}, {`)
   for (const part of configParts) {
     lines.push(`  ${part}`)

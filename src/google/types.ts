@@ -354,7 +354,154 @@ export type PMaxCampaignBuilder = GooglePMaxCampaign & {
   assetGroup(key: string, input: AssetGroupInput): PMaxCampaignBuilder
 }
 
+// === Shopping Campaign ===
+
+export type ShoppingSetting = {
+  readonly merchantId: number
+  readonly campaignPriority?: number  // 0-2, default 0
+  readonly enableLocal?: boolean
+  readonly feedLabel?: string
+}
+
+export type ShoppingAdGroup = {
+  readonly status?: 'enabled' | 'paused'
+  readonly bid?: number  // default CPC bid in currency units
+}
+
+export type GoogleShoppingCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'shopping'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy
+  readonly targeting: Targeting
+  readonly shoppingSetting: ShoppingSetting
+  readonly groups: Record<string, ShoppingAdGroup>
+  readonly negatives: Keyword[]
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+export type ShoppingCampaignInput = {
+  readonly budget: Budget
+  readonly bidding: BiddingInput
+  readonly targeting?: Targeting
+  readonly negatives?: Keyword[]
+  readonly status?: 'enabled' | 'paused'
+  readonly merchantId: number
+  readonly campaignPriority?: number
+  readonly enableLocal?: boolean
+  readonly feedLabel?: string
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+export type ShoppingCampaignBuilder = GoogleShoppingCampaign & {
+  group(key: string, input: ShoppingAdGroup): ShoppingCampaignBuilder
+}
+
+// === Demand Gen Campaign ===
+
+export type DemandGenMultiAssetAd = {
+  readonly type: 'demand-gen-multi-asset'
+  readonly headlines: string[]          // max 5, each max 40 chars
+  readonly descriptions: string[]       // max 5, each max 90 chars
+  readonly businessName: string
+  readonly finalUrl: string
+  readonly marketingImages?: ImageRef[]    // landscape 1.91:1
+  readonly squareMarketingImages?: ImageRef[] // square 1:1
+  readonly portraitMarketingImages?: ImageRef[] // portrait 4:5
+  readonly logoImages?: ImageRef[]        // square 1:1
+  readonly callToAction?: string
+}
+
+export type DemandGenCarouselCard = {
+  readonly headline: string
+  readonly finalUrl: string
+  readonly marketingImage?: ImageRef
+  readonly squareMarketingImage?: ImageRef
+  readonly callToAction?: string
+}
+
+export type DemandGenCarouselAd = {
+  readonly type: 'demand-gen-carousel'
+  readonly headline: string
+  readonly description: string
+  readonly businessName: string
+  readonly finalUrl: string
+  readonly logoImage?: ImageRef
+  readonly callToAction?: string
+  readonly cards: DemandGenCarouselCard[]  // min 2, max 10
+}
+
+export type DemandGenAd = DemandGenMultiAssetAd | DemandGenCarouselAd
+
+export type DemandGenChannelControls = {
+  readonly youtube?: boolean      // default true
+  readonly discover?: boolean     // default true
+  readonly gmail?: boolean        // default true
+  readonly display?: boolean      // default true
+  readonly youtubeShorts?: boolean // default true
+}
+
+export type DemandGenAdGroup = {
+  readonly ads: DemandGenAd[]
+  readonly status?: 'enabled' | 'paused'
+  readonly targeting?: Targeting
+  readonly channels?: DemandGenChannelControls
+}
+
+export type GoogleDemandGenCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'demand-gen'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy
+  readonly targeting: Targeting
+  readonly groups: Record<string, DemandGenAdGroup>
+  readonly negatives: Keyword[]
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+}
+
+// === Demand Gen Campaign Input ===
+
+export type DemandGenCampaignInput = {
+  readonly budget: Budget
+  readonly bidding: BiddingInput
+  readonly targeting?: Targeting
+  readonly negatives?: Keyword[]
+  readonly status?: 'enabled' | 'paused'
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+}
+
+export type DemandGenAdGroupInput = {
+  readonly ad: DemandGenAd | DemandGenAd[]
+  readonly targeting?: Targeting
+  readonly status?: 'enabled' | 'paused'
+  readonly channels?: DemandGenChannelControls
+}
+
+// === Demand Gen Campaign Builder ===
+
+export type DemandGenCampaignBuilder = GoogleDemandGenCampaign & {
+  group(key: string, input: DemandGenAdGroupInput): DemandGenCampaignBuilder
+}
+
 // === Campaign union (extensible for Meta) ===
 
-export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign
-export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign | GoogleShoppingCampaign | GoogleDemandGenCampaign

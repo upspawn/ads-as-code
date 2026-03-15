@@ -1,5 +1,5 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
-import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleCampaign } from './types.ts'
+import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleCampaign } from './types.ts'
 import { slugify } from '../core/flatten.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
@@ -280,13 +280,110 @@ export function flattenPMax(campaign: GooglePMaxCampaign): Resource[] {
   return resources
 }
 
+// ─── Shopping Flatten ───────────────────────────────────
+
+/** Flatten a single Google Shopping campaign tree into a flat list of Resource objects. */
+export function flattenShopping(campaign: GoogleShoppingCampaign): Resource[] {
+  const resources: Resource[] = []
+  const campaignPath = slugify(campaign.name)
+
+  // 1. Campaign resource — with channelType and shoppingSetting
+  resources.push(resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    bidding: campaign.bidding,
+    targeting: campaign.targeting,
+    channelType: 'shopping',
+    shoppingSetting: campaign.shoppingSetting,
+    ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
+    ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
+    ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
+    ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
+    ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
+  }))
+
+  // 2. Ad groups (simple — just status + optional bid)
+  for (const [key, group] of Object.entries(campaign.groups)) {
+    resources.push(resource('adGroup', `${campaignPath}/${key}`, {
+      status: group.status ?? 'enabled',
+      ...(group.bid !== undefined && { bid: group.bid }),
+      adGroupType: 'shopping',
+    }))
+  }
+
+  // 3. Campaign-level negatives
+  for (const neg of campaign.negatives) {
+    resources.push(resource('negative', `${campaignPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`, {
+      text: neg.text,
+      matchType: neg.matchType,
+    }))
+  }
+
+  return resources
+}
+
+// ─── Demand Gen Flatten ─────────────────────────────────
+
+/** Flatten a single Google Demand Gen campaign tree into a flat list of Resource objects. */
+export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] {
+  const resources: Resource[] = []
+  const campaignPath = slugify(campaign.name)
+
+  // 1. Campaign resource — with channelType marker
+  resources.push(resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    bidding: campaign.bidding,
+    targeting: campaign.targeting,
+    channelType: 'demand-gen',
+    ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
+    ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
+    ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
+    ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
+  }))
+
+  // 2. Ad groups + ads (no keywords — Demand Gen uses audience targeting)
+  for (const [groupKey, group] of Object.entries(campaign.groups)) {
+    const agPath = `${campaignPath}/${groupKey}`
+
+    resources.push(resource('adGroup', agPath, {
+      status: group.status ?? 'enabled',
+      targeting: group.targeting,
+      adGroupType: 'demand-gen',
+      ...(group.channels ? { channels: group.channels } : {}),
+    }))
+
+    // Demand Gen ads (multi-asset or carousel)
+    for (const ad of group.ads) {
+      const hash = stableHash(JSON.stringify(ad))
+      resources.push(resource('ad', `${agPath}/dgad:${hash}`, {
+        ...ad,
+      }))
+    }
+  }
+
+  // 3. Campaign-level negatives
+  for (const neg of campaign.negatives) {
+    resources.push(resource('negative', `${campaignPath}/neg:${neg.text.toLowerCase()}:${neg.matchType}`, {
+      text: neg.text,
+      matchType: neg.matchType,
+    }))
+  }
+
+  return resources
+}
+
 // ─── Multi-Kind Flatten ──────────────────────────────────
 
-/** Flatten multiple Google campaigns (Search, Display, or PMax) into a single flat list. */
+/** Flatten multiple Google campaigns (Search, Display, PMax, Shopping, or Demand Gen) into a single flat list. */
 export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
   return campaigns.flatMap(c => {
     if (c.kind === 'display') return flattenDisplay(c)
     if (c.kind === 'performance-max') return flattenPMax(c)
+    if (c.kind === 'shopping') return flattenShopping(c)
+    if (c.kind === 'demand-gen') return flattenDemandGen(c)
     return flatten(c)
   })
 }
