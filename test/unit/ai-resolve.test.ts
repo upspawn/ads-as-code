@@ -3,7 +3,7 @@ import type { Headline, Description, Keyword } from '../../src/core/types.ts'
 import type { GoogleSearchCampaign, GoogleSearchCampaignUnresolved, RSAd } from '../../src/google/types.ts'
 import type { LockFile } from '../../src/ai/lockfile.ts'
 import { resolveMarkers, checkStaleness } from '../../src/ai/resolve.ts'
-import { flatten } from '../../src/core/flatten.ts'
+import { flatten } from '../../src/google/flatten.ts'
 
 // === Test Helpers ===
 

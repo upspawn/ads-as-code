@@ -1,5 +1,5 @@
 import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
-import { flattenAll } from '../src/core/flatten.ts'
+import { flattenAll } from '../src/google/flatten.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
 import { createGoogleClient } from '../src/google/api.ts'

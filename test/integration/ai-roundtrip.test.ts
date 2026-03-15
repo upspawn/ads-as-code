@@ -14,7 +14,7 @@ import { generateForCampaign } from '../../src/ai/generate.ts'
 import type { GenerateObjectFn } from '../../src/ai/generate.ts'
 import { readLockFile } from '../../src/ai/lockfile.ts'
 import { resolveMarkers } from '../../src/ai/resolve.ts'
-import { flatten } from '../../src/core/flatten.ts'
+import { flatten } from '../../src/google/flatten.ts'
 import type { Keyword } from '../../src/core/types.ts'
 import type { GoogleSearchCampaignUnresolved } from '../../src/google/types.ts'
 

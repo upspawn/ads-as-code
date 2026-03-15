@@ -1,6 +1,6 @@
 import { discoverCampaigns, loadConfig } from '../src/core/discovery.ts'
 import { createGoogleClient } from '../src/google/api.ts'
-import { flatten } from '../src/core/flatten.ts'
+import { flatten } from '../src/google/flatten.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
 import type { GoogleConfig, GoogleSearchCampaign } from '../src/google/types.ts'
