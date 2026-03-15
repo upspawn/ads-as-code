@@ -1,8 +1,9 @@
-import { describe, expect, test, mock, beforeEach } from 'bun:test'
+import { describe, expect, test, mock, beforeEach, afterEach } from 'bun:test'
 import { resolveTargeting, resolveInterest } from '../../src/meta/resolve.ts'
 import type { MetaClient } from '../../src/meta/api.ts'
 import type { MetaTargeting } from '../../src/meta/types.ts'
 import type { MetaProviderConfig } from '../../src/core/types.ts'
+import { Cache } from '../../src/core/cache.ts'
 
 // ─── Test Fixtures ──────────────────────────────────────────
 
@@ -213,5 +214,60 @@ describe('resolveTargeting() audience resolution', () => {
     const resolved = await resolveTargeting(targeting, TEST_CONFIG, client, null)
     expect(resolved.customAudiences).toEqual(['aud_001', 'aud_003'])
     expect(resolved.excludedAudiences).toEqual(['aud_002'])
+  })
+})
+
+// ─── Cache Behavior ──────────────────────────────────────────
+
+describe('resolve caching', () => {
+  let cache: Cache
+
+  beforeEach(() => {
+    cache = new Cache(':memory:')
+  })
+
+  afterEach(() => {
+    cache.close()
+  })
+
+  test('interest resolution uses cache on second call', async () => {
+    const client = createMockClient({
+      searchResults: [
+        { id: '99001', name: 'Niche Interest' },
+      ],
+    })
+
+    // First call: hits API
+    const result1 = await resolveInterest('Niche Interest', client, cache)
+    expect(result1).toEqual({ id: '99001', name: 'Niche Interest' })
+    expect(client.graphGet).toHaveBeenCalledTimes(1)
+
+    // Second call: should use cache, not call API again
+    const result2 = await resolveInterest('Niche Interest', client, cache)
+    expect(result2).toEqual({ id: '99001', name: 'Niche Interest' })
+    // graphGet should still have been called only once (from first call)
+    expect(client.graphGet).toHaveBeenCalledTimes(1)
+  })
+
+  test('audience resolution uses cache on second call', async () => {
+    const client = createMockClient({
+      audiences: [
+        { id: 'aud_001', name: 'Website Visitors 30d' },
+      ],
+    })
+
+    const targeting = makeTargeting({
+      customAudiences: ['Website Visitors 30d'],
+    })
+
+    // First call: hits API
+    const result1 = await resolveTargeting(targeting, TEST_CONFIG, client, cache)
+    expect(result1.customAudiences).toEqual(['aud_001'])
+    expect(client.graphGetAll).toHaveBeenCalledTimes(1)
+
+    // Second call: should use cache
+    const result2 = await resolveTargeting(targeting, TEST_CONFIG, client, cache)
+    expect(result2.customAudiences).toEqual(['aud_001'])
+    expect(client.graphGetAll).toHaveBeenCalledTimes(1)
   })
 })
