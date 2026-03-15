@@ -195,7 +195,7 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
       const adMeta = adDefaults.length > 0 ? { _defaults: adDefaults } : undefined
       resources.push(resource('ad', adPath, {
         name: adName,
-        status: adSetStatus,
+        status: creative.status ?? adSetStatus,
         creativePath,
       }, adMeta))
     }

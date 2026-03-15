@@ -110,7 +110,7 @@ function isDefaultStatus(status: unknown): boolean {
 
 // ─── Placement Codegen ──────────────────────────────────
 
-/** Format a manual placements object into a `manual(...)` call string. */
+/** Format a manual placements object into a manual(...) call string. */
 function formatManualPlacements(p: Record<string, unknown>): string {
   const platforms = p.platforms as string[]
   const platformsStr = `[${platforms.map(quote).join(', ')}]`
@@ -257,22 +257,32 @@ function formatMetaTargeting(targeting: Record<string, unknown>, imports: Set<st
 
 // ─── Creative Codegen ────────────────────────────────────
 
+/**
+ * Generate a creative helper call (image(), video(), boostedPost()) from a Resource.
+ *
+ * @param adStatusOverride - When the ad's status differs from the ad set,
+ *   this string is emitted as status: '...' inside the creative config.
+ */
 function formatCreative(
   creative: Resource,
   hoistedUrl: string | undefined,
   hoistedCta: string | undefined,
   imports: Set<string>,
+  adStatusOverride: string | undefined,
 ): string {
   const props = creative.properties
   const meta = creative.meta ?? {}
   const format = props.format as string | undefined
   const name = props.name as string | undefined
 
-  // Boosted posts have no format — they are existing page posts promoted as ads.
-  // Emit a minimal object literal with just the name, no image()/video() call.
-  if (!format) {
-    if (!name) return '{ /* boosted post */ }'
-    return `{ name: ${quote(name)} }`
+  // Boosted posts have no format — they are existing page posts promoted
+  // as ads. The creative content lives on the original post, so we don't
+  // emit image()/video() calls. This also handles the case where fetch
+  // omits format entirely (no object_story_spec.link_data or video_data).
+  if (!format || format === 'boostedPost') {
+    imports.add('boostedPost')
+    if (!name) return 'boostedPost()'
+    return `boostedPost(${quote(name)})`
   }
 
   const parts: string[] = []
@@ -302,6 +312,9 @@ function formatCreative(
   // Only emit url/cta if they differ from hoisted values
   if (url && url !== hoistedUrl) parts.push(`url: ${quote(url)}`)
   if (cta && cta !== hoistedCta) parts.push(`cta: ${quote(cta)}`)
+
+  // Emit status only when the ad's status differs from the ad set (per-ad override)
+  if (adStatusOverride) parts.push(`status: ${quote(adStatusOverride)}`)
 
   if (format === 'video') {
     imports.add('video')
@@ -459,10 +472,18 @@ function generateMetaCampaignFile(
     if (hoistedUrl) contentParts.push(`url: ${quote(hoistedUrl)},`)
     if (hoistedCta) contentParts.push(`cta: ${quote(hoistedCta)},`)
 
-    // Ads
-    const adStrings = adSetCreatives.map((c) =>
-      formatCreative(c, hoistedUrl, hoistedCta, imports),
-    )
+    // Ads — find per-ad status overrides by matching ad Resources to creatives
+    const adSetAds = ads.filter((a) => a.path.startsWith(`${adSetPath}/`))
+    const effectiveAdSetStatus = adSetStatus ?? 'PAUSED'
+    const adStrings = adSetCreatives.map((c) => {
+      const matchingAd = adSetAds.find((a) => a.properties.creativePath === c.path)
+      const override = matchingAd
+        ? (matchingAd.properties.status as string) !== effectiveAdSetStatus
+          ? (matchingAd.properties.status as string)
+          : undefined
+        : undefined
+      return formatCreative(c, hoistedUrl, hoistedCta, imports, override)
+    })
 
     if (adStrings.length === 1) {
       contentParts.push(`ads: [\n    ${adStrings[0]},\n  ],`)

@@ -160,7 +160,13 @@ export type CollectionAd = {
   readonly primaryText: string
 }
 
-export type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd
+/** A boosted post — an existing page post promoted as an ad. No standard ad copy fields. */
+export type BoostedPostAd = {
+  readonly format: 'boostedPost'
+  readonly name?: string
+}
+
+export type MetaCreative = ImageAd | VideoAd | CarouselAd | CollectionAd | BoostedPostAd
 
 // ─── CTAs ──────────────────────────────────────────────────
 
