@@ -15,17 +15,61 @@ The SDK's core is already provider-agnostic (diff engine, flatten, cache, config
 
 ```
 src/
-  core/           # unchanged — diff, flatten, cache, config, types
+  core/           # MODIFIED — types.ts, flatten.ts, codegen.ts get multi-provider support
   google/         # unchanged
   meta/           # NEW
     index.ts      # Builder DSL: meta.traffic(), meta.conversions(), etc.
     types.ts      # Full Meta type system
+    flatten.ts    # MetaCampaign → Resource[] (meta-specific flattening)
     fetch.ts      # Graph API → Resource[] (read live state)
     apply.ts      # Change[] → Graph API mutations (write changes)
     upload.ts     # Image/video upload + hash caching
+    codegen.ts    # Live state → .ts campaign file generation (for import)
     constants.ts  # Objective/optimization/placement/CTA enums
   helpers/        # extend with meta-specific helpers
 ```
+
+### Core Type Changes
+
+Adding Meta support requires extending the core `ResourceKind` union and `MetaProviderConfig`. These changes affect multiple files:
+
+**`src/core/types.ts`:**
+
+```ts
+// BEFORE
+type ResourceKind = 'campaign' | 'adGroup' | 'keyword' | 'ad' | 'sitelink' | 'callout' | 'negative'
+
+// AFTER — add adSet and creative for Meta
+type ResourceKind = 'campaign' | 'adGroup' | 'adSet' | 'keyword' | 'ad' | 'creative' | 'sitelink' | 'callout' | 'negative'
+
+// BEFORE
+type MetaProviderConfig = {
+  readonly accountId: string
+  readonly credentials?: string
+}
+
+// AFTER — full config needed for ad creation
+type MetaProviderConfig = {
+  readonly accountId: string
+  readonly pageId: string
+  readonly pixelId?: string
+  readonly apiVersion?: string  // defaults to 'v21.0'
+  readonly dsa?: { readonly beneficiary: string; readonly payor: string }
+  readonly credentials?: string
+}
+```
+
+**Files impacted by `ResourceKind` extension:**
+
+| File | What changes |
+|---|---|
+| `src/core/types.ts` | Add `'adSet'` and `'creative'` to `ResourceKind` union, expand `MetaProviderConfig` |
+| `src/core/flatten.ts` | Add `flattenMeta()` export (or make `flattenAll` provider-aware) |
+| `src/core/diff.ts` | No changes needed — diff is kind-agnostic (operates on `Resource` generically) |
+| `src/google/apply.ts` | Add `default` case to `switch(resource.kind)` for unknown kinds (no-op, not an error — other providers handle their own kinds) |
+| `cli/plan.ts` | `describeResource()` needs labels for `adSet` and `creative`. Provider filter refactored (see CLI Refactoring section) |
+| `cli/apply.ts` | Provider dispatch (see CLI Refactoring section) |
+| `cli/import.ts` | Provider dispatch (see CLI Refactoring section) |
 
 ### Resource Model
 
@@ -35,9 +79,16 @@ Meta's hierarchy flattens to the same `Resource` model used by the diff engine:
 |---|---|---|
 | Campaign | `campaign` | `campaign-name` |
 | Ad Set | `adSet` | `campaign-name/adset-name` |
-| Ad + Creative | `ad` | `campaign-name/adset-name/ad-name` |
+| Creative | `creative` | `campaign-name/adset-name/creative-name` |
+| Ad | `ad` | `campaign-name/adset-name/ad-name` |
 
-The `kind` field on `Resource` is extended with `'adSet'` — `adGroup` remains for Google.
+**Why `creative` is a first-class resource:** Meta's `adcreative` is a real Graph API entity with its own ID. Multiple ads can share a single creative. Treating it as a Resource means:
+- The diff engine can detect "creative copy changed but ad didn't" vs "ad pointing to a different creative"
+- The cache stores creative IDs, enabling proper update-in-place
+- Delete ordering is correct: ad → creative → adSet → campaign
+- `plan` output shows creative changes explicitly
+
+The creative path uses the ad name suffixed with `/cr` (e.g., `retargeting-us/website-visitors-30d/hero-sign-up/cr`). Each ad has exactly one creative — the 1:1 relationship is enforced by the builder. If a future need arises for shared creatives, the path scheme supports it.
 
 ### Dependency Ordering
 
@@ -52,6 +103,7 @@ Mutations execute in dependency order:
 Reuses the existing SQLite cache DB. Entries are namespaced by provider (a `provider` column distinguishes Google vs Meta mappings). Stores:
 
 - Code path → platform ID (e.g., `retargeting-us` → `23856...`)
+- Creative path → creative platform ID
 - Local file SHA-256 → Meta image hash (for upload deduplication)
 
 ## Builder DSL
@@ -73,17 +125,18 @@ Each returns a `MetaCampaignBuilder<T>` typed to the objective, constraining whi
 ### Campaign Definition Example
 
 ```ts
-import { meta, daily, audience, geo, age, lowestCost,
-         automatic, image, video } from '@upspawn/ads'
+import { meta, daily, targeting, audience, geo, age, lowestCost,
+         automatic, image, video, interests } from '@upspawn/ads'
 
 export const retargetingUS = meta.traffic('Retargeting - US', {
   budget: daily(5),
 })
 .adSet('Website Visitors 30d', {
-  targeting: audience('website-visitors-30d', {
-    geo: geo('US', 'GB', 'CA', 'AU'),
-    age: age(25, 65),
-  }),
+  targeting: targeting(
+    audience('website-visitors-30d'),
+    geo('US', 'GB', 'CA', 'AU'),
+    age(25, 65),
+  ),
   bidding: lowestCost(),
   placements: automatic(),
   optimization: 'LINK_CLICKS',
@@ -107,11 +160,12 @@ export const retargetingUS = meta.traffic('Retargeting - US', {
   ],
 })
 .adSet('Cold - Construction', {
-  targeting: audience({
-    geo: geo('US', 'DE'),
-    age: age(30, 60),
-    interests: ['Construction', 'Building Information Modeling'],
-  }),
+  targeting: targeting(
+    geo('US', 'DE'),
+    age(30, 60),
+    interests({ id: '6003370250981', name: 'Construction' },
+              { id: '6003597068925', name: 'Building Information Modeling' }),
+  ),
   bidding: lowestCost(),
   placements: automatic(),
   optimization: 'LANDING_PAGE_VIEWS',
@@ -129,12 +183,20 @@ export const retargetingUS = meta.traffic('Retargeting - US', {
 })
 ```
 
+**Note on `targeting()` vs `audience()`:** These are distinct helpers. `targeting()` composes targeting rules (geo, age, interests, audiences) into a `MetaTargeting` object — consistent with the existing Google `targeting()` helper. `audience('id')` returns an audience reference that can be passed into `targeting()`. This avoids the ambiguity of overloading `audience()` for both audience references and full targeting config.
+
+**Note on interest IDs:** The `interests()` helper requires `{ id, name }` objects because the Meta Graph API requires numeric interest IDs for targeting. Users look up IDs via Meta's [Targeting Search API](https://developers.facebook.com/docs/marketing-api/audiences/reference/targeting-search) or the Ads Manager UI. A future enhancement could add an `ads search-interests "Construction"` CLI command that queries the API and returns `{ id, name }` pairs.
+
 ### Builder Typing
 
 The builder is generic over objective `T`. `.adSet()` constrains `optimization` to only goals valid for that objective:
 
 ```ts
 class MetaCampaignBuilder<T extends Objective> {
+  // Internal fields set by the entry point (meta.traffic(), etc.)
+  readonly provider = 'meta' as const
+  readonly kind: T  // e.g., 'traffic', 'conversions'
+
   adSet(
     name: string,
     config: AdSetConfig<T>,   // optimization narrowed by T
@@ -142,6 +204,8 @@ class MetaCampaignBuilder<T extends Objective> {
   ): MetaCampaignBuilder<T>
 }
 ```
+
+The `provider: 'meta'` and `kind: T` fields are required by the discovery system (`src/core/discovery.ts`). `isCampaignLike()` checks for these fields to route campaigns to the correct provider's flatten/fetch/apply modules.
 
 ## Comprehensive Type System
 
@@ -174,14 +238,18 @@ type BidStrategy =
 
 ### Budget
 
-```ts
-type Budget =
-  | { type: 'daily', amount: number }
-  | { type: 'lifetime', amount: number, endTime: string }
+Meta budgets reuse the core `Budget` type from `src/core/types.ts` for compatibility with the diff engine's `semanticEqual()`:
 
-// Can live on campaign (CBO) or ad set
-type BudgetLevel = 'campaign' | 'adset'
+```ts
+// Core type (already exists)
+type DailyBudget = { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'daily' }
+type LifetimeBudget = { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'lifetime'; readonly endTime: string }
+type Budget = DailyBudget | LifetimeBudget
 ```
+
+The `daily(5)` helper infers currency from the provider config (Meta account currency). Internally, Meta stores budgets in cents — the fetch layer converts `"500"` (cents) → `{ amount: 5, currency: 'EUR', period: 'daily' }` and the apply layer converts back.
+
+**Note:** The core `Budget` type gains a `LifetimeBudget` variant (currently only `DailyBudget | MonthlyBudget`). Meta doesn't have monthly budgets but does have lifetime budgets with an end time. Google's `MonthlyBudget` remains.
 
 ### Targeting (Full Surface)
 
@@ -395,31 +463,33 @@ type DSAConfig = {
 ### Helper Functions
 
 ```ts
-// Targeting
-geo('US', 'DE', 'GB')
-age(25, 65)
-interests('Construction', 'BIM')
-audience('custom-audience-id', { geo: geo('US') })
-lookalike('source-audience-id', geo('US'), percent: 1)
+// Targeting (composed via targeting() — consistent with Google's targeting() helper)
+targeting(geo('US', 'DE'), age(25, 65), audience('custom-id'))
+geo('US', 'DE', 'GB')                                              // → GeoTarget
+age(25, 65)                                                         // → { min, max }
+interests({ id: '6003370250981', name: 'Construction' })            // → InterestTarget[]
+audience('custom-audience-id')                                      // → custom audience ref
+excludeAudience('existing-customers')                               // → excluded audience ref
+lookalike('source-audience-id', { geo: geo('US'), percent: 1 })     // → lookalike config
 
 // Bidding
-lowestCost()
-costCap(10)
-bidCap(5)
-minRoas(2.5)
+lowestCost()       // → { type: 'LOWEST_COST_WITHOUT_CAP' }
+costCap(10)        // → { type: 'COST_CAP', cap: 10 }
+bidCap(5)          // → { type: 'BID_CAP', cap: 5 }
+minRoas(2.5)       // → { type: 'MINIMUM_ROAS', floor: 2.5 }
 
 // Placements
-automatic()
-manual(['facebook', 'instagram'], ['feed', 'story', 'reels'])
+automatic()                                                         // → 'automatic'
+manual(['facebook', 'instagram'], ['feed', 'story', 'reels'])       // → MetaPlacements
 
-// Budget
-daily(5)
-lifetime(500, '2026-04-01')
+// Budget (currency inferred from provider config)
+daily(5)                     // → { amount: 5, currency: 'EUR', period: 'daily' }
+lifetime(500, '2026-04-01')  // → { amount: 500, currency: 'EUR', period: 'lifetime', endTime: '...' }
 
 // Creative
-image('./path.png', { ... })
-video('./path.mp4', { ... })
-carousel([card1, card2, ...], { ... })
+image('./path.png', { name, headline, primaryText, cta, url })
+video('./path.mp4', { name, headline, primaryText, cta, url })
+carousel([card1, card2, ...], { primaryText, url })
 ```
 
 ### Validation Rules
@@ -435,6 +505,120 @@ Enforced at `validate` and `plan` time:
 - Aspect ratios validated per placement
 - Special ad categories restrict available targeting options
 - Optimization goal must be valid for the campaign objective
+
+## Flatten Layer
+
+The existing `src/core/flatten.ts` only handles `GoogleSearchCampaign`. Meta campaigns need their own flatten logic in `src/meta/flatten.ts`:
+
+```ts
+/** Flatten a MetaCampaign tree into a flat list of Resource objects. */
+export function flattenMeta(campaign: MetaCampaign): Resource[]
+```
+
+### Path Generation
+
+| Resource | Path Pattern | Example |
+|---|---|---|
+| Campaign | `slugify(campaign.name)` | `retargeting-us` |
+| Ad Set | `campaignSlug/slugify(adSet.name)` | `retargeting-us/website-visitors-30d` |
+| Creative | `campaignSlug/adSetSlug/slugify(ad.name)/cr` | `retargeting-us/website-visitors-30d/hero-sign-up/cr` |
+| Ad | `campaignSlug/adSetSlug/slugify(ad.name)` | `retargeting-us/website-visitors-30d/hero-sign-up` |
+
+The `slugify()` function from `src/core/flatten.ts` is reused.
+
+### Resource Properties
+
+Each resource stores properties that the diff engine compares:
+
+- **Campaign:** `{ name, objective, status, budget, spendCap, specialAdCategories, buyingType }`
+- **Ad Set:** `{ name, status, targeting, optimization, bidding, budget, placements, schedule, conversion, dsa, promotedObject }`
+- **Creative:** `{ name, format, imageHash, headline, primaryText, description, cta, url, urlParameters, displayLink, objectStorySpec }` — `imageHash` is resolved from cache (file SHA → Meta hash) or marked as `pending-upload` during `plan`
+- **Ad:** `{ name, status, creativePath }` — `creativePath` references the creative resource path
+
+### Image File Resolution
+
+Image file paths in the builder (e.g., `'./assets/hero.png'`) are resolved at flatten time:
+1. Compute SHA-256 of the local file
+2. Check cache for existing Meta image hash
+3. If cached: store `imageHash` in the creative resource properties
+4. If not cached: store `{ pendingUpload: true, filePath: './assets/hero.png', fileSha: '...' }` — the `plan` command displays this as `+ upload ./assets/hero.png (new)`, and `apply` uploads before creating the creative
+
+### Multi-Provider `flattenAll`
+
+The core `flattenAll` becomes provider-aware:
+
+```ts
+// src/core/flatten.ts — updated
+import { flatten as flattenGoogle } from '../google/flatten.ts'  // extract current code
+import { flattenMeta } from '../meta/flatten.ts'
+
+export function flattenAll(campaigns: DiscoveredCampaign[]): Resource[] {
+  return campaigns.flatMap(c => {
+    if (c.provider === 'google') return flattenGoogle(c.campaign as GoogleSearchCampaign)
+    if (c.provider === 'meta') return flattenMeta(c.campaign as MetaCampaign)
+    throw new Error(`Unknown provider: ${c.provider}`)
+  })
+}
+```
+
+## CLI Refactoring
+
+The current CLI commands (`plan.ts`, `apply.ts`, `import.ts`) are hardcoded to Google. They need a provider dispatch pattern:
+
+### Current State (Google-only)
+
+```ts
+// cli/plan.ts — current
+const campaigns = discovery.campaigns.filter(c => c.provider === 'google')
+const client = await createGoogleClient(...)
+const actual = await fetchAll(client, config.google!.customerId)
+const changeset = diff(flatten(campaigns), actual)
+```
+
+### Target State (multi-provider)
+
+```ts
+// cli/plan.ts — after refactoring
+const providers = resolveProviders(discovery.campaigns, config, flags.provider)
+
+for (const { provider, campaigns, providerConfig } of providers) {
+  const fetcher = getProviderFetcher(provider)     // google → fetchAll, meta → fetchMetaAll
+  const flattener = getProviderFlattener(provider)  // google → flatten, meta → flattenMeta
+
+  const desired = flattener(campaigns)
+  const actual = await fetcher(providerConfig)
+  const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
+
+  printChangeset(provider, changeset)  // describeResource() handles adSet/creative labels
+}
+```
+
+### Provider Registry Pattern
+
+```ts
+// src/core/providers.ts — NEW
+type ProviderModule = {
+  flatten: (campaign: unknown) => Resource[]
+  fetchAll: (config: unknown) => Promise<Resource[]>
+  applyChangeset: (changeset: Changeset, config: unknown) => Promise<void>
+  codegen: (resources: Resource[]) => string  // for import
+}
+
+const providers: Record<string, () => Promise<ProviderModule>> = {
+  google: () => import('../google/provider.ts'),
+  meta: () => import('../meta/provider.ts'),
+}
+```
+
+Each provider exports a `ProviderModule` with its flatten/fetch/apply/codegen implementations. The CLI commands iterate over discovered providers and dispatch to the correct module. Provider modules are lazy-loaded — `import('../meta/provider.ts')` is only called when Meta campaigns are discovered.
+
+### `describeResource()` Updates
+
+```ts
+// cli/plan.ts — describeResource() additions
+case 'adSet':    return `adSet       ${resource.path}`
+case 'creative': return `creative    ${resource.path}`
+```
 
 ## Config Schema
 
@@ -505,12 +689,14 @@ ads validate
 
 ```
 Meta Ads — act_4053319338268788
-  + campaign    Retargeting - US
-  + adSet       Retargeting - US / Website Visitors 30d
+  + campaign    retargeting-us
+  + adSet       retargeting-us/website-visitors-30d
   + upload      ./assets/hero.png (new)
   + upload      ./assets/comparison.png (new)
-  + ad          Retargeting - US / Website Visitors 30d / Hero - Sign Up
-  + ad          Retargeting - US / Website Visitors 30d / Comparison - Learn More
+  + creative    retargeting-us/website-visitors-30d/hero-sign-up/cr
+  + ad          retargeting-us/website-visitors-30d/hero-sign-up
+  + creative    retargeting-us/website-visitors-30d/comparison-learn-more/cr
+  + ad          retargeting-us/website-visitors-30d/comparison-learn-more
 
 Google Ads — 7300967494
   ~ campaign    Search - PDF Renaming  (budget: $1.50 → $2.00)
@@ -526,9 +712,17 @@ fetchAdSets()     → GET /{accountId}/adsets?fields=name,targeting,daily_budget
 fetchAds()        → GET /{accountId}/ads?fields=name,status,creative{image_hash,object_story_spec,...},...
 ```
 
+### Fetched Resource Mapping
+
+Fetched API responses are normalized into `Resource[]`:
+
+- **Campaigns:** `GET /{accountId}/campaigns` → one `Resource` per campaign (kind: `campaign`)
+- **Ad Sets:** `GET /{accountId}/adsets` → one `Resource` per ad set (kind: `adSet`)
+- **Ads + Creatives:** `GET /{accountId}/ads?fields=...,creative{...}` → TWO resources per ad: one `creative` and one `ad`. The creative's `imageHash` property enables diff against the desired state.
+
 ### Semantic Comparison Rules
 
-- **Budgets:** Meta uses cents (string) — normalize to numbers
+- **Budgets:** Meta returns cents as string (e.g., `"500"`) — fetch converts to core `Budget` type (`{ amount: 5, currency: 'EUR', period: 'daily' }`), then `semanticEqual` in the diff engine compares via `toMicros()` as it does for Google
 - **Targeting:** Deep-compare with sorted arrays (interest IDs can return in any order)
 - **Creative copy:** Trim whitespace, compare case-sensitively
 - **Image hashes:** Compare by hash value (not file path)
@@ -560,3 +754,43 @@ Deletes: reverse order (ad → creative → adSet → campaign).
 - Rate limits: retry with exponential backoff
 - Validation errors: surface clearly in changeset output
 - Partial apply: cache records what was created, so next `plan` shows correct diff (won't re-create)
+
+### Video Upload
+
+Video upload uses a different Meta API endpoint (`POST /{accountId}/advideos`) with chunked upload for large files. This is a separate code path from image upload:
+
+- Small videos (<1GB): single POST with file data
+- Large videos (>1GB): chunked upload (start → transfer chunks → finish)
+- Cache stores `{ fileSha256, metaVideoId }` similar to images
+- Thumbnail auto-generation: Meta generates a thumbnail by default; `thumbnail` field in `VideoAd` allows overriding with a local image (uploaded separately)
+
+### Codegen (for `ads import`)
+
+`src/meta/codegen.ts` generates TypeScript campaign files from fetched live state. This mirrors `src/core/codegen.ts` (which is Google-specific) but produces Meta builder DSL:
+
+```ts
+// Generated output example:
+import { meta, daily, targeting, geo, age, lowestCost, automatic, image } from '@upspawn/ads'
+
+export const retargetingUs = meta.traffic('Retargeting - US', {
+  budget: daily(5),
+})
+.adSet('Website Visitors 30d', {
+  targeting: targeting(geo('US', 'GB'), age(25, 65)),
+  bidding: lowestCost(),
+  placements: automatic(),
+  optimization: 'LINK_CLICKS',
+}, {
+  ads: [
+    image('./assets/imported/hero-abc123.png', {
+      name: 'Hero - Sign Up',
+      headline: 'Rename Files Instantly',
+      primaryText: 'Stop wasting hours...',
+      cta: 'SIGN_UP',
+      url: 'https://renamed.to',
+    }),
+  ],
+})
+```
+
+During import, creative images are downloaded from Meta's CDN to a local `assets/imported/` directory with a hash suffix to avoid collisions.
