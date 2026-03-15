@@ -5,6 +5,7 @@ import {
   fetchKeywords,
   fetchAds,
   fetchNegativeKeywords,
+  fetchExtensions,
   fetchAllState,
 } from '../../src/google/fetch.ts'
 import type { GoogleAdsClient, GoogleAdsRow } from '../../src/google/types.ts'
@@ -14,6 +15,8 @@ import adGroupFixtures from '../fixtures/api-responses/ad-groups.json'
 import keywordFixtures from '../fixtures/api-responses/keywords.json'
 import adFixtures from '../fixtures/api-responses/ads.json'
 import negativeFixtures from '../fixtures/api-responses/negatives.json'
+import sitelinkFixtures from '../fixtures/api-responses/sitelinks.json'
+import calloutFixtures from '../fixtures/api-responses/callouts.json'
 
 // ─── Mock Client ────────────────────────────────────────────
 
@@ -268,6 +271,91 @@ describe('fetchNegativeKeywords', () => {
   })
 })
 
+// ─── fetchExtensions ────────────────────────────────────────
+
+describe('fetchExtensions', () => {
+  test('normalizes sitelink rows with snake_case fields', async () => {
+    const client = createMockClient({
+      sitelinks: sitelinkFixtures as GoogleAdsRow[],
+      callouts: [],
+    })
+    const resources = await fetchExtensions(client)
+
+    const sitelinks = resources.filter(r => r.kind === 'sitelink')
+    expect(sitelinks).toHaveLength(3)
+
+    const first = sitelinks[0]!
+    expect(first.kind).toBe('sitelink')
+    expect(first.path).toBe('search-pdf-renaming/sl:pricing')
+    expect(first.platformId).toBe('60001')
+    expect(first.properties.text).toBe('Pricing')
+    expect(first.properties.url).toBe('https://www.renamed.to/pricing')
+    expect(first.properties.description1).toBe('See our plans')
+    expect(first.properties.description2).toBe('Starting at $5/mo')
+  })
+
+  test('normalizes callout rows with snake_case fields', async () => {
+    const client = createMockClient({
+      sitelinks: [],
+      callouts: calloutFixtures as GoogleAdsRow[],
+    })
+    const resources = await fetchExtensions(client)
+
+    const callouts = resources.filter(r => r.kind === 'callout')
+    expect(callouts).toHaveLength(3)
+
+    const first = callouts[0]!
+    expect(first.kind).toBe('callout')
+    expect(first.path).toBe('search-pdf-renaming/co:free trial')
+    expect(first.platformId).toBe('70001')
+    expect(first.properties.text).toBe('Free Trial')
+  })
+
+  test('returns both sitelinks and callouts together', async () => {
+    const client = createMockClient({
+      sitelinks: sitelinkFixtures as GoogleAdsRow[],
+      callouts: calloutFixtures as GoogleAdsRow[],
+    })
+    const resources = await fetchExtensions(client)
+
+    const sitelinks = resources.filter(r => r.kind === 'sitelink')
+    const callouts = resources.filter(r => r.kind === 'callout')
+    expect(sitelinks).toHaveLength(3)
+    expect(callouts).toHaveLength(3)
+  })
+
+  test('scopes query by campaignIds when provided', async () => {
+    const client = createMockClient({
+      sitelinks: sitelinkFixtures as GoogleAdsRow[],
+      callouts: calloutFixtures as GoogleAdsRow[],
+    })
+    await fetchExtensions(client, ['123456'])
+
+    const calls = (client.query as ReturnType<typeof mock>).mock.calls
+    // Both sitelink and callout queries should be scoped
+    for (const call of calls) {
+      const queryStr = call[0] as string
+      if (queryStr.includes('FROM campaign_asset')) {
+        expect(queryStr).toContain('campaign.id IN (123456)')
+      }
+    }
+  })
+
+  test('handles sitelinks with null descriptions', async () => {
+    const client = createMockClient({
+      sitelinks: sitelinkFixtures as GoogleAdsRow[],
+      callouts: [],
+    })
+    const resources = await fetchExtensions(client)
+
+    // Second sitelink has null description1 and description2
+    const features = resources.find(r => r.path === 'search-pdf-renaming/sl:features')
+    expect(features).toBeDefined()
+    expect(features!.properties.description1).toBeNull()
+    expect(features!.properties.description2).toBeNull()
+  })
+})
+
 // ─── fetchAllState ──────────────────────────────────────────
 
 describe('fetchAllState', () => {
@@ -320,6 +408,7 @@ describe('fetchAllState', () => {
     expect(callOrder).toContain('keywords')
     expect(callOrder).toContain('ads')
     expect(callOrder).toContain('negatives')
+    expect(callOrder).toContain('extensions')
   })
 
   test('returns empty when no campaigns', async () => {
@@ -336,8 +425,8 @@ describe('fetchAllState', () => {
       keywords: keywordFixtures as GoogleAdsRow[],
       ads: adFixtures as GoogleAdsRow[],
       negatives: negativeFixtures as GoogleAdsRow[],
-      sitelinks: [],
-      callouts: [],
+      sitelinks: sitelinkFixtures as GoogleAdsRow[],
+      callouts: calloutFixtures as GoogleAdsRow[],
     })
 
     const resources = await fetchAllState(client, { includePaused: true })
@@ -348,5 +437,7 @@ describe('fetchAllState', () => {
     expect(kinds.has('keyword')).toBe(true)
     expect(kinds.has('ad')).toBe(true)
     expect(kinds.has('negative')).toBe(true)
+    expect(kinds.has('sitelink')).toBe(true)
+    expect(kinds.has('callout')).toBe(true)
   })
 })

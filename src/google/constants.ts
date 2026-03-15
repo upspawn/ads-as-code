@@ -55,3 +55,13 @@ export const GEO_TARGETS: Record<string, number> = {
   DK: 2208,
   FI: 2246,
 }
+
+/** Reverse map: geo target ID → country code (e.g. '2840' → 'US') */
+export const GEO_TARGETS_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(GEO_TARGETS).map(([code, id]) => [String(id), code]),
+)
+
+/** Reverse map: language criterion ID → language code (e.g. '1000' → 'en') */
+export const LANGUAGE_CRITERIA_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(LANGUAGE_CRITERIA).map(([code, id]) => [String(id), code]),
+)

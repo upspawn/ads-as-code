@@ -1,0 +1,68 @@
+[
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/123456~60001",
+      "asset": "customers/7300967494/assets/60001",
+      "field_type": 2,
+      "status": 2
+    },
+    "asset": {
+      "id": 60001,
+      "name": "Pricing Sitelink",
+      "sitelink_asset": {
+        "link_text": "Pricing",
+        "description1": "See our plans",
+        "description2": "Starting at $5/mo"
+      },
+      "final_urls": ["https://www.renamed.to/pricing"]
+    },
+    "campaign": {
+      "id": 123456,
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/123456~60002",
+      "asset": "customers/7300967494/assets/60002",
+      "field_type": 2,
+      "status": 2
+    },
+    "asset": {
+      "id": 60002,
+      "name": "Features Sitelink",
+      "sitelink_asset": {
+        "link_text": "Features",
+        "description1": null,
+        "description2": null
+      },
+      "final_urls": ["https://www.renamed.to/features"]
+    },
+    "campaign": {
+      "id": 123456,
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/234567~60003",
+      "asset": "customers/7300967494/assets/60003",
+      "field_type": 2,
+      "status": 2
+    },
+    "asset": {
+      "id": 60003,
+      "name": "Google Drive Sitelink",
+      "sitelink_asset": {
+        "link_text": "How It Works",
+        "description1": "Three simple steps",
+        "description2": null
+      },
+      "final_urls": ["https://www.renamed.to/how-it-works"]
+    },
+    "campaign": {
+      "id": 234567,
+      "name": "Search - Google Drive"
+    }
+  }
+]

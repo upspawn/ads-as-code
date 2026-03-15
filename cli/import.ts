@@ -266,6 +266,90 @@ async function fetchAllCampaigns(
     })
   }
 
+  // Fetch sitelink extensions
+  const sitelinkRows = await client.query(`
+    SELECT
+      campaign.name,
+      campaign_asset.resource_name,
+      campaign_asset.field_type,
+      asset.id,
+      asset.sitelink_asset.link_text,
+      asset.sitelink_asset.description1,
+      asset.sitelink_asset.description2,
+      asset.final_urls
+    FROM campaign_asset
+    WHERE campaign.advertising_channel_type = 'SEARCH'
+      AND ${statusFilter}
+      AND campaign_asset.field_type = 'SITELINK'
+      AND campaign_asset.status != 'REMOVED'
+  `)
+
+  for (const row of sitelinkRows) {
+    const c = row.campaign as Record<string, unknown>
+    const asset = row.asset as Record<string, unknown> | undefined
+    const sitelink = (asset?.sitelink_asset ?? asset?.sitelinkAsset) as Record<string, unknown> | undefined
+
+    const campaignPath = campaignToFilename(c.name as string)
+    const entry = campaignMap.get(campaignPath)
+    if (!entry || !sitelink) continue
+
+    const assetId = String(asset?.id ?? 'unknown')
+    const linkText = String(sitelink?.link_text ?? sitelink?.linkText ?? '')
+    const desc1 = (sitelink?.description1 as string | undefined) || undefined
+    const desc2 = (sitelink?.description2 as string | undefined) || undefined
+    const finalUrls = (asset?.final_urls ?? asset?.finalUrls ?? []) as string[]
+    const url = finalUrls[0] ?? ''
+
+    entry.resources.push({
+      kind: 'sitelink',
+      path: `${campaignPath}/sl:${linkText.toLowerCase()}`,
+      platformId: `customers/${client.customerId}/assets/${assetId}`,
+      properties: {
+        text: linkText,
+        url,
+        description1: desc1,
+        description2: desc2,
+      },
+    })
+  }
+
+  // Fetch callout extensions
+  const calloutRows = await client.query(`
+    SELECT
+      campaign.name,
+      campaign_asset.resource_name,
+      campaign_asset.field_type,
+      asset.id,
+      asset.callout_asset.callout_text
+    FROM campaign_asset
+    WHERE campaign.advertising_channel_type = 'SEARCH'
+      AND ${statusFilter}
+      AND campaign_asset.field_type = 'CALLOUT'
+      AND campaign_asset.status != 'REMOVED'
+  `)
+
+  for (const row of calloutRows) {
+    const c = row.campaign as Record<string, unknown>
+    const asset = row.asset as Record<string, unknown> | undefined
+    const callout = (asset?.callout_asset ?? asset?.calloutAsset) as Record<string, unknown> | undefined
+
+    const campaignPath = campaignToFilename(c.name as string)
+    const entry = campaignMap.get(campaignPath)
+    if (!entry || !callout) continue
+
+    const assetId = String(asset?.id ?? 'unknown')
+    const calloutText = String(callout?.callout_text ?? callout?.calloutText ?? '')
+
+    entry.resources.push({
+      kind: 'callout',
+      path: `${campaignPath}/co:${calloutText.toLowerCase()}`,
+      platformId: `customers/${client.customerId}/assets/${assetId}`,
+      properties: {
+        text: calloutText,
+      },
+    })
+  }
+
   // Fetch geo + language targeting
   const targetingRows = await client.query(`
     SELECT
@@ -281,18 +365,23 @@ async function fetchAllCampaigns(
   `)
 
   // Reverse-lookup maps for geo/language constants
+  const { GEO_TARGETS_REVERSE, LANGUAGE_CRITERIA_REVERSE } = await import('../src/google/constants.ts')
+
+  // Build full-path reverse maps (geoTargetConstants/2840 → US)
   const GEO_REVERSE: Record<string, string> = {}
   const LANG_REVERSE: Record<string, string> = {}
-  try {
-    const { GEO_TARGETS, LANGUAGE_CRITERIA } = await import('../src/google/constants.ts')
-    for (const [code, id] of Object.entries(GEO_TARGETS)) {
-      GEO_REVERSE[`geoTargetConstants/${id}`] = code
-    }
-    for (const [code, id] of Object.entries(LANGUAGE_CRITERIA)) {
-      LANG_REVERSE[`languageConstants/${id}`] = code
-    }
-  } catch {
-    // Constants not available — skip targeting enrichment
+  for (const [id, code] of Object.entries(GEO_TARGETS_REVERSE)) {
+    GEO_REVERSE[`geoTargetConstants/${id}`] = code
+  }
+  for (const [id, code] of Object.entries(LANGUAGE_CRITERIA_REVERSE)) {
+    LANG_REVERSE[`languageConstants/${id}`] = code
+  }
+
+  // Criterion type enum: gRPC returns numeric values
+  // 6=LOCATION, 7=AD_SCHEDULE, 16=LANGUAGE
+  const CRITERION_TYPE_MAP: Record<number | string, string> = {
+    6: 'LOCATION', 7: 'AD_SCHEDULE', 16: 'LANGUAGE',
+    'LOCATION': 'LOCATION', 'AD_SCHEDULE': 'AD_SCHEDULE', 'LANGUAGE': 'LANGUAGE',
   }
 
   // Group targeting by campaign
@@ -303,20 +392,67 @@ async function fetchAllCampaigns(
     const c = row.campaign as Record<string, unknown>
     const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
     const campaignPath = campaignToFilename(c.name as string)
-    const type = criterion.type as string
+    const rawType = criterion.type as number | string
+    const type = CRITERION_TYPE_MAP[rawType] ?? String(rawType)
 
     if (type === 'LOCATION') {
       const location = criterion.location as Record<string, unknown>
-      const geoConstant = location?.geoTargetConstant as string
+      const geoConstant = (location?.geoTargetConstant ?? location?.geo_target_constant) as string
       const code = GEO_REVERSE[geoConstant] ?? geoConstant
       if (!campaignGeo.has(campaignPath)) campaignGeo.set(campaignPath, [])
       campaignGeo.get(campaignPath)!.push(code)
     } else if (type === 'LANGUAGE') {
       const language = criterion.language as Record<string, unknown>
-      const langConstant = language?.languageConstant as string
+      const langConstant = (language?.languageConstant ?? language?.language_constant) as string
       const code = LANG_REVERSE[langConstant] ?? langConstant
       if (!campaignLang.has(campaignPath)) campaignLang.set(campaignPath, [])
       campaignLang.get(campaignPath)!.push(code)
+    }
+  }
+
+  // Fetch ad schedule targeting
+  const scheduleRows = await client.query(`
+    SELECT
+      campaign.name,
+      campaign_criterion.ad_schedule.day_of_week,
+      campaign_criterion.ad_schedule.start_hour,
+      campaign_criterion.ad_schedule.end_hour
+    FROM campaign_criterion
+    WHERE campaign.advertising_channel_type = 'SEARCH'
+      AND ${statusFilter}
+      AND campaign_criterion.type = 'AD_SCHEDULE'
+  `)
+
+  // Day of week from gRPC is numeric: 2=MON, 3=TUE, 4=WED, 5=THU, 6=FRI, 7=SAT, 8=SUN
+  const DAY_OF_WEEK_MAP: Record<number | string, string> = {
+    2: 'mon', 3: 'tue', 4: 'wed', 5: 'thu', 6: 'fri', 7: 'sat', 8: 'sun',
+    'MONDAY': 'mon', 'TUESDAY': 'tue', 'WEDNESDAY': 'wed', 'THURSDAY': 'thu',
+    'FRIDAY': 'fri', 'SATURDAY': 'sat', 'SUNDAY': 'sun',
+  }
+
+  // Group schedule by campaign: collect all days and hour ranges
+  const campaignScheduleDays = new Map<string, Set<string>>()
+  const campaignScheduleHours = new Map<string, { startHour: number; endHour: number }>()
+
+  for (const row of scheduleRows) {
+    const c = row.campaign as Record<string, unknown>
+    const criterion = (row.campaign_criterion ?? row.campaignCriterion) as Record<string, unknown>
+    const adSchedule = (criterion.ad_schedule ?? criterion.adSchedule) as Record<string, unknown>
+    if (!adSchedule) continue
+
+    const campaignPath = campaignToFilename(c.name as string)
+    const rawDay = (adSchedule.day_of_week ?? adSchedule.dayOfWeek) as number | string
+    const day = DAY_OF_WEEK_MAP[rawDay]
+    const startHour = Number(adSchedule.start_hour ?? adSchedule.startHour ?? 0)
+    const endHour = Number(adSchedule.end_hour ?? adSchedule.endHour ?? 24)
+
+    if (day) {
+      if (!campaignScheduleDays.has(campaignPath)) campaignScheduleDays.set(campaignPath, new Set())
+      campaignScheduleDays.get(campaignPath)!.add(day)
+    }
+    // Track hours (assume consistent across all schedule entries for a campaign)
+    if (startHour !== 0 || endHour !== 24) {
+      campaignScheduleHours.set(campaignPath, { startHour, endHour })
     }
   }
 
@@ -333,6 +469,24 @@ async function fetchAllCampaigns(
     const lang = campaignLang.get(campaignPath)
     if (lang && lang.length > 0) {
       rules.push({ type: 'language', languages: lang.sort() })
+    }
+
+    // Add schedule if present
+    const scheduleDays = campaignScheduleDays.get(campaignPath)
+    const scheduleHours = campaignScheduleHours.get(campaignPath)
+    if (scheduleDays || scheduleHours) {
+      const scheduleRule: Record<string, unknown> = { type: 'schedule' }
+      if (scheduleDays && scheduleDays.size > 0) {
+        scheduleRule.days = [...scheduleDays].sort((a, b) => {
+          const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+          return order.indexOf(a) - order.indexOf(b)
+        })
+      }
+      if (scheduleHours) {
+        scheduleRule.startHour = scheduleHours.startHour
+        scheduleRule.endHour = scheduleHours.endHour
+      }
+      rules.push(scheduleRule)
     }
 
     if (rules.length > 0) {

@@ -1,0 +1,56 @@
+[
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/123456~70001",
+      "asset": "customers/7300967494/assets/70001",
+      "field_type": 7,
+      "status": 2
+    },
+    "asset": {
+      "id": 70001,
+      "callout_asset": {
+        "callout_text": "Free Trial"
+      }
+    },
+    "campaign": {
+      "id": 123456,
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/123456~70002",
+      "asset": "customers/7300967494/assets/70002",
+      "field_type": 7,
+      "status": 2
+    },
+    "asset": {
+      "id": 70002,
+      "callout_asset": {
+        "callout_text": "24/7 Support"
+      }
+    },
+    "campaign": {
+      "id": 123456,
+      "name": "Search - PDF Renaming"
+    }
+  },
+  {
+    "campaign_asset": {
+      "resource_name": "customers/7300967494/campaignAssets/234567~70003",
+      "asset": "customers/7300967494/assets/70003",
+      "field_type": 7,
+      "status": 2
+    },
+    "asset": {
+      "id": 70003,
+      "callout_asset": {
+        "callout_text": "AI-Powered"
+      }
+    },
+    "campaign": {
+      "id": 234567,
+      "name": "Search - Google Drive"
+    }
+  }
+]
