@@ -1,5 +1,5 @@
 import type { ProviderModule } from '../core/providers.ts'
-import type { Resource, AdsConfig, Changeset } from '../core/types.ts'
+import type { Resource, ApplyResult, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
 import type { GoogleSearchCampaign } from './types.ts'
 import { flattenAll } from '../core/flatten.ts'
@@ -27,7 +27,7 @@ const googleProvider: ProviderModule = {
     _config: AdsConfig,
     cache: Cache,
     project: string,
-  ): Promise<unknown> {
+  ): Promise<ApplyResult> {
     const client = await createGoogleClient({ type: 'env' })
     return applyChangeset(client, changeset, cache, project)
   },
