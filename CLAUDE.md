@@ -107,6 +107,7 @@ example/            Working example project
 - **Campaign discovery is convention-based.** The CLI scans `campaigns/**/*.ts`, dynamic-imports each file, and collects exports that have `provider` + `kind` fields.
 - **Branded types for validation.** `Headline`, `Description`, `CalloutText` are branded strings. The helper functions (`headlines()`, `descriptions()`) validate constraints (e.g., headline <= 30 chars) at construction time.
 - **Dependency-ordered mutations.** Creates go parent-first (campaign → adGroup → keyword → ad). Deletes go child-first. Stops on first failure to avoid orphans.
+- **Zero-diff round-trips (Google).** The Google provider achieves `import → plan = 0 changes` — no phantom diffs. This required moving `budgetResourceName` to `resource.meta`, normalizing all field formats (micros, enums, booleans), and handling device bid adjustments as targeting rules.
 
 ## Credentials
 
@@ -138,6 +139,10 @@ Resolved in order: explicit `GoogleConfig` → `~/.ads/credentials.json` → env
 - **Amounts in micros.** $20 = 20,000,000 micros. The SDK abstracts this away.
 - **TARGET_SPEND = Maximize Clicks.** The API enum for "Maximize Clicks" bidding is `TARGET_SPEND` (10), not `MAXIMIZE_CLICKS` (11).
 - **RSA identity is content-based.** Ads don't have stable user-assigned names. Identity is tracked via a hash of sorted headlines + sorted descriptions + finalUrl.
+- **`campaign.start_date` / `campaign.end_date` are NOT queryable** in the current google-ads-api version — dates flow through flatten/codegen/apply but aren't fetched on import.
+- **`target_roas` is a raw double, NOT micros.** 3.5 = 350% ROAS. Unlike cpc/cpa fields which use micros.
+- **`METADATA_SERVER_DETECTION=none`** is set automatically to suppress GCE metadata warnings on local dev.
+- **Device bid adjustments** use `campaign_criterion` with `device.type` enum (2=MOBILE, 3=DESKTOP, 4=TABLET) and `bid_modifier` (1.0 = no change, 0.75 = -25%).
 
 ## Provider Architecture
 
@@ -161,6 +166,16 @@ The core engine (diff, cache, discovery) is provider-agnostic — it operates on
 - **Creative helpers:** `image()`, `video()`, `carousel()`, `boostedPost()` from `src/helpers/meta-creative.ts` (not the Google `image()` from extensions.ts)
 - **Interest search:** `cli/search.ts` queries Meta's targeting search API for interests and behaviors
 
+### Google provider field coverage
+
+Full round-trip support (import → plan → apply) for:
+
+- **Campaign:** name, status, budget, bidding (7 strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value), targeting (geo, language, schedule, device bid adjustments), networkSettings (search, searchPartners, display), trackingTemplate, finalUrlSuffix, customParameters, negatives, sitelinks, callouts
+- **Ad Group:** name, status
+- **Keyword:** text, matchType, bid (cpc_bid_micros), finalUrl, status
+- **Ad (RSA):** headlines, descriptions, finalUrl, path1, path2, pinnedHeadlines, pinnedDescriptions, status, multiple ads per group
+- **Extensions:** sitelinks, callouts (create only — campaign_asset linking is a TODO)
+
 ## Testing
 
 - **Runner:** `bun:test` (built into Bun).
@@ -169,3 +184,4 @@ The core engine (diff, cache, discovery) is provider-agnostic — it operates on
 - **Cache tests:** Use `:memory:` SQLite databases.
 - **API tests:** Mock the `GoogleAdsClient` interface (it's a plain object with `query` and `mutate` functions — trivial to mock).
 - **Snapshots:** `test/unit/__snapshots__/` for codegen output verification.
+- **1127+ tests**, 1 known skip (keyword platformId format).
