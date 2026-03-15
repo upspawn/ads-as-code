@@ -4,6 +4,8 @@ import {
   compareProperties,
   normalizeUrl,
   setEqual,
+  objectSetEqual,
+  deepEqualSorted,
   toMicros,
 } from '../../src/core/diff.ts'
 import type { Resource, Change, PropertyChange } from '../../src/core/types.ts'
@@ -83,6 +85,81 @@ describe('setEqual', () => {
 
   test('empty arrays', () => {
     expect(setEqual([], [])).toBe(true)
+  })
+})
+
+// ─── objectSetEqual ──────────────────────────────────────
+
+describe('objectSetEqual', () => {
+  test('same objects, same order', () => {
+    const a = [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]
+    const b = [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]
+    expect(objectSetEqual(a, b, 'id')).toBe(true)
+  })
+
+  test('same objects, different order', () => {
+    const a = [{ id: '2', name: 'B' }, { id: '1', name: 'A' }]
+    const b = [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]
+    expect(objectSetEqual(a, b, 'id')).toBe(true)
+  })
+
+  test('different IDs', () => {
+    const a = [{ id: '1', name: 'A' }]
+    const b = [{ id: '2', name: 'B' }]
+    expect(objectSetEqual(a, b, 'id')).toBe(false)
+  })
+
+  test('same IDs but different properties', () => {
+    const a = [{ id: '1', name: 'A' }]
+    const b = [{ id: '1', name: 'B' }]
+    expect(objectSetEqual(a, b, 'id')).toBe(false)
+  })
+
+  test('different lengths', () => {
+    const a = [{ id: '1', name: 'A' }]
+    const b = [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]
+    expect(objectSetEqual(a, b, 'id')).toBe(false)
+  })
+
+  test('empty arrays', () => {
+    expect(objectSetEqual([], [], 'id')).toBe(true)
+  })
+})
+
+// ─── deepEqualSorted ────────────────────────────────────
+
+describe('deepEqualSorted', () => {
+  test('identical objects', () => {
+    expect(deepEqualSorted({ a: 1, b: 2 }, { a: 1, b: 2 })).toBe(true)
+  })
+
+  test('arrays in different order → equal (sorted before compare)', () => {
+    expect(deepEqualSorted([3, 1, 2], [1, 2, 3])).toBe(true)
+  })
+
+  test('nested object with arrays in different order → equal', () => {
+    const a = { interests: [{ id: '2' }, { id: '1' }], genders: [2, 1] }
+    const b = { interests: [{ id: '1' }, { id: '2' }], genders: [1, 2] }
+    expect(deepEqualSorted(a, b)).toBe(true)
+  })
+
+  test('different values → not equal', () => {
+    expect(deepEqualSorted({ a: 1 }, { a: 2 })).toBe(false)
+  })
+
+  test('different array contents → not equal', () => {
+    expect(deepEqualSorted([1, 2, 3], [1, 2, 4])).toBe(false)
+  })
+
+  test('primitives', () => {
+    expect(deepEqualSorted(42, 42)).toBe(true)
+    expect(deepEqualSorted('abc', 'abc')).toBe(true)
+    expect(deepEqualSorted(42, 43)).toBe(false)
+  })
+
+  test('null handling', () => {
+    expect(deepEqualSorted(null, null)).toBe(true)
+    expect(deepEqualSorted(null, { a: 1 })).toBe(false)
   })
 })
 
@@ -199,6 +276,166 @@ describe('compareProperties', () => {
     const changes = compareProperties(desired, actual)
     expect(changes.length).toBe(1)
     expect(changes[0]!.field).toBe('targeting')
+  })
+
+  // ─── Meta: interests (unordered set by `id`) ─────────────
+
+  test('interests: same interests, different order → no change', () => {
+    const desired = {
+      interests: [
+        { id: '6003139266461', name: 'Construction' },
+        { id: '6003012166780', name: 'Small business' },
+        { id: '6003397425735', name: 'File management' },
+      ],
+    }
+    const actual = {
+      interests: [
+        { id: '6003397425735', name: 'File management' },
+        { id: '6003139266461', name: 'Construction' },
+        { id: '6003012166780', name: 'Small business' },
+      ],
+    }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('interests: different IDs → change', () => {
+    const desired = {
+      interests: [
+        { id: '6003139266461', name: 'Construction' },
+        { id: '6003012166780', name: 'Small business' },
+      ],
+    }
+    const actual = {
+      interests: [
+        { id: '6003139266461', name: 'Construction' },
+        { id: '9999999999999', name: 'Something else' },
+      ],
+    }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('interests')
+  })
+
+  test('interests: different lengths → change', () => {
+    const desired = {
+      interests: [{ id: '6003139266461', name: 'Construction' }],
+    }
+    const actual = {
+      interests: [
+        { id: '6003139266461', name: 'Construction' },
+        { id: '6003012166780', name: 'Small business' },
+      ],
+    }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('interests')
+  })
+
+  test('interests: empty arrays → no change', () => {
+    expect(compareProperties({ interests: [] }, { interests: [] })).toEqual([])
+  })
+
+  // ─── Meta: customAudiences / excludedAudiences ───────────
+
+  test('customAudiences: same audiences, different order → no change', () => {
+    const desired = { customAudiences: ['aud-abc', 'aud-def', 'aud-ghi'] }
+    const actual = { customAudiences: ['aud-ghi', 'aud-abc', 'aud-def'] }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('customAudiences: different audiences → change', () => {
+    const desired = { customAudiences: ['aud-abc', 'aud-def'] }
+    const actual = { customAudiences: ['aud-abc', 'aud-xyz'] }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('customAudiences')
+  })
+
+  test('excludedAudiences: same audiences, different order → no change', () => {
+    const desired = { excludedAudiences: ['exc-1', 'exc-2'] }
+    const actual = { excludedAudiences: ['exc-2', 'exc-1'] }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('excludedAudiences: different audiences → change', () => {
+    const desired = { excludedAudiences: ['exc-1'] }
+    const actual = { excludedAudiences: ['exc-1', 'exc-2'] }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('excludedAudiences')
+  })
+
+  // ─── Meta: targeting (deep compare with sorted arrays) ───
+
+  test('targeting: nested arrays in different order → no change', () => {
+    const desired = {
+      targeting: {
+        ageMin: 25,
+        ageMax: 55,
+        genders: [1, 2],
+        interests: [
+          { id: '6003139266461', name: 'Construction' },
+          { id: '6003012166780', name: 'Small business' },
+        ],
+        behaviors: [
+          { id: '99001', name: 'Business travelers' },
+          { id: '99002', name: 'Commuters' },
+        ],
+      },
+    }
+    const actual = {
+      targeting: {
+        ageMin: 25,
+        ageMax: 55,
+        genders: [2, 1],
+        interests: [
+          { id: '6003012166780', name: 'Small business' },
+          { id: '6003139266461', name: 'Construction' },
+        ],
+        behaviors: [
+          { id: '99002', name: 'Commuters' },
+          { id: '99001', name: 'Business travelers' },
+        ],
+      },
+    }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('targeting: different nested values → change', () => {
+    const desired = {
+      targeting: { ageMin: 25, interests: [{ id: '111', name: 'A' }] },
+    }
+    const actual = {
+      targeting: { ageMin: 30, interests: [{ id: '111', name: 'A' }] },
+    }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('targeting')
+  })
+
+  // ─── Meta: budget from fetch (cents → core Budget) ───────
+
+  test('budget: Meta cents converted to core Budget → correct micros comparison', () => {
+    // Meta API returns budget in cents (e.g., 500 = $5.00).
+    // The fetch layer converts this to core Budget: { amount: 5, currency: 'USD', period: 'daily' }.
+    // The diff engine should compare this correctly via toMicros().
+    const desired = { budget: { amount: 5, currency: 'USD', period: 'daily' } }
+    const actual = { budget: { amount: 5.00, currency: 'USD', period: 'daily' } }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('budget: Meta lifetime budget compared correctly', () => {
+    const desired = { budget: { amount: 100, currency: 'EUR', period: 'lifetime', endTime: '2026-04-01' } }
+    const actual = { budget: { amount: 100, currency: 'EUR', period: 'lifetime', endTime: '2026-04-01' } }
+    expect(compareProperties(desired, actual)).toEqual([])
+  })
+
+  test('budget: Meta lifetime budget with different endTime → change', () => {
+    const desired = { budget: { amount: 100, currency: 'EUR', period: 'lifetime', endTime: '2026-04-01' } }
+    const actual = { budget: { amount: 100, currency: 'EUR', period: 'lifetime', endTime: '2026-03-15' } }
+    const changes = compareProperties(desired, actual)
+    expect(changes.length).toBe(1)
+    expect(changes[0]!.field).toBe('budget')
   })
 })
 
