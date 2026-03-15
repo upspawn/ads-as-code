@@ -7,7 +7,7 @@ import { deduplicateResourceSlugs } from '../core/flatten.ts'
 import { codegenMeta } from './codegen.ts'
 import { downloadMetaImages } from './download.ts'
 import { fetchMetaAll } from './fetch.ts'
-import { applyMetaChangeset } from './apply.ts'
+import { applyMetaChangeset, dryRunMetaChangeset } from './apply.ts'
 import { MetaCampaignBuilder } from './index.ts'
 
 // ─── Meta Provider Module ──────────────────────────────────
@@ -34,6 +34,11 @@ const metaProvider: ProviderModule = {
   async applyChangeset(changeset: Changeset, config: AdsConfig, cache: Cache, project: string) {
     if (!config.meta) throw new Error('Meta provider config missing — add meta section to ads.config.ts')
     return applyMetaChangeset(changeset, config.meta, cache, project)
+  },
+
+  dryRunChangeset(changeset: Changeset, config: AdsConfig, cache: Cache, project: string) {
+    if (!config.meta) throw new Error('Meta provider config missing — add meta section to ads.config.ts')
+    return dryRunMetaChangeset(changeset, config.meta, cache, project)
   },
 
   codegen(resources: Resource[], _campaignName: string): string {

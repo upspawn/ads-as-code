@@ -30,6 +30,7 @@ Global Flags:
   --json        Output in JSON format
   --provider    Filter to a specific provider (google, meta)
   --filter      Filter campaigns by glob pattern (status command)
+  --dry-run     Show exact API payloads without making changes (apply command)
   --diff N      Show changeset for operation N (history command)
   --rollback N  Show snapshot N for revert (history command)
   --help, -h    Show this help message

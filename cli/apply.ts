@@ -308,13 +308,63 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     console.log()
   }
 
-  // 9. Dry run — stop here
+  // 9. Dry run — show exact API payloads, then stop
   if (options.dryRun) {
-    if (options.json) {
-      console.log(JSON.stringify({ status: 'dry_run', changeset }, null, 2))
-    } else {
-      console.log('Dry run — no changes applied.')
+    // Generate per-provider API call previews
+    for (const [providerName, campaigns] of providerGroups) {
+      const provider = await getProvider(providerName)
+
+      if (provider.dryRunChangeset) {
+        // Build provider-scoped changeset
+        const providerDesired = provider.flatten(campaigns.map(c => c.campaign))
+        const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
+        const belongsToProvider = (change: Change): boolean => {
+          const slug = campaignFromPath(change.resource.path)
+          return providerSlugs.has(slug)
+        }
+        const providerChangeset: Changeset = {
+          creates: changeset.creates.filter(belongsToProvider),
+          updates: changeset.updates.filter(belongsToProvider),
+          deletes: changeset.deletes.filter(belongsToProvider),
+          drift: changeset.drift.filter(belongsToProvider),
+        }
+
+        const calls = provider.dryRunChangeset(providerChangeset, config, cache, 'default')
+
+        if (options.json) {
+          console.log(JSON.stringify({ status: 'dry_run', provider: providerName, calls }, null, 2))
+        } else {
+          console.log(`DRY RUN — no changes made [${providerName}]`)
+          console.log()
+          for (const call of calls) {
+            const label = call.op.toUpperCase()
+            const name = call.resource.name ?? call.resource.path
+            console.log(`  ${label} ${call.resource.kind} "${name}"`)
+            console.log(`    ${call.method} /${call.endpoint}`)
+            if (call.params && Object.keys(call.params).length > 0) {
+              for (const [key, value] of Object.entries(call.params)) {
+                // Pretty-print JSON values, keep short strings inline
+                let displayValue: string
+                try {
+                  const parsed = JSON.parse(value)
+                  displayValue = JSON.stringify(parsed, null, 2).split('\n').join('\n      ')
+                } catch {
+                  displayValue = value
+                }
+                console.log(`      ${key}: ${displayValue}`)
+              }
+            }
+            console.log()
+          }
+          console.log(`${calls.length} API call${calls.length !== 1 ? 's' : ''} would be made.`)
+        }
+      } else {
+        if (!options.json) {
+          console.log(`DRY RUN — no changes made [${providerName}] (detailed payload preview not available)`)
+        }
+      }
     }
+
     cache.close()
     return
   }

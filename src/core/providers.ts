@@ -41,6 +41,27 @@ export type ProviderModule = {
     rootDir: string,
     cache: Cache | null,
   ) => Promise<{ resources: Resource[]; summary?: string }>
+
+  /**
+   * Optional dry-run: compute the exact API payloads without making any calls.
+   * Returns an array of call descriptors (method, endpoint, params).
+   * Providers that don't implement this fall back to printing the changeset summary.
+   */
+  readonly dryRunChangeset?: (
+    changeset: Changeset,
+    config: AdsConfig,
+    cache: Cache,
+    project: string,
+  ) => DryRunCall[]
+}
+
+/** Describes a single API call that would be made during apply. */
+export type DryRunCall = {
+  readonly method: string
+  readonly endpoint: string
+  readonly params?: Record<string, string>
+  readonly resource: { kind: string; path: string; name?: string }
+  readonly op: string
 }
 
 // ─── Provider Registry ─────────────────────────────────────

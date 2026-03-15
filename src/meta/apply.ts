@@ -682,3 +682,115 @@ async function executeDelete(
   // The Graph API supports both. We use DELETE for cleaner semantics.
   await client.graphDelete(resource.platformId)
 }
+
+// ─── Dry Run ────────────────────────────────────────────────
+
+/** A single API call that would be made during apply. */
+export type DryRunCall = {
+  readonly method: 'POST' | 'DELETE'
+  readonly endpoint: string
+  readonly params?: Record<string, string>
+  readonly resource: { kind: ResourceKind; path: string; name?: string }
+  readonly op: 'create' | 'update' | 'delete'
+}
+
+/**
+ * Generate the exact API payloads that `applyMetaChangeset` would send,
+ * without making any network calls.
+ *
+ * Reuses the same builder functions as the real apply path so the output
+ * is guaranteed to match what would actually be sent.
+ */
+export function dryRunMetaChangeset(
+  changeset: Changeset,
+  config: MetaProviderConfig,
+  cache: Cache,
+  project: string,
+): DryRunCall[] {
+  const accountId = config.accountId
+  const calls: DryRunCall[] = []
+
+  // Build resource map from cache for resolving parent references
+  const cacheRows = cache.getResourceMap(project)
+  const resourceMap = new Map<string, string>()
+  for (const row of cacheRows) {
+    if (row.platformId) {
+      resourceMap.set(row.path, row.platformId)
+    }
+  }
+
+  const orderedCreates = sortByCreationOrder(changeset.creates)
+  const orderedUpdates = changeset.updates
+  const orderedDeletes = sortByDeletionOrder(changeset.deletes)
+
+  // Creates
+  for (const change of orderedCreates) {
+    const resource = change.resource
+    const name = resource.properties.name as string | undefined
+
+    switch (resource.kind) {
+      case 'campaign': {
+        const params = buildCampaignCreateParams(resource, config)
+        calls.push({ method: 'POST', endpoint: `${accountId}/campaigns`, params, resource: { kind: resource.kind, path: resource.path, name }, op: 'create' })
+        // Simulate ID assignment for child resolution
+        resourceMap.set(resource.path, `<new-campaign-id>`)
+        break
+      }
+      case 'adSet': {
+        const campaignPath = extractCampaignPath(resource.path)
+        const campaignId = resourceMap.get(campaignPath) ?? '<unknown-campaign-id>'
+        const params = buildAdSetCreateParams(resource, campaignId, config)
+        calls.push({ method: 'POST', endpoint: `${accountId}/adsets`, params, resource: { kind: resource.kind, path: resource.path, name }, op: 'create' })
+        resourceMap.set(resource.path, `<new-adset-id>`)
+        break
+      }
+      case 'creative': {
+        const params = buildCreativeCreateParams(resource, config)
+        calls.push({ method: 'POST', endpoint: `${accountId}/adcreatives`, params, resource: { kind: resource.kind, path: resource.path, name }, op: 'create' })
+        resourceMap.set(resource.path, `<new-creative-id>`)
+        break
+      }
+      case 'ad': {
+        const adSetPath = extractAdSetPath(resource.path)
+        const adSetId = resourceMap.get(adSetPath) ?? '<unknown-adset-id>'
+        const creativePath = (resource.meta?.creativePath as string)
+          ?? (resource.properties.creativePath as string)
+          ?? extractCreativePath(resource.path)
+        const creativeId = resourceMap.get(creativePath) ?? '<unknown-creative-id>'
+        const params = buildAdCreateParams(resource, adSetId, creativeId)
+        calls.push({ method: 'POST', endpoint: `${accountId}/ads`, params, resource: { kind: resource.kind, path: resource.path, name }, op: 'create' })
+        break
+      }
+    }
+  }
+
+  // Updates
+  for (const change of orderedUpdates) {
+    if (change.op !== 'update') continue
+    const resource = change.resource
+    if (!resource.platformId) continue
+    const params = buildUpdateParams(change)
+    if (Object.keys(params).length === 0) continue
+    calls.push({
+      method: 'POST',
+      endpoint: resource.platformId,
+      params,
+      resource: { kind: resource.kind, path: resource.path, name: resource.properties.name as string | undefined },
+      op: 'update',
+    })
+  }
+
+  // Deletes
+  for (const change of orderedDeletes) {
+    const resource = change.resource
+    if (!resource.platformId) continue
+    calls.push({
+      method: 'DELETE',
+      endpoint: resource.platformId,
+      resource: { kind: resource.kind, path: resource.path, name: resource.properties.name as string | undefined },
+      op: 'delete',
+    })
+  }
+
+  return calls
+}
