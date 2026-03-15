@@ -3,6 +3,7 @@ import { isRsaMarker } from '../ai/types.ts'
 import { isKeywordsMarker } from '../ai/types.ts'
 import type {
   AdGroupInput,
+  AssetGroupInput,
   BiddingInput,
   BiddingStrategy,
   CallExtension,
@@ -13,8 +14,11 @@ import type {
   GoogleAdGroupUnresolved,
   GoogleDisplayAdGroup,
   GoogleDisplayCampaign,
+  GooglePMaxCampaign,
   GoogleSearchCampaignUnresolved,
   ImageExtension,
+  PMaxCampaignBuilder,
+  PMaxCampaignInput,
   PriceExtension,
   PromotionExtension,
   SearchCampaignInput,
@@ -282,6 +286,39 @@ function createDisplayBuilder(campaign: GoogleDisplayCampaign): DisplayCampaignB
   return builder
 }
 
+// ─── PMax Builder ─────────────────────────────────────────
+
+/**
+ * Create a PMaxCampaignBuilder that wraps a GooglePMaxCampaign with chained methods.
+ */
+function createPMaxBuilder(campaign: GooglePMaxCampaign): PMaxCampaignBuilder {
+  const builder: PMaxCampaignBuilder = Object.create(null)
+
+  const keys = Object.keys(campaign) as (keyof GooglePMaxCampaign)[]
+  for (const key of keys) {
+    Object.defineProperty(builder, key, {
+      value: campaign[key],
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    })
+  }
+
+  /**
+   * Add an asset group to the PMax campaign.
+   *
+   * @param key - Unique identifier for the asset group (e.g. `'main'`, `'construction'`)
+   * @param input - Asset group definition with URLs, headlines, descriptions, etc.
+   * @returns A new PMaxCampaignBuilder with the asset group added
+   */
+  builder.assetGroup = function (key: string, input: AssetGroupInput): PMaxCampaignBuilder {
+    const newAssetGroups = { ...campaign.assetGroups, [key]: input }
+    return createPMaxBuilder({ ...campaign, assetGroups: newAssetGroups })
+  }
+
+  return builder
+}
+
 /**
  * Google Ads campaign builder namespace.
  *
@@ -386,5 +423,52 @@ export const google = {
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
     }
     return createDisplayBuilder(campaign)
+  },
+
+  /**
+   * Create a Google Performance Max campaign with a chainable builder API.
+   *
+   * Returns a `PMaxCampaignBuilder` that exposes `.assetGroup()` for adding asset groups.
+   * PMax campaigns use asset groups instead of ad groups — Google's AI assembles
+   * the provided assets into ads across Search, Display, YouTube, Gmail, Discover, and Maps.
+   *
+   * @param name - Campaign name
+   * @param input - Campaign configuration (budget, bidding, targeting, urlExpansion)
+   * @returns A PMaxCampaignBuilder for adding asset groups
+   *
+   * @example
+   * ```ts
+   * const campaign = google.performanceMax('PMax - Renamed.to', {
+   *   budget: daily(15),
+   *   bidding: 'maximize-conversions',
+   *   targeting: targeting(geo('US', 'DE'), languages('en', 'de')),
+   * })
+   * .assetGroup('main', {
+   *   finalUrls: ['https://renamed.to'],
+   *   headlines: ['Rename Files Fast', 'AI File Renaming', 'Batch Rename'],
+   *   longHeadlines: ['Rename All Your Files in Seconds with AI'],
+   *   descriptions: ['Try renamed.to free', 'No credit card required'],
+   *   businessName: 'renamed.to',
+   * })
+   * ```
+   */
+  performanceMax(name: string, input: PMaxCampaignInput): PMaxCampaignBuilder {
+    const campaign: GooglePMaxCampaign = {
+      provider: 'google',
+      kind: 'performance-max',
+      name,
+      status: input.status ?? 'enabled',
+      budget: input.budget,
+      bidding: normalizeBidding(input.bidding),
+      targeting: input.targeting ?? { rules: [] },
+      assetGroups: {},
+      ...(input.urlExpansion !== undefined && { urlExpansion: input.urlExpansion }),
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
+      ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+      ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+    }
+    return createPMaxBuilder(campaign)
   },
 }

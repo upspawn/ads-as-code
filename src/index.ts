@@ -72,6 +72,10 @@ export type {
   DisplayCampaignInput,
   DisplayAdGroupInput,
   DisplayCampaignBuilder,
+  GooglePMaxCampaign,
+  AssetGroupInput,
+  PMaxCampaignInput,
+  PMaxCampaignBuilder,
 } from './google/types.ts'
 
 export type {

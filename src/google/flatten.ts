@@ -1,5 +1,5 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
-import type { GoogleSearchCampaign, GoogleDisplayCampaign, GoogleCampaign } from './types.ts'
+import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleCampaign } from './types.ts'
 import { slugify } from '../core/flatten.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
@@ -231,12 +231,62 @@ function responsiveDisplayHash(headlines: readonly string[], longHeadline: strin
   return stableHash(payload)
 }
 
+// ─── PMax Flatten ───────────────────────────────────────
+
+/** Flatten a single Google Performance Max campaign tree into a flat list of Resource objects. */
+export function flattenPMax(campaign: GooglePMaxCampaign): Resource[] {
+  const resources: Resource[] = []
+  const campaignPath = slugify(campaign.name)
+
+  // 1. Campaign resource — with channelType marker
+  resources.push(resource('campaign', campaignPath, {
+    name: campaign.name,
+    status: campaign.status,
+    budget: campaign.budget,
+    bidding: campaign.bidding,
+    targeting: campaign.targeting,
+    channelType: 'performance-max',
+    ...(campaign.urlExpansion !== undefined && { urlExpansion: campaign.urlExpansion }),
+    ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
+    ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
+    ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
+    ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
+    ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
+  }))
+
+  // 2. Asset groups
+  for (const [key, ag] of Object.entries(campaign.assetGroups)) {
+    const agPath = `${campaignPath}/${key}`
+    resources.push(resource('assetGroup', agPath, {
+      name: key,
+      status: ag.status ?? 'enabled',
+      finalUrls: ag.finalUrls,
+      ...(ag.finalMobileUrls ? { finalMobileUrls: ag.finalMobileUrls } : {}),
+      headlines: ag.headlines,
+      longHeadlines: ag.longHeadlines,
+      descriptions: ag.descriptions,
+      businessName: ag.businessName,
+      ...(ag.images ? { images: ag.images } : {}),
+      ...(ag.logos ? { logos: ag.logos } : {}),
+      ...(ag.landscapeLogos ? { landscapeLogos: ag.landscapeLogos } : {}),
+      ...(ag.videos ? { videos: ag.videos } : {}),
+      ...(ag.callToAction ? { callToAction: ag.callToAction } : {}),
+      ...(ag.path1 ? { path1: ag.path1 } : {}),
+      ...(ag.path2 ? { path2: ag.path2 } : {}),
+      ...(ag.audienceSignal ? { audienceSignal: ag.audienceSignal } : {}),
+    }))
+  }
+
+  return resources
+}
+
 // ─── Multi-Kind Flatten ──────────────────────────────────
 
-/** Flatten multiple Google campaigns (Search or Display) into a single flat list. */
+/** Flatten multiple Google campaigns (Search, Display, or PMax) into a single flat list. */
 export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
   return campaigns.flatMap(c => {
     if (c.kind === 'display') return flattenDisplay(c)
+    if (c.kind === 'performance-max') return flattenPMax(c)
     return flatten(c)
   })
 }

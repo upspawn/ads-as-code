@@ -292,7 +292,69 @@ export type GoogleAdsClient = {
   readonly managerId?: string
 }
 
+// === Performance Max Campaign ===
+
+export type AssetGroupInput = {
+  readonly finalUrls: string[]
+  readonly finalMobileUrls?: string[]
+  readonly headlines: string[]        // min 3, max 15, each max 30 chars
+  readonly longHeadlines: string[]    // min 1, max 5, each max 90 chars
+  readonly descriptions: string[]     // min 2, max 5, each max 90 chars
+  readonly businessName: string       // max 25 chars
+  readonly images?: {
+    readonly landscape?: ImageRef[]   // 1.91:1
+    readonly square?: ImageRef[]      // 1:1
+    readonly portrait?: ImageRef[]    // 4:5
+  }
+  readonly logos?: ImageRef[]         // 1:1
+  readonly landscapeLogos?: ImageRef[] // 4:1
+  readonly videos?: string[]          // YouTube URLs
+  readonly callToAction?: string
+  readonly status?: 'enabled' | 'paused'
+  readonly path1?: string
+  readonly path2?: string
+  readonly audienceSignal?: Targeting  // hints for Google AI
+}
+
+export type GooglePMaxCampaign = {
+  readonly provider: 'google'
+  readonly kind: 'performance-max'
+  readonly name: string
+  readonly status: 'enabled' | 'paused'
+  readonly budget: Budget
+  readonly bidding: BiddingStrategy   // only maximize-conversions or maximize-conversion-value
+  readonly targeting: Targeting       // geo + language only
+  readonly assetGroups: Record<string, AssetGroupInput>
+  readonly urlExpansion?: boolean     // default true
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+// === Performance Max Campaign Input ===
+
+export type PMaxCampaignInput = {
+  readonly budget: Budget
+  readonly bidding: BiddingInput
+  readonly targeting?: Targeting
+  readonly status?: 'enabled' | 'paused'
+  readonly urlExpansion?: boolean
+  readonly startDate?: string
+  readonly endDate?: string
+  readonly trackingTemplate?: string
+  readonly finalUrlSuffix?: string
+  readonly networkSettings?: NetworkSettings
+}
+
+// === Performance Max Campaign Builder ===
+
+export type PMaxCampaignBuilder = GooglePMaxCampaign & {
+  assetGroup(key: string, input: AssetGroupInput): PMaxCampaignBuilder
+}
+
 // === Campaign union (extensible for Meta) ===
 
-export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign
-export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign
+export type GoogleCampaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign
+export type Campaign = GoogleSearchCampaign | GoogleDisplayCampaign | GooglePMaxCampaign
