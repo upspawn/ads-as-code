@@ -48,6 +48,7 @@ function mediaPath(creative: MetaCreative): string | undefined {
     case 'video': return creative.video
     case 'carousel': return undefined
     case 'collection': return creative.coverImage ?? creative.coverVideo
+    case 'boostedPost': return undefined
   }
 }
 
@@ -77,14 +78,13 @@ function resolveAdName(creative: MetaCreative): string {
  * Throws a validation error if neither is set.
  */
 function resolveUrl(creative: MetaCreative, content: AdSetContent, _adSetName: string): { url: string; defaulted: boolean } {
-  if (creative.format === 'collection') {
-    // Collections don't need a url (they use instantExperience)
+  if (creative.format === 'collection' || creative.format === 'boostedPost') {
+    // Collections use instantExperience; boosted posts use the original post URL
     return { url: '', defaulted: false }
   }
   const adUrl = 'url' in creative ? creative.url : undefined
   if (adUrl) return { url: adUrl, defaulted: false }
   if (content.url) return { url: content.url, defaulted: true }
-  // Boosted posts and some ad formats don't have URLs
   return { url: '', defaulted: true }
 }
 
@@ -93,14 +93,13 @@ function resolveUrl(creative: MetaCreative, content: AdSetContent, _adSetName: s
  * Throws a validation error if neither is set.
  */
 function resolveCta(creative: MetaCreative, content: AdSetContent, _adSetName: string): { cta: MetaCTA; defaulted: boolean } {
-  if (creative.format === 'collection') {
-    // Collections don't use a CTA button
+  if (creative.format === 'collection' || creative.format === 'boostedPost') {
+    // Collections and boosted posts don't use a CTA button
     return { cta: 'NO_BUTTON', defaulted: false }
   }
   const adCta = 'cta' in creative ? creative.cta : undefined
   if (adCta) return { cta: adCta, defaulted: false }
   if (content.cta) return { cta: content.cta, defaulted: true }
-  // Boosted posts and some ad formats don't have CTAs
   return { cta: 'NO_BUTTON', defaulted: true }
 }
 
@@ -282,5 +281,9 @@ function buildCreativeProperties(
           ...(creative.coverVideo !== undefined && { coverVideoPath: creative.coverVideo }),
         },
       }
+
+    case 'boostedPost':
+      // Boosted posts omit format/headline/primaryText to match fetch output
+      return { properties: { name: adName }, meta: {} }
   }
 }

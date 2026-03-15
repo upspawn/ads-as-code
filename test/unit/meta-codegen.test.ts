@@ -563,7 +563,7 @@ describe('codegenMeta', () => {
     expect(code).not.toContain("image('./assets/imported/hero-abc123.png',")
   })
 
-  test('boosted post creative (no format) uses object literal instead of image()', () => {
+  test('boosted post creative (no format) uses boostedPost() instead of image()', () => {
     const resources: Resource[] = [
       makeMetaCampaign(),
       makeAdSet('retargeting-us/visitors', 'Visitors'),
@@ -579,13 +579,13 @@ describe('codegenMeta', () => {
 
     const code = codegenMeta(resources)
 
-    // Should NOT use image() or video() helpers
+    // Should use boostedPost() helper, NOT image() or video()
+    expect(code).toContain("boostedPost('Boosted Page Post')")
     expect(code).not.toContain('image(')
     expect(code).not.toContain('video(')
-    // Should contain the name in a raw object
-    expect(code).toContain("name: 'Boosted Page Post'")
-    // Should not import metaImage or metaVideo
+    // Should import boostedPost, not metaImage or metaVideo
     const importLine = code.split('\n').find((l) => l.startsWith('import'))!
+    expect(importLine).toContain('boostedPost')
     expect(importLine).not.toContain('metaImage')
     expect(importLine).not.toContain('metaVideo')
   })
