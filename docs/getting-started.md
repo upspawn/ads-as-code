@@ -122,11 +122,16 @@ Imported 3 campaign(s):
 Total: 5 files written
 ```
 
-The import:
-- Fetches all enabled Search campaigns, ad groups, keywords, RSA ads, negative keywords, and targeting
-- Generates idiomatic TypeScript using the `@upspawn/ads` SDK
-- Extracts shared targeting and negative keywords into separate files
-- Seeds the local cache with platform IDs so `ads plan` can track resources
+What gets imported:
+- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix)
+- Ad groups (name, status)
+- Keywords (text, match type, bid, final URL, status)
+- RSA ads (headlines, descriptions, final URL, path1, path2, pinned fields, status)
+- Campaign-level negative keywords
+- Geo, language, schedule, and device targeting
+- Sitelink and callout extensions
+
+The import generates idiomatic TypeScript using the `@upspawn/ads` SDK, extracts shared targeting and negative keywords into separate files, and seeds the local cache with platform IDs so `ads plan` can track resources.
 
 Flags:
 - `--all` — Include paused campaigns (default: enabled only)

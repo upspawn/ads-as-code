@@ -219,6 +219,29 @@ export const gdrive = integrationCampaign('Google Drive', 'google-drive', '/inte
 export const onedrive = integrationCampaign('OneDrive', 'onedrive', '/integrations/onedrive')
 ```
 
+### Full campaign options
+
+```typescript
+// All available campaign-level options
+export default google.search('Search - OneDrive', {
+  budget: daily(4),
+  bidding: 'maximize-clicks',
+  targeting: targeting(
+    geo('US', 'DE'),
+    languages('en', 'de'),
+    device('mobile', -1),          // exclude mobile (-100%)
+  ),
+  networkSettings: {
+    searchNetwork: true,
+    searchPartners: false,
+    displayNetwork: false,          // disable Display Network
+  },
+  trackingTemplate: '{lpurl}?utm_source=google&utm_medium=cpc',
+  finalUrlSuffix: 'utm_campaign={campaignid}',
+  status: 'paused',                // create as paused
+})
+```
+
 ### Extensions
 
 ```typescript
@@ -254,7 +277,9 @@ export default google.search('My Campaign', { /* ... */ })
 | `url(finalUrl, utm?)` | URL with optional UTM params | `url('https://example.com')` |
 | `link(text, url, options?)` | Sitelink extension | `link('Pricing', '/pricing')` |
 | `callouts(...texts)` | Callout extensions (max 25 chars) | `callouts('Free Trial', 'GDPR Ready')` |
+| `device(type, adjustment)` | Device bid adjustment | `device('mobile', -0.5)` (−50% mobile bid) |
 | `negatives(...texts)` | Deduplicated negative keywords (broad) | `negatives('free', 'cheap')` |
+| `networkSettings: {...}` | Network settings (config) | `{ searchNetwork: true, displayNetwork: false }` |
 
 ## CLI Reference
 
@@ -368,13 +393,21 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 
 ### What works
 
-**Google Ads:**
+**Google Ads (production-ready):**
 - Full campaign lifecycle: create, update, delete via `plan` / `apply`
+- Zero-diff round-trips: `import` then `plan` = 0 changes
 - Import existing campaigns as TypeScript files
 - Drift detection between code and live account
 - Semantic diff (budget precision, headline ordering, URL normalization)
 - RSA stable identity (content changes produce updates, not delete+create)
-- Geo, language, and schedule targeting
+- 7 bidding strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value
+- Network settings (Search Network, Search Partners, Display Network)
+- Device bid adjustments (mobile, desktop, tablet)
+- Campaign tracking: trackingTemplate, finalUrlSuffix, customParameters
+- Ad fields: path1, path2, pinnedHeadlines, pinnedDescriptions, status
+- Keyword options: custom bid (cpc_bid_micros), finalUrl override, status
+- Multiple RSA ads per ad group
+- Geo, language, schedule, and device targeting
 - Sitelink and callout extensions
 - Negative keywords (campaign-level, broad/phrase/exact)
 
@@ -396,8 +429,9 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 ### Known limitations
 
 - Google: Search campaigns only (Display, Shopping, Performance Max not yet supported)
-- Google: Sitelink/callout extensions are not yet fetched during import
+- Google: Extensions — structured snippets, call, price, promotion, and image extensions are type-defined but not yet wired in fetch/apply
 - Google: No shared negative keyword lists at the account level (campaign-level only)
+- Google: `campaign.start_date` / `campaign.end_date` not queryable in current API version (works in flatten/codegen/apply but not fetched)
 - No `ads destroy` or `ads diff` commands yet
 
 ## Contributing

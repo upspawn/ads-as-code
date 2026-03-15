@@ -125,6 +125,8 @@ The command:
 3. Fetches live state from the Google Ads API (actual state)
 4. Computes a diff: creates, updates, deletes, and drift
 
+After a fresh `import`, `plan` should show `All campaigns in sync. 0 changes.` — this confirms the round-trip is clean.
+
 ```
 Campaign "Search - Exact Match"
   (no changes)
@@ -205,12 +207,13 @@ ads import --filter "Search*"
 Fetches all active Search campaigns from Google Ads and generates idiomatic TypeScript campaign files using the `@upspawn/ads` SDK.
 
 What gets imported:
-- Campaigns (budget, bidding, status)
-- Ad groups
-- Keywords (exact, phrase, broad match)
-- RSA ads (headlines, descriptions, final URL)
+- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix)
+- Ad groups (name, status)
+- Keywords (text, match type, bid, final URL, status)
+- RSA ads (headlines, descriptions, final URL, path1, path2, pinned fields, status)
 - Campaign-level negative keywords
-- Geo and language targeting
+- Geo, language, schedule, and device targeting
+- Sitelink and callout extensions
 
 ```
 Fetching campaigns from Google Ads (customer 7300967494)...
