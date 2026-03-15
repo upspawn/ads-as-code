@@ -178,3 +178,9 @@ export type {
 // === Providers ===
 
 export { google } from './google/index.ts'
+export { meta, MetaCampaignBuilder } from './meta/index.ts'
+
+export type { MetaCampaign, MetaAdSet } from './meta/index.ts'
+
+export type { ProviderModule } from './core/providers.ts'
+export { getProvider, resolveProviders } from './core/providers.ts'
