@@ -2,6 +2,7 @@
 // Organized: Objectives → Optimization → Bidding → Targeting → Placements → Creatives → CTAs → Scheduling → Config
 
 import type { Budget } from '../core/types.ts'
+import type { AssetMarker } from '../core/asset.ts'
 import type { UrlResult } from '../helpers/url.ts'
 
 // ─── Objectives & Optimization Goals ───────────────────────
@@ -109,7 +110,7 @@ export type MetaPlacements =
 
 export type ImageAd = {
   readonly format: 'image'
-  readonly image: string
+  readonly image: string | AssetMarker
   readonly name?: string
   readonly headline: string
   readonly primaryText: string
@@ -123,9 +124,9 @@ export type ImageAd = {
 
 export type VideoAd = {
   readonly format: 'video'
-  readonly video: string
+  readonly video: string | AssetMarker
   readonly name?: string
-  readonly thumbnail?: string
+  readonly thumbnail?: string | AssetMarker
   readonly headline: string
   readonly primaryText: string
   readonly description?: string
@@ -136,7 +137,7 @@ export type VideoAd = {
 }
 
 export type CarouselCard = {
-  readonly image: string
+  readonly image: string | AssetMarker
   readonly headline: string
   readonly description?: string
   readonly url: string | UrlResult
@@ -157,8 +158,8 @@ export type CarouselAd = {
 export type CollectionAd = {
   readonly format: 'collection'
   readonly name?: string
-  readonly coverImage?: string
-  readonly coverVideo?: string
+  readonly coverImage?: string | AssetMarker
+  readonly coverVideo?: string | AssetMarker
   readonly instantExperience: string
   readonly headline: string
   readonly primaryText: string
