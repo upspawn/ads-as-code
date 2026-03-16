@@ -128,7 +128,7 @@ export {
 
 export {
   exact, phrase, broad, keywords,
-  daily, monthly, eur, usd,
+  daily, monthly, lifetime, eur, usd,
   geo, languages, weekdays, hours, device, regions, cities, radius, presence, demographics, scheduleBid, targeting,
   audiences, audienceTargeting, remarketing, customAudience, inMarket, affinity, customerMatch,
   placements, topics, contentKeywords,
@@ -180,11 +180,13 @@ export {
   audience,
   excludeAudience,
   interests,
+  lookalike,
   metaTargeting,
 } from './helpers/meta-targeting.ts'
 
 export {
   manual,
+  automatic,
 } from './helpers/meta-placement.ts'
 
 export {

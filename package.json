@@ -23,7 +23,8 @@
     "!src/**/*.test.ts",
     "cli",
     "dist",
-    "LICENSE"
+    "LICENSE",
+    "SKILL.md"
   ],
   "engines": {
     "bun": ">=1.0.0"
