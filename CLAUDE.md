@@ -168,13 +168,25 @@ The core engine (diff, cache, discovery) is provider-agnostic — it operates on
 
 ### Google provider field coverage
 
-Full round-trip support (import → plan → apply) for:
+Full platform coverage — all campaign types supported with round-trip import → plan → apply:
 
-- **Campaign:** name, status, budget, bidding (7 strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value), targeting (geo, language, schedule, device bid adjustments), networkSettings (search, searchPartners, display), trackingTemplate, finalUrlSuffix, customParameters, negatives, sitelinks, callouts
-- **Ad Group:** name, status
+**Campaign types:** Search, Display, Performance Max, Shopping, Demand Gen, Smart, App (Video: read-only)
+
+**Shared across all types:**
+- **Campaign:** name, status, budget, bidding (9 strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value, manual-cpm, target-cpm), targeting (geo, language, schedule, device bid adjustments, demographics, audiences, placements, topics, content keywords), networkSettings, trackingTemplate, finalUrlSuffix, customParameters, negatives, sitelinks, callouts, structured snippets, call extensions
+- **Ad Group / Asset Group:** name, status, type-specific targeting
 - **Keyword:** text, matchType, bid (cpc_bid_micros), finalUrl, status
 - **Ad (RSA):** headlines, descriptions, finalUrl, path1, path2, pinnedHeadlines, pinnedDescriptions, status, multiple ads per group
-- **Extensions:** sitelinks, callouts (create only — campaign_asset linking is a TODO)
+- **Extensions:** sitelinks, callouts, structured snippets, call — with campaign asset linking
+- **Account-level:** shared negative keyword lists, conversion actions, shared budgets
+
+**Type-specific:**
+- **Display:** Responsive Display Ads, image assets, placement/topic/content keyword targeting, CPM bidding
+- **Performance Max:** asset groups (text/image/video), audience signals, URL expansion control
+- **Shopping:** Merchant Center integration, product ad groups, shopping settings
+- **Demand Gen:** multi-asset ads, carousel ads, channel controls (YouTube/Discover/Gmail/Display)
+- **Smart:** keyword themes, simplified ads, automated bidding
+- **App:** install/engagement/pre-registration campaigns
 
 ## Testing
 
@@ -184,4 +196,4 @@ Full round-trip support (import → plan → apply) for:
 - **Cache tests:** Use `:memory:` SQLite databases.
 - **API tests:** Mock the `GoogleAdsClient` interface (it's a plain object with `query` and `mutate` functions — trivial to mock).
 - **Snapshots:** `test/unit/__snapshots__/` for codegen output verification.
-- **1127+ tests**, 1 known skip (keyword platformId format).
+- **1474+ tests**, 1 known skip (keyword platformId format).

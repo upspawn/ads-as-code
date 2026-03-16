@@ -123,19 +123,57 @@ Total: 5 files written
 ```
 
 What gets imported:
-- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix)
-- Ad groups (name, status)
+- **All campaign types:** Search, Display, Performance Max, Shopping, Demand Gen, Smart, App (Video is read-only)
+- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix, dates)
+- Ad groups / asset groups (name, status, targeting)
 - Keywords (text, match type, bid, final URL, status)
-- RSA ads (headlines, descriptions, final URL, path1, path2, pinned fields, status)
-- Campaign-level negative keywords
-- Geo, language, schedule, and device targeting
-- Sitelink and callout extensions
+- RSA ads, Responsive Display Ads, multi-asset ads, carousel ads (all fields including pinned positions)
+- Campaign-level negative keywords, shared negative keyword lists
+- Geo, language, schedule, device, audience, placement, topic, and content keyword targeting
+- Sitelink, callout, structured snippet, and call extensions
+- Shopping settings (Merchant Center ID, product filters)
+- Performance Max asset groups (text/image/video assets, audience signals, URL expansion)
+- Demand Gen channel controls (YouTube, Discover, Gmail, Display)
 
 The import generates idiomatic TypeScript using the `@upspawn/ads` SDK, extracts shared targeting and negative keywords into separate files, and seeds the local cache with platform IDs so `ads plan` can track resources.
 
 Flags:
 - `--all` — Include paused campaigns (default: enabled only)
 - `--filter "Search*"` — Only import campaigns matching a glob pattern
+
+### Creating Display and Performance Max campaigns
+
+Beyond Search campaigns, you can define Display and Performance Max campaigns using dedicated builders:
+
+```typescript
+import { google, daily, geo, targeting } from '@upspawn/ads'
+
+// Display campaign with Responsive Display Ads
+export default google.display('Display - Retargeting', {
+  budget: daily(5),
+  bidding: 'target-cpa',
+  targeting: targeting(geo('US', 'DE')),
+})
+  .group('remarketing', {
+    ad: {
+      headlines: ['Rename Files with AI', 'Try Free'],
+      descriptions: ['Upload files. AI reads content and renames them.'],
+      images: ['./assets/hero.png'],
+    },
+  })
+
+// Performance Max with asset groups
+export default google.performanceMax('PMax - All Channels', {
+  budget: daily(20),
+  bidding: 'maximize-conversions',
+})
+  .assetGroup('main', {
+    headlines: ['AI File Renamer', 'Rename Files Instantly'],
+    descriptions: ['Upload files and let AI rename them based on content.'],
+    images: ['./assets/hero.png'],
+    finalUrl: 'https://www.renamed.to',
+  })
+```
 
 ## Verify the import
 

@@ -196,24 +196,27 @@ Operations are recorded in the local cache for `ads history`.
 
 ### `ads import`
 
-Import campaigns from Google Ads and generate TypeScript files.
+Import campaigns from Google Ads or Meta Ads and generate TypeScript files.
 
 ```bash
 ads import
 ads import --all
 ads import --filter "Search*"
+ads import --provider meta --all
 ```
 
-Fetches all active Search campaigns from Google Ads and generates idiomatic TypeScript campaign files using the `@upspawn/ads` SDK.
+Fetches campaigns from Google Ads (all campaign types: Search, Display, Performance Max, Shopping, Demand Gen, Smart, App) or Meta Ads and generates idiomatic TypeScript campaign files using the `@upspawn/ads` SDK.
 
-What gets imported:
-- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix)
-- Ad groups (name, status)
+What gets imported (Google):
+- All campaign types (Search, Display, Performance Max, Shopping, Demand Gen, Smart, App — Video is read-only)
+- Campaigns (name, budget, bidding strategy, status, network settings, tracking template, URL suffix, dates)
+- Ad groups / asset groups (name, status, targeting)
 - Keywords (text, match type, bid, final URL, status)
-- RSA ads (headlines, descriptions, final URL, path1, path2, pinned fields, status)
-- Campaign-level negative keywords
-- Geo, language, schedule, and device targeting
-- Sitelink and callout extensions
+- All ad formats (RSA, Responsive Display, multi-asset, carousel — all fields including pinned positions)
+- Campaign-level negative keywords, shared negative keyword lists
+- Full targeting: geo, language, schedule, device, audiences, placements, topics, content keywords
+- Extensions: sitelinks, callouts, structured snippets, call
+- Shopping settings, PMax asset groups, Demand Gen channel controls
 
 ```
 Fetching campaigns from Google Ads (customer 7300967494)...

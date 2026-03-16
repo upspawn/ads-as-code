@@ -16,7 +16,7 @@ Manage Google Ads and Meta (Facebook/Instagram) campaigns as version-controlled 
 - **Drift detection** -- `ads pull` detects changes made in the ad platform UI that diverge from code
 - **Campaign import** -- `ads import` pulls your existing campaigns and generates idiomatic TypeScript files
 - **SQLite cache + history** -- local cache maps code paths to platform IDs, stores snapshots for rollback
-- **Multi-provider** -- Google Ads (Search campaigns) and Meta/Facebook (traffic, conversions, leads, and more)
+- **Multi-provider** -- Google Ads (Search, Display, Performance Max, Shopping, Demand Gen, Smart, App) and Meta/Facebook (traffic, conversions, leads, and more)
 
 ## Quick Start
 
@@ -57,7 +57,7 @@ ads apply
 
 ## Campaign Syntax
 
-Campaigns are TypeScript files that export a campaign definition built with the `google.search()` builder.
+Campaigns are TypeScript files that export a campaign definition built with the `google.search()` builder (or `google.display()`, `google.performanceMax()`, `google.shopping()`, `google.demandGen()`, `google.smart()`, `google.app()` for other campaign types).
 
 ### Basic campaign
 
@@ -393,23 +393,33 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 
 ### What works
 
-**Google Ads (production-ready):**
+**Google Ads (full platform coverage):**
+
+Campaign types:
+- **Search** -- RSA ads, keywords, extensions, all targeting, zero-diff round-trips
+- **Display** -- Responsive Display Ads, image assets, placements/topics/content keyword targeting, CPM bidding
+- **Performance Max** -- Asset groups with text/image/video, audience signals, URL expansion control
+- **Shopping** -- Merchant Center integration, product ad groups, shopping settings
+- **Demand Gen** -- Multi-asset ads, carousel ads, channel controls (YouTube/Discover/Gmail/Display)
+- **Smart** -- Keyword themes, simplified ads, automated bidding
+- **App** -- Install/engagement/pre-registration campaigns
+- **Video** -- Read-only (Google Ads API limitation)
+
+Features across all types:
 - Full campaign lifecycle: create, update, delete via `plan` / `apply`
 - Zero-diff round-trips: `import` then `plan` = 0 changes
 - Import existing campaigns as TypeScript files
 - Drift detection between code and live account
 - Semantic diff (budget precision, headline ordering, URL normalization)
 - RSA stable identity (content changes produce updates, not delete+create)
-- 7 bidding strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value
-- Network settings (Search Network, Search Partners, Display Network)
-- Device bid adjustments (mobile, desktop, tablet)
-- Campaign tracking: trackingTemplate, finalUrlSuffix, customParameters
-- Ad fields: path1, path2, pinnedHeadlines, pinnedDescriptions, status
-- Keyword options: custom bid (cpc_bid_micros), finalUrl override, status
-- Multiple RSA ads per ad group
-- Geo, language, schedule, and device targeting
-- Sitelink and callout extensions
-- Negative keywords (campaign-level, broad/phrase/exact)
+- 9 bidding strategies: maximize-conversions, maximize-clicks, manual-cpc, target-cpa, target-roas, target-impression-share, maximize-conversion-value, manual-cpm, target-cpm
+- Full targeting: geo, language, device, schedule, demographics, audiences (remarketing/in-market/affinity/custom), placements, topics, content keywords
+- All extensions: sitelinks, callouts, structured snippets, call -- with proper campaign asset linking
+- Campaign settings: network settings, tracking template, URL suffix, custom parameters, status, dates
+- Keyword management: create, update (bid/status/finalUrl), delete
+- Ad management: create, update (headlines/descriptions/status/path), delete, multiple ads per group
+- Account-level: shared negative keyword lists, conversion actions, shared budgets
+- URL helper: `url()` auto-parses UTM params for clean DX
 
 **Meta (Facebook/Instagram):**
 - Campaign + ad set + ad lifecycle: create, update, pause via `plan` / `apply`
@@ -428,10 +438,11 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 
 ### Known limitations
 
-- Google: Search campaigns only (Display, Shopping, Performance Max not yet supported)
-- Google: Extensions — structured snippets, call, price, promotion, and image extensions are type-defined but not yet wired in fetch/apply
-- Google: No shared negative keyword lists at the account level (campaign-level only)
-- Google: `campaign.start_date` / `campaign.end_date` not queryable in current API version (works in flatten/codegen/apply but not fetched)
+- Google: Video campaign creation not supported (API limitation -- read-only)
+- Google: Image asset upload during apply not yet connected (image refs stored, upload pipeline ready but not wired to apply flow)
+- Google: Product listing group trees for Shopping (basic product groups work, complex subdivisions need manual setup)
+- Google: Audience list creation (remarketing lists, customer match) -- audiences can be referenced by ID but not created as code
+- Google: Portfolio bidding strategies -- referenced but not fully managed
 - No `ads destroy` or `ads diff` commands yet
 
 ## Contributing
