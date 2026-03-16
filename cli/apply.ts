@@ -3,6 +3,7 @@ import { getProvider, resolveProviders } from '../src/core/providers.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
 import type { Changeset, Change, Resource, ApplyResult } from '../src/core/types.ts'
+import { resolveAssets } from '../src/core/asset.ts'
 import type { GlobalFlags } from './init.ts'
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -202,6 +203,7 @@ type ApplyOptions = {
   reconcile?: boolean
   verbose?: boolean
   provider?: string
+  refreshAssets?: boolean
 }
 
 export async function runApply(rootDir: string, options: ApplyOptions = {}): Promise<void> {
@@ -240,6 +242,8 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
   const allDesired: Resource[] = []
   const providerChangesets: Changeset[] = []
   const campaignNames = new Map<string, string>()
+  // Cache resolved campaigns per provider so dry-run and apply reuse them
+  const resolvedCampaignsByProvider = new Map<string, unknown[]>()
 
   for (const [providerName, campaigns] of providerGroups) {
     if (!options.json) {
@@ -253,8 +257,27 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     // This ensures flatten assigns the same suffixes as fetch (which sorts by platform ID).
     const sortedCampaigns = sortCampaignsByFile(campaigns)
 
-    // Flatten desired state
-    const desired = provider.flatten(sortedCampaigns.map(c => c.campaign))
+    // Resolve asset markers before flatten — generates/caches creative assets
+    const assetResults = await Promise.all(
+      sortedCampaigns.map(c =>
+        resolveAssets(c.campaign, { refreshAssets: options.refreshAssets })
+      )
+    )
+    const resolvedCampaigns = assetResults.map(r => r.resolved)
+    const allAssetResolutions = assetResults.flatMap(r => r.assets)
+
+    if (allAssetResolutions.length > 0 && !options.json) {
+      const failed = allAssetResolutions.filter(a => a.status === 'failed')
+      if (failed.length > 0) {
+        for (const a of failed) console.error(`✗ Asset "${a.name}" failed: ${a.error}`)
+        console.error(`${failed.length} asset(s) failed. Proceeding without affected ads.`)
+      }
+    }
+
+    resolvedCampaignsByProvider.set(providerName, resolvedCampaigns)
+
+    // Flatten desired state (using resolved campaigns with asset markers replaced)
+    const desired = provider.flatten(resolvedCampaigns)
     allDesired.push(...desired)
 
     // Build campaign name map for display
@@ -333,8 +356,9 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
       const provider = await getProvider(providerName)
 
       if (provider.dryRunChangeset) {
-        // Build provider-scoped changeset
-        const providerDesired = provider.flatten(campaigns.map(c => c.campaign))
+        // Build provider-scoped changeset (reuse resolved campaigns from step 5)
+        const resolved = resolvedCampaignsByProvider.get(providerName) ?? campaigns.map(c => c.campaign)
+        const providerDesired = provider.flatten(resolved)
         const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
         const belongsToProvider = (change: Change): boolean => {
           const slug = campaignFromPath(change.resource.path)
@@ -431,7 +455,8 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     const provider = await getProvider(providerName)
 
     // Build a provider-scoped changeset by filtering to paths that belong to this provider's campaigns
-    const providerDesired = provider.flatten(campaigns.map(c => c.campaign))
+    const resolved = resolvedCampaignsByProvider.get(providerName) ?? campaigns.map(c => c.campaign)
+    const providerDesired = provider.flatten(resolved)
     const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
 
     const belongsToProvider = (change: Change): boolean => {
@@ -527,5 +552,6 @@ export async function runApplyCommand(args: string[], flags: GlobalFlags): Promi
     reconcile: args.includes('--reconcile'),
     verbose: args.includes('--verbose') || args.includes('-v'),
     provider: flags.provider,
+    refreshAssets: args.includes('--refresh-assets'),
   })
 }
