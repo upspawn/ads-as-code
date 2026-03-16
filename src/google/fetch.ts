@@ -331,7 +331,10 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
   const adGroup = (row.ad_group ?? row.adGroup) as Record<string, unknown> | undefined
   const campaign = row.campaign as Record<string, unknown> | undefined
 
-  const resourceName = str(criterion?.resource_name ?? criterion?.resourceName)
+  const rawResourceName = str(criterion?.resource_name ?? criterion?.resourceName)
+  // Extract the composite ID (adGroupId~criterionId) from the full resource name
+  // e.g., "customers/123/adGroupCriteria/111111~10001" → "111111~10001"
+  const criterionId = rawResourceName.includes('/') ? rawResourceName.split('/').pop()! : rawResourceName
   const keyword = criterion?.keyword as Record<string, unknown> | undefined
   const text = str(keyword?.text)
   const matchType = mapMatchType(keyword?.match_type ?? keyword?.matchType)
@@ -355,7 +358,7 @@ function normalizeKeywordRow(row: GoogleAdsRow): Resource {
     ...(kwStatus !== 'enabled' ? { status: kwStatus } : {}),
     ...(bid !== undefined && bid > 0 ? { bid } : {}),
     ...(kwFinalUrl ? { finalUrl: kwFinalUrl } : {}),
-  }, resourceName || undefined)
+  }, criterionId || undefined)
 }
 
 // ─── Ad Fetcher ─────────────────────────────────────────────

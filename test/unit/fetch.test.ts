@@ -196,7 +196,7 @@ describe('fetchKeywords', () => {
     const first = resources[0]!
     expect(first.kind).toBe('keyword')
     expect(first.path).toBe('search-pdf-renaming/pdf-core/kw:rename pdf:EXACT')
-    expect(first.platformId).toBe('customers/7300967494/adGroupCriteria/111111~10001')
+    expect(first.platformId).toBe('111111~10001')
     expect(first.properties.text).toBe('rename pdf')
     expect(first.properties.matchType).toBe('EXACT')
   })
