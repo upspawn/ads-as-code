@@ -2,7 +2,7 @@
 
 Manage Google Ads and Meta (Facebook/Instagram) campaigns as version-controlled TypeScript code. Like Pulumi/Terraform, but for ad campaigns.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-bun%20test-blue)](https://bun.sh)
 
 ## What is this?
@@ -54,6 +54,8 @@ ads plan
 # Push code changes to Google Ads
 ads apply
 ```
+
+> 📖 **[Full documentation →](https://ads.upspawn.com/docs)** · 🤖 **[AI agent reference (SKILL.md)](SKILL.md)** for coding assistants
 
 ## Campaign Syntax
 
@@ -310,8 +312,8 @@ import { defineConfig } from '@upspawn/ads'
 
 export default defineConfig({
   google: {
-    customerId: '730-096-7494',     // Your Google Ads customer ID
-    managerId: '239-066-1468',      // MCC manager ID (optional)
+    customerId: 'YOUR_CUSTOMER_ID',     // Your Google Ads customer ID
+    managerId: 'YOUR_MANAGER_ID',      // MCC manager ID (optional)
   },
   meta: {
     accountId: 'act_123456789',     // Your Meta Ads account ID
@@ -389,7 +391,7 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 
 ## Status
 
-**v0.2.0** -- Actively used in production for managing Google Ads and Meta campaigns.
+**v0.1.0** -- Actively used in production for managing Google Ads and Meta campaigns.
 
 ### What works
 
@@ -473,4 +475,4 @@ PRs welcome. The codebase is structured as:
 
 ## License
 
-MIT
+Apache-2.0
