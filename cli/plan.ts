@@ -3,6 +3,8 @@ import { resolveProviders, getProvider } from '../src/core/providers.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
 import { resolveAllMarkers } from '../src/ai/resolve.ts'
+import { resolveAssets } from '../src/core/asset.ts'
+import type { AssetResolution } from '../src/core/asset.ts'
 import type { Changeset, Resource, AdsConfig } from '../src/core/types.ts'
 import type { DiscoveredCampaign } from '../src/core/discovery.ts'
 import type { ProviderModule } from '../src/core/providers.ts'
@@ -339,6 +341,7 @@ type ProviderPlanResult = {
   changeset: Changeset
   desired: Resource[]
   campaignNames: Map<string, string>
+  assets: AssetResolution[]
 }
 
 // sortCampaignsByFile is imported from src/core/discovery.ts
@@ -350,6 +353,7 @@ async function planForProvider(
   config: AdsConfig,
   _rootDir: string,
   cache: Cache,
+  refreshAssets = false,
 ): Promise<ProviderPlanResult> {
   // 0. Sort campaigns so base files come before dedup variants (-2, -3, etc.)
   //    This ensures the flatten-side dedup assigns the same suffixes as the
@@ -363,6 +367,13 @@ async function planForProvider(
   } else {
     campaignObjects = sortedCampaigns.map(c => c.campaign)
   }
+
+  // 1b. Resolve asset markers (all providers)
+  const assetResults = await Promise.all(
+    campaignObjects.map(c => resolveAssets(c, { refreshAssets }))
+  )
+  campaignObjects = assetResults.map(r => r.resolved)
+  const allAssets = assetResults.flatMap(r => r.assets)
 
   // 2. Flatten desired state
   const desired = providerModule.flatten(campaignObjects)
@@ -410,14 +421,14 @@ async function planForProvider(
   // 6. Run diff
   const changeset = diff(desired, actual, managedPaths, pathToPlatformId)
 
-  return { provider, changeset, desired, campaignNames }
+  return { provider, changeset, desired, campaignNames, assets: allAssets }
 }
 
 // ─── Plan Command ────────────────────────────────────────────────
 
 export async function runPlan(
   rootDir: string,
-  options: { json?: boolean; provider?: string } = {},
+  options: { json?: boolean; provider?: string; refreshAssets?: boolean } = {},
 ): Promise<Changeset> {
   // 1. Load config
   const config = await loadConfig(rootDir)
@@ -466,6 +477,7 @@ export async function runPlan(
       config,
       rootDir,
       cache,
+      options.refreshAssets,
     )
     results.push(result)
   }
@@ -503,7 +515,23 @@ export async function runPlan(
 
   cache.close()
 
-  // 8. Print output
+  // 8. Print asset resolution summary (if any assets were resolved)
+  const mergedAssets = results.flatMap(r => r.assets)
+  if (mergedAssets.length > 0 && !options.json) {
+    console.log('\nAssets:')
+    for (const a of mergedAssets) {
+      if (a.status === 'cached') console.log(`  \u2713 ${a.name} \u2014 cached`)
+      else if (a.status === 'generated') console.log(`  \u25b8 ${a.name} \u2014 generated (${a.durationMs}ms)`)
+      else console.log(`  \u2717 ${a.name} \u2014 failed: ${a.error}`)
+    }
+    const failed = mergedAssets.filter(a => a.status === 'failed')
+    if (failed.length > 0) {
+      console.log(`\n\u26a0 ${failed.length} asset(s) failed \u2014 affected ads show as unresolved`)
+    }
+    console.log('')
+  }
+
+  // 9. Print output
   if (options.json) {
     console.log(JSON.stringify(mergedChangeset, null, 2))
   } else {
@@ -531,5 +559,6 @@ export async function runPlanCommand(
   flags: GlobalFlags,
 ): Promise<void> {
   const rootDir = process.cwd()
-  await runPlan(rootDir, { json: flags.json, provider: flags.provider })
+  const refreshAssets = args.includes('--refresh-assets')
+  await runPlan(rootDir, { json: flags.json, provider: flags.provider, refreshAssets })
 }
