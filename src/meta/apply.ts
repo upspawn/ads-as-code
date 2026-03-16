@@ -740,7 +740,13 @@ async function executeCreativeSwap(
   }
 
   // Update cache: the creative path now maps to the new ID
-  cache.setResource(project, resource.path, newCreativeId)
+  cache.setResource({
+    project,
+    path: resource.path,
+    platformId: newCreativeId,
+    kind: resource.kind,
+    managedBy: 'code',
+  })
 }
 
 async function executeDelete(

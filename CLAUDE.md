@@ -120,8 +120,8 @@ Resolved in order: explicit `GoogleConfig` → `~/.ads/credentials.json` → env
   "google_client_secret": "...",
   "google_refresh_token": "...",
   "google_developer_token": "...",
-  "google_customer_id": "7300967494",
-  "google_manager_id": "2390661468"
+  "google_customer_id": "YOUR_CUSTOMER_ID",
+  "google_manager_id": "YOUR_MANAGER_ID"
 }
 ```
 

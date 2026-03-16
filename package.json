@@ -4,21 +4,43 @@
   "description": "Pulumi-style declarative ad campaign management in TypeScript",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./ai": "./src/ai/index.ts"
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./ai": {
+      "bun": "./src/ai/index.ts",
+      "import": "./dist/ai/index.js",
+      "types": "./dist/ai/index.d.ts"
+    }
   },
   "bin": {
     "ads": "./cli/index.ts"
   },
+  "files": [
+    "src",
+    "cli",
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/ai/index.ts --outdir dist --splitting --target bun --format esm --packages external && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit"
   },
   "keywords": ["google-ads", "facebook-ads", "infrastructure-as-code", "ads", "campaign-management"],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/upspawn/ads-as-code.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@types/bun": "latest"
