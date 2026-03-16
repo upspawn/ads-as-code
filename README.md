@@ -120,7 +120,7 @@ export default google.search('Search - PDF Renaming', {
 ### Meta (Facebook/Instagram) campaign
 
 ```typescript
-import { meta, daily, geo, targeting, image } from '@upspawn/ads'
+import { meta, daily, geo, targeting, metaImage } from '@upspawn/ads'
 
 export default meta.traffic('Retargeting - US', {
   budget: daily(10),
@@ -132,7 +132,7 @@ export default meta.traffic('Retargeting - US', {
     url: 'https://www.renamed.to',
     cta: 'SIGN_UP',
     ads: [
-      image('./assets/hero.png', {
+      metaImage('./assets/hero.png', {
         headline: 'Rename Files Instantly',
         primaryText: 'Stop wasting hours organizing files manually.',
       }),
@@ -175,6 +175,7 @@ export const brandSafety = negatives(
 Use them in campaigns with `.locale()` for per-group targeting:
 
 ```typescript
+import { google, daily, exact, headlines, descriptions, rsa, url } from '@upspawn/ads'
 import { english, dach } from '../targeting'
 import { brandSafety } from '../negatives'
 
@@ -185,11 +186,19 @@ export default google.search('Search - Product', {
 })
   .locale('en-us', english, {
     keywords: exact('product feature'),
-    ad: rsa(/* ... */),
+    ad: rsa(
+      headlines('My Product — Official', 'Try It Free', 'No Credit Card'),
+      descriptions('The fastest way to get X done. Set up in minutes.'),
+      url('https://example.com'),
+    ),
   })
   .locale('de-dach', dach, {
     keywords: exact('produkt funktion'),
-    ad: rsa(/* ... */),
+    ad: rsa(
+      headlines('Mein Produkt — Offiziell', 'Jetzt kostenlos testen', 'Ohne Kreditkarte'),
+      descriptions('Der schnellste Weg, X zu erledigen. In Minuten eingerichtet.'),
+      url('https://example.com/de'),
+    ),
   })
 ```
 
@@ -391,7 +400,7 @@ The **import** command fetches live campaigns via GAQL (Google) or Graph API (Me
 
 ## Status
 
-**v0.1.0** -- Actively used in production for managing Google Ads and Meta campaigns.
+**v0.1.1** -- Actively used in production for managing Google Ads and Meta campaigns.
 
 ### What works
 
