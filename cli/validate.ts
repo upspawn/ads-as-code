@@ -5,6 +5,7 @@ import { isRsaMarker, isKeywordsMarker } from '../src/ai/types.ts'
 import { readLockFile, getSlot } from '../src/ai/lockfile.ts'
 import { checkStaleness } from '../src/ai/resolve.ts'
 import { readManifest } from '../src/ai/manifest.ts'
+import { countAssetMarkers } from '../src/core/asset.ts'
 import type { GoogleSearchCampaignUnresolved, GoogleAdGroupUnresolved } from '../src/google/types.ts'
 import type { GlobalFlags } from './init.ts'
 import type { DiscoveredCampaign } from '../src/core/discovery.ts'
@@ -300,6 +301,12 @@ export async function runValidate(args: string[], flags: GlobalFlags) {
   const manifestWarnings = await collectManifestWarnings(rootDir)
   allWarnings.push(...manifestWarnings)
 
+  // Count asset markers across all campaigns (informational, not an error)
+  let totalAssetMarkers = 0
+  for (const c of campaigns) {
+    totalAssetMarkers += countAssetMarkers(c.campaign)
+  }
+
   // Add Meta warnings
   allWarnings.push(...metaResult.warnings)
 
@@ -319,6 +326,7 @@ export async function runValidate(args: string[], flags: GlobalFlags) {
         kind: c.kind,
       })),
       errors: allErrors,
+      assetMarkers: totalAssetMarkers,
       warnings: allWarnings.map(w => ({
         type: w.type,
         message: w.message,
@@ -361,6 +369,12 @@ export async function runValidate(args: string[], flags: GlobalFlags) {
       for (const e of metaErrors) {
         console.log(`  \u2717 ${e}`)
       }
+    }
+
+    // Asset markers (informational)
+    if (totalAssetMarkers > 0) {
+      console.log()
+      console.log(`Asset markers: ${totalAssetMarkers} found (will resolve during plan/apply)`)
     }
 
     // AI Warnings (informational — do not affect exit code)

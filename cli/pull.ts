@@ -3,6 +3,7 @@ import { createGoogleClient } from '../src/google/api.ts'
 import { flatten } from '../src/google/flatten.ts'
 import { diff } from '../src/core/diff.ts'
 import { Cache } from '../src/core/cache.ts'
+import { resolveAssets } from '../src/core/asset.ts'
 import type { GoogleConfig, GoogleSearchCampaign } from '../src/google/types.ts'
 import type { Change, Resource } from '../src/core/types.ts'
 import { join } from 'node:path'
@@ -78,8 +79,14 @@ export async function runPull(rootDir: string): Promise<void> {
     return
   }
 
+  // Substitute asset markers with cached paths (no generation for drift detection)
+  const assetResults = await Promise.all(
+    localCampaigns.map(c => resolveAssets(c, { skipGenerate: true }))
+  )
+  const resolvedCampaigns = assetResults.map(r => r.resolved)
+
   // Flatten local state into resources
-  const desiredResources = localCampaigns.flatMap(flatten)
+  const desiredResources = resolvedCampaigns.flatMap(flatten)
 
   // Fetch live campaigns from API
   console.log('Fetching live state from Google Ads...')
