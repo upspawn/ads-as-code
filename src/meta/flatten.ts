@@ -3,6 +3,7 @@ import { slugify } from '../core/flatten.ts'
 import { DEFAULT_OPTIMIZATION, OBJECTIVE_MAP } from './constants.ts'
 import type { MetaCampaign } from './index.ts'
 import type { UrlResult } from '../helpers/url.ts'
+import type { AssetMarker } from '../core/asset.ts'
 import type {
   Objective,
   BidStrategy,
@@ -21,6 +22,17 @@ import type {
 } from './types.ts'
 
 // ─── Helpers ──────────────────────────────────────────────
+
+/**
+ * Extract the string path from a value that may be a string or AssetMarker.
+ * At flatten time, resolveAssets() should have already replaced markers with
+ * their cached paths. If an unresolved marker reaches here, use its name as
+ * a fallback (the apply step will fail with a clear error anyway).
+ */
+function assetPath(value: string | AssetMarker): string {
+  if (typeof value === 'string') return value
+  return value.cachedPath ?? `<unresolved-asset:${value.name}>`
+}
 
 function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, meta?: Record<string, unknown>): Resource {
   if (meta && Object.keys(meta).length > 0) {
@@ -45,10 +57,13 @@ function nameFromFile(filePath: string): string {
  */
 function mediaPath(creative: MetaCreative): string | undefined {
   switch (creative.format) {
-    case 'image': return creative.image
-    case 'video': return creative.video
+    case 'image': return assetPath(creative.image)
+    case 'video': return assetPath(creative.video)
     case 'carousel': return undefined
-    case 'collection': return creative.coverImage ?? creative.coverVideo
+    case 'collection': {
+      const cover = creative.coverImage ?? creative.coverVideo
+      return cover !== undefined ? assetPath(cover) : undefined
+    }
     case 'boostedPost': return undefined
   }
 }
@@ -269,9 +284,12 @@ function buildCreativeProperties(
         },
         // Local file path is SDK-internal — the API works with imageHash.
         // A `hash:` prefix means the image is already uploaded to Meta.
-        meta: creative.image.startsWith('hash:')
-          ? { imageHash: creative.image.slice(5) }
-          : { imagePath: creative.image },
+        meta: (() => {
+          const img = assetPath(creative.image)
+          return img.startsWith('hash:')
+            ? { imageHash: img.slice(5) }
+            : { imagePath: img }
+        })(),
       }
 
     case 'video':
@@ -288,8 +306,8 @@ function buildCreativeProperties(
         },
         // Local file paths are SDK-internal — the API works with videoId/imageHash
         meta: {
-          videoPath: creative.video,
-          ...(creative.thumbnail !== undefined && { thumbnailPath: creative.thumbnail }),
+          videoPath: assetPath(creative.video),
+          ...(creative.thumbnail !== undefined && { thumbnailPath: assetPath(creative.thumbnail) }),
         },
       }
 
@@ -321,8 +339,8 @@ function buildCreativeProperties(
           primaryText: creative.primaryText,
         },
         meta: {
-          ...(creative.coverImage !== undefined && { coverImagePath: creative.coverImage }),
-          ...(creative.coverVideo !== undefined && { coverVideoPath: creative.coverVideo }),
+          ...(creative.coverImage !== undefined && { coverImagePath: assetPath(creative.coverImage) }),
+          ...(creative.coverVideo !== undefined && { coverVideoPath: assetPath(creative.coverVideo) }),
         },
       }
 

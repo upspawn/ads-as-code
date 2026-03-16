@@ -6,6 +6,7 @@ import type {
   BoostedPostAd,
   MetaCTA,
 } from '../meta/types.ts'
+import type { AssetMarker } from '../core/asset.ts'
 
 // ─── Helper functions ─────────────────────────────────────
 
@@ -80,11 +81,12 @@ type CarouselAdConfig = {
  * })
  * ```
  */
-export function image(filePath: string, config?: Partial<ImageAdConfig>): ImageAd {
+export function image(filePath: string | AssetMarker, config?: Partial<ImageAdConfig>): ImageAd {
+  const name = config?.name ?? (typeof filePath === 'string' ? nameFromFile(filePath) : undefined)
   return {
     format: 'image' as const,
     image: filePath,
-    name: config?.name ?? nameFromFile(filePath),
+    ...(name !== undefined && { name }),
     headline: config?.headline ?? '',
     primaryText: config?.primaryText ?? '',
     ...(config?.description !== undefined && { description: config.description }),
@@ -115,11 +117,12 @@ export function image(filePath: string, config?: Partial<ImageAdConfig>): ImageA
  * })
  * ```
  */
-export function video(filePath: string, config?: Partial<VideoAdConfig>): VideoAd {
+export function video(filePath: string | AssetMarker, config?: Partial<VideoAdConfig>): VideoAd {
+  const name = config?.name ?? (typeof filePath === 'string' ? nameFromFile(filePath) : undefined)
   return {
     format: 'video' as const,
     video: filePath,
-    name: config?.name ?? nameFromFile(filePath),
+    ...(name !== undefined && { name }),
     headline: config?.headline ?? '',
     primaryText: config?.primaryText ?? '',
     ...(config?.thumbnail !== undefined && { thumbnail: config.thumbnail }),
