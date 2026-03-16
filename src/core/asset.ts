@@ -76,6 +76,11 @@ function hashFileContent(filePath: string): string {
 
 // ─── Type Guard ──────────────────────────────────────────────────────
 
+/** Count all AssetMarker values in an object tree */
+export function countAssetMarkers(obj: unknown): number {
+  return collectMarkers(obj).length
+}
+
 export function isAssetMarker(value: unknown): value is AssetMarker {
   return (
     typeof value === 'object' &&

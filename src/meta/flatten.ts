@@ -31,7 +31,7 @@ import type {
  */
 function assetPath(value: string | AssetMarker): string {
   if (typeof value === 'string') return value
-  return value.cachedPath ?? `<unresolved-asset:${value.name}>`
+  return `<unresolved-asset:${value.name}>`
 }
 
 function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, meta?: Record<string, unknown>): Resource {
