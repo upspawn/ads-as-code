@@ -1085,3 +1085,74 @@ describe('generateCampaignFile() snapshot', () => {
     expect(output).toMatchSnapshot()
   })
 })
+
+// ─── URL UTM Parsing ─────────────────────────────────────
+
+describe('generateCampaignFile — URL UTM parsing', () => {
+  test('extracts UTM params from URL into url() helper', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:test:EXACT', properties: { text: 'test', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: {
+        headlines: ['H1'], descriptions: ['D1'],
+        finalUrl: 'https://www.renamed.to/?utm_source=google&utm_medium=cpc&utm_campaign=test',
+      }},
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("url('https://www.renamed.to/'")
+    expect(code).toContain("source: 'google'")
+    expect(code).toContain("medium: 'cpc'")
+    expect(code).toContain("campaign: 'test'")
+    // Should NOT contain the raw URL with query params
+    expect(code).not.toContain('utm_source=google')
+  })
+
+  test('preserves non-UTM query params in base URL', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:test:EXACT', properties: { text: 'test', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: {
+        headlines: ['H1'], descriptions: ['D1'],
+        finalUrl: 'https://renamed.to/page?ref=abc&utm_source=facebook',
+      }},
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain('ref=abc')
+    expect(code).toContain("source: 'facebook'")
+    expect(code).not.toContain('utm_source=facebook')
+  })
+
+  test('leaves URL without UTM params unchanged', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:test:EXACT', properties: { text: 'test', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: {
+        headlines: ['H1'], descriptions: ['D1'],
+        finalUrl: 'https://renamed.to/pdf-renamer',
+      }},
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("url('https://renamed.to/pdf-renamer')")
+  })
+
+  test('handles all five UTM parameters', () => {
+    const resources: Resource[] = [
+      { kind: 'campaign', path: 'c', properties: { name: 'C', status: 'enabled', budget: { amount: 5, currency: 'EUR', period: 'daily' }, bidding: { type: 'maximize-conversions' } } },
+      { kind: 'adGroup', path: 'c/g', properties: { status: 'enabled' } },
+      { kind: 'keyword', path: 'c/g/kw:test:EXACT', properties: { text: 'test', matchType: 'EXACT' } },
+      { kind: 'ad', path: 'c/g/rsa:abc', properties: {
+        headlines: ['H1'], descriptions: ['D1'],
+        finalUrl: 'https://renamed.to/?utm_source=google&utm_medium=cpc&utm_campaign=search&utm_content=ad1&utm_term=rename+files',
+      }},
+    ]
+    const code = generateCampaignFile(resources, 'C')
+    expect(code).toContain("source: 'google'")
+    expect(code).toContain("medium: 'cpc'")
+    expect(code).toContain("campaign: 'search'")
+    expect(code).toContain("content: 'ad1'")
+    expect(code).toContain("term: 'rename files'")
+  })
+})

@@ -754,4 +754,87 @@ describe('codegenMeta', () => {
     expect(code).toContain("excludedInterests: [{ id: '111', name: 'Competitors' }]")
     expect(code).toContain("excludedBehaviors: [{ id: '222', name: 'Budget Shoppers' }]")
   })
+
+  // ─── URL UTM Parsing ───────────────────────────────────
+
+  test('extracts UTM params from creative URL into url() helper', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        url: 'https://www.renamed.to/?utm_source=facebook&utm_medium=cpc&utm_campaign=comparison-feb2026&utm_content=retarget-privacy-finder',
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // URL should be clean (no UTM params)
+    expect(code).toContain("url('https://www.renamed.to/'")
+    expect(code).toContain("source: 'facebook'")
+    expect(code).toContain("medium: 'cpc'")
+    expect(code).toContain("campaign: 'comparison-feb2026'")
+    expect(code).toContain("content: 'retarget-privacy-finder'")
+    // Should NOT contain the raw UTM-laden URL
+    expect(code).not.toContain('utm_source=facebook')
+    // Should import url helper
+    const importLine = code.split('\n').find((l) => l.startsWith('import'))!
+    expect(importLine).toContain('url')
+  })
+
+  test('hoists url() with UTM params when all creatives share the same URL', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        url: 'https://renamed.to/?utm_source=facebook&utm_medium=cpc',
+      }),
+      makeCreative('retargeting-us/visitors/comparison/cr', {
+        name: 'comparison',
+        image: './assets/imported/comparison.png',
+        headline: 'Before & After',
+        primaryText: 'See the difference.',
+        url: 'https://renamed.to/?utm_source=facebook&utm_medium=cpc',
+        cta: 'SIGN_UP',
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // URL should be hoisted and use url() with UTM params
+    const urlMatches = code.match(/url\('https:\/\/renamed\.to\/'/g)
+    expect(urlMatches?.length).toBe(1) // hoisted once, not per ad
+    expect(code).toContain("source: 'facebook'")
+    expect(code).toContain("medium: 'cpc'")
+  })
+
+  test('leaves Meta creative URL without UTM params unchanged', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        url: 'https://renamed.to/pricing',
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    // Should be a plain string, no url() call
+    expect(code).toContain("url: 'https://renamed.to/pricing'")
+  })
+
+  test('preserves non-UTM query params in Meta creative URL', () => {
+    const resources: Resource[] = [
+      makeMetaCampaign(),
+      makeAdSet('retargeting-us/visitors', 'Visitors'),
+      makeCreative('retargeting-us/visitors/hero/cr', {
+        url: 'https://renamed.to/page?ref=abc&utm_source=facebook',
+      }),
+    ]
+
+    const code = codegenMeta(resources)
+
+    expect(code).toContain('ref=abc')
+    expect(code).toContain("source: 'facebook'")
+    expect(code).not.toContain('utm_source=facebook')
+  })
 })

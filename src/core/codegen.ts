@@ -31,6 +31,61 @@ function formatStringList(items: string[]): string {
   return '\n' + items.map((s) => `    ${quote(s)},`).join('\n') + '\n  '
 }
 
+// ─── UTM Parsing ─────────────────────────────────────────
+
+const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const
+
+/**
+ * Parse UTM parameters from a URL. Returns the base URL (without UTM params)
+ * and an object of UTM key→value pairs (with the `utm_` prefix stripped).
+ * Returns null if no UTM params are found or the URL is malformed.
+ */
+export function parseUtmFromUrl(rawUrl: string): { baseUrl: string; utm: Record<string, string> } | null {
+  try {
+    const u = new URL(rawUrl)
+    const utm: Record<string, string> = {}
+
+    for (const key of UTM_KEYS) {
+      const value = u.searchParams.get(key)
+      if (value) {
+        utm[key.replace('utm_', '')] = value
+      }
+    }
+
+    if (Object.keys(utm).length === 0) return null
+
+    // Remove UTM params, keep everything else
+    for (const key of UTM_KEYS) {
+      u.searchParams.delete(key)
+    }
+
+    let baseUrl = u.toString()
+    // Clean trailing '?' when no remaining params
+    if (baseUrl.endsWith('?')) baseUrl = baseUrl.slice(0, -1)
+
+    return { baseUrl, utm }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Format a URL for codegen output. If it contains UTM params, emit the
+ * `url(base, { source, medium, ... })` form. Otherwise emit `url(base)`.
+ */
+export function formatUrlForCodegen(rawUrl: string, quoteFn: (s: string) => string): string {
+  const parsed = parseUtmFromUrl(rawUrl)
+  if (!parsed) {
+    return `url(${quoteFn(rawUrl)})`
+  }
+
+  const utmParts = Object.entries(parsed.utm)
+    .map(([k, v]) => `${k}: ${quoteFn(v)}`)
+    .join(', ')
+
+  return `url(${quoteFn(parsed.baseUrl)}, { ${utmParts} })`
+}
+
 // ─── Image Ref Formatter ─────────────────────────────────
 
 function formatImageRef(img: Record<string, unknown>, imports: Set<string>): string {
@@ -615,7 +670,7 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
               ? `descriptions(${desc.map(quote).join(', ')})`
               : `descriptions(\n        ${desc.map(quote).join(',\n        ')},\n      )`
 
-          const rsaParts = [headlinesStr, descriptionsStr, `url(${quote(adFinalUrl)})`]
+          const rsaParts = [headlinesStr, descriptionsStr, formatUrlForCodegen(adFinalUrl, quote)]
 
           // Path and status options
           const opts: string[] = []

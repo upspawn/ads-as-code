@@ -1,5 +1,6 @@
 import type { Resource } from '../core/types.ts'
 import { slugify } from '../core/flatten.ts'
+import { parseUtmFromUrl } from '../core/codegen.ts'
 import { OBJECTIVE_MAP, DEFAULT_OPTIMIZATION } from './constants.ts'
 import type { Objective } from './types.ts'
 
@@ -60,6 +61,23 @@ function indent(text: string, level: number): string {
     .split('\n')
     .map((line) => (line.trim() ? prefix + line : ''))
     .join('\n')
+}
+
+/**
+ * Format a URL for use as a property value in Meta codegen.
+ * If UTM params are present, emits `url('base', { source, ... })` and
+ * adds the `url` import. Otherwise emits a plain quoted string.
+ */
+function formatMetaUrlValue(rawUrl: string, imports: Set<string>): string {
+  const parsed = parseUtmFromUrl(rawUrl)
+  if (!parsed) return quote(rawUrl)
+
+  imports.add('url')
+  const utmParts = Object.entries(parsed.utm)
+    .map(([k, v]) => `${k}: ${quote(v)}`)
+    .join(', ')
+
+  return `url(${quote(parsed.baseUrl)}, { ${utmParts} })`
 }
 
 // ─── Reverse Objective Map ───────────────────────────────
@@ -379,7 +397,7 @@ function formatCreative(
   if (description) parts.push(`description: ${quote(description)}`)
 
   // Only emit url/cta if they differ from hoisted values
-  if (url && url !== hoistedUrl) parts.push(`url: ${quote(url)}`)
+  if (url && url !== hoistedUrl) parts.push(`url: ${formatMetaUrlValue(url, imports)}`)
   if (cta && cta !== hoistedCta) parts.push(`cta: ${quote(cta)}`)
 
   // Emit status only when the ad's status differs from the ad set (per-ad override)
@@ -393,13 +411,13 @@ function formatCreative(
       if (card.image) cardParts.push(`image: ${quote(card.image as string)}`)
       if (card.headline) cardParts.push(`headline: ${quote(card.headline as string)}`)
       if (card.description) cardParts.push(`description: ${quote(card.description as string)}`)
-      if (card.url) cardParts.push(`url: ${quote(card.url as string)}`)
+      if (card.url) cardParts.push(`url: ${formatMetaUrlValue(card.url as string, imports)}`)
       return `{ ${cardParts.join(', ')} }`
     })
 
     const configParts: string[] = []
     if (primaryText) configParts.push(`primaryText: ${quote(primaryText)}`)
-    if (url && url !== hoistedUrl) configParts.push(`url: ${quote(url)}`)
+    if (url && url !== hoistedUrl) configParts.push(`url: ${formatMetaUrlValue(url, imports)}`)
     if (cta && cta !== hoistedCta) configParts.push(`cta: ${quote(cta)}`)
     if (name) configParts.push(`name: ${quote(name)}`)
     if (adStatusOverride) configParts.push(`status: ${quote(adStatusOverride)}`)
@@ -587,7 +605,7 @@ function generateMetaCampaignFile(
 
     // Content
     const contentParts: string[] = []
-    if (hoistedUrl) contentParts.push(`url: ${quote(hoistedUrl)},`)
+    if (hoistedUrl) contentParts.push(`url: ${formatMetaUrlValue(hoistedUrl, imports)},`)
     if (hoistedCta) contentParts.push(`cta: ${quote(hoistedCta)},`)
 
     // Ads — find per-ad status overrides by matching ad Resources to creatives
