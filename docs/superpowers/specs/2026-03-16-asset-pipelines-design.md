@@ -56,12 +56,26 @@ The function:
 - Returns a file path to the result (temp file, working directory, anywhere)
 - The SDK copies the result into `.assets/<name>/<params-hash>-<content-hash>.<ext>`
 
+Optional third argument controls source file handling:
+- `{ move: true }` — moves (deletes) the source file after copying to `.assets/`. Use when generating to temp files and you want cleanup.
+- Default (no option) — copies, source file stays untouched.
+
+```ts
+// Large video files — move to avoid temp file buildup
+export const promoVideo = asset("promo-video", async (p: VideoInput) => {
+  const tmp = `/tmp/${crypto.randomUUID()}.mp4`;
+  await remotion.render({ ...p, output: tmp });
+  return tmp;
+}, { move: true });
+```
+
 The type signature:
 
 ```ts
 function asset<T>(
   name: string,
   generate: (params: T) => Promise<string>,
+  options?: { move?: boolean },
 ): (params: T) => AssetMarker;
 ```
 
@@ -182,9 +196,9 @@ Cache lookup: `glob(".assets/<name>/<params-hash>-*")`. First match wins (there 
 To prevent corrupt files from crashed pipelines:
 1. `generate(params)` writes to its own location (temp file)
 2. SDK hashes the output file
-3. SDK copies to `.assets/<name>/<params-hash>-<content-hash>.<ext>`
+3. SDK copies (or moves, if `{ move: true }`) to `.assets/<name>/<params-hash>-<content-hash>.<ext>`
 
-If `generate` crashes, no file appears in `.assets/`. Clean by default.
+If `generate` crashes, no file appears in `.assets/`. Clean by default. With `{ move: true }`, source file is deleted only after successful copy to `.assets/`.
 
 ### Cleanup on regeneration
 
@@ -302,6 +316,11 @@ Changes:
 ### Types
 
 ```ts
+/** Options for asset pipeline behavior */
+type AssetOptions = {
+  move?: boolean;  // Move (delete) source file after copying to .assets/. Default: false (copy).
+};
+
 /** Marker object created by calling a wrapped pipeline */
 type AssetMarker = {
   readonly __brand: "asset";
@@ -309,6 +328,7 @@ type AssetMarker = {
   readonly paramsHash: string;
   readonly generate: (params: unknown) => Promise<string>;
   readonly params: unknown;
+  readonly options: AssetOptions;
 };
 
 /**
@@ -317,6 +337,7 @@ type AssetMarker = {
 function asset<T>(
   name: string,
   generate: (params: T) => Promise<string>,
+  options?: AssetOptions,
 ): (params: T) => AssetMarker;
 
 /** Type guard for detecting markers during tree walk */
