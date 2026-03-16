@@ -208,7 +208,7 @@ describe('createMetaClient', () => {
         status,
         headers: { 'Content-Type': 'application/json' },
       })),
-    ) as typeof fetch
+    ) as unknown as typeof fetch
   }
 
   // --- graphGet ---
@@ -224,7 +224,7 @@ describe('createMetaClient', () => {
       expect(result).toEqual(responseData)
 
       // Verify the URL was constructed correctly
-      const fetchMock = globalThis.fetch as ReturnType<typeof mock>
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>
       const calledUrl = (fetchMock.mock.calls[0] as [string])[0]
       expect(calledUrl).toContain('graph.facebook.com/v21.0/act_123456/campaigns')
       expect(calledUrl).toContain('access_token=test-token')
@@ -238,7 +238,7 @@ describe('createMetaClient', () => {
       const client = createMetaClient({ ...testConfig, apiVersion: 'v22.0' })
       await client.graphGet('me')
 
-      const fetchMock = globalThis.fetch as ReturnType<typeof mock>
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>
       const calledUrl = (fetchMock.mock.calls[0] as [string])[0]
       expect(calledUrl).toContain('graph.facebook.com/v22.0/')
     })
@@ -313,7 +313,7 @@ describe('createMetaClient', () => {
 
       expect(result).toEqual(responseData)
 
-      const fetchMock = globalThis.fetch as ReturnType<typeof mock>
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>
       const calledUrl = (fetchMock.mock.calls[0] as [string])[0]
       expect(calledUrl).toContain('access_token=test-token')
 
@@ -354,7 +354,7 @@ describe('createMetaClient', () => {
 
       expect(result).toEqual({ success: true })
 
-      const fetchMock = globalThis.fetch as ReturnType<typeof mock>
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof mock>
       const calledUrl = (fetchMock.mock.calls[0] as [string])[0]
       expect(calledUrl).toContain('graph.facebook.com/v21.0/12345')
       expect(calledUrl).toContain('access_token=test-token')
@@ -419,7 +419,7 @@ describe('createMetaClient', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }))
-      }) as typeof fetch
+      }) as unknown as typeof fetch
 
       const client = createMetaClient(testConfig)
       const results = await client.graphGetAll('act_123456/campaigns')
@@ -455,7 +455,7 @@ describe('createMetaClient', () => {
           JSON.stringify({ error: { message: 'Rate limit', type: 'OAuthException', code: 4 } }),
           { status: 400, headers: { 'Content-Type': 'application/json' } },
         ))
-      }) as typeof fetch
+      }) as unknown as typeof fetch
 
       const client = createMetaClient(testConfig)
       try {

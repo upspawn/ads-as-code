@@ -71,7 +71,7 @@ function setupMockClient(responses: Array<Record<string, unknown>>) {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
-  }) as typeof fetch
+  }) as unknown as typeof fetch
 
   // Set the access token env var
   process.env['FB_ADS_ACCESS_TOKEN'] = 'test-token-123'
@@ -744,7 +744,7 @@ describe('deletes', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     process.env['FB_ADS_ACCESS_TOKEN'] = 'test-token-123'
 
     try {
@@ -802,7 +802,7 @@ describe('partial failure recovery', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
     process.env['FB_ADS_ACCESS_TOKEN'] = 'test-token-123'
 
     try {

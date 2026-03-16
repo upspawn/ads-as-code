@@ -196,7 +196,7 @@ describe('resolveMetaMarkers', () => {
     })
 
     const result = resolveMetaMarkers(campaign, lockFile)
-    const resolved = result.adSets[0]!.content.ads[0]!
+    const resolved = result.adSets[0]!.content.ads[0]! as unknown as Record<string, unknown>
 
     expect(resolved.format).toBe('video')
     expect(resolved.headline).toBe('See It in Action')

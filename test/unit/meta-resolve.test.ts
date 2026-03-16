@@ -30,15 +30,15 @@ function createMockClient(overrides?: {
         return { data: overrides?.searchResults ?? [] }
       }
       return { data: [] }
-    }),
-    graphPost: mock(async () => ({})),
-    graphDelete: mock(async () => ({})),
+    }) as unknown as MetaClient['graphGet'],
+    graphPost: mock(async () => ({})) as unknown as MetaClient['graphPost'],
+    graphDelete: mock(async () => ({})) as unknown as MetaClient['graphDelete'],
     graphGetAll: mock(async (endpoint: string) => {
       if (endpoint.includes('/customaudiences')) {
         return overrides?.audiences ?? []
       }
       return []
-    }),
+    }) as unknown as MetaClient['graphGetAll'],
   }
 }
 

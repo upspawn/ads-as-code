@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { flattenMeta } from '../../src/meta/flatten.ts'
-import type { MetaCampaign, MetaAdSet } from '../../src/meta/flatten.ts'
-import type { AdSetContent, MetaTargeting, ImageAd, VideoAd } from '../../src/meta/types.ts'
+import type { MetaCampaign, MetaAdSet } from '../../src/meta/index.ts'
+import type { AdSetContent, MetaTargeting, ImageAd, VideoAd, Objective } from '../../src/meta/types.ts'
 
 // ─── Test Data Builders ──────────────────────────────────
 
@@ -24,7 +24,7 @@ function makeImageAd(overrides?: Partial<ImageAd>): ImageAd {
 }
 
 /** Build a MetaAdSet. Pass any subset of fields to override defaults. */
-function makeAdSet(partial?: Partial<MetaAdSet>): MetaAdSet {
+function makeAdSet(partial?: Partial<MetaAdSet<Objective>>): MetaAdSet<Objective> {
   return {
     name: partial?.name ?? 'Website Visitors 30d',
     config: partial?.config ?? { targeting: makeTargeting() },

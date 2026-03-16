@@ -68,15 +68,15 @@ function createMockClient(data: {
   ads?: unknown[]
 }): MetaClient {
   return {
-    graphGet: mock(async () => ({})),
-    graphPost: mock(async () => ({})),
-    graphDelete: mock(async () => ({})),
+    graphGet: mock(async () => ({})) as unknown as MetaClient['graphGet'],
+    graphPost: mock(async () => ({})) as unknown as MetaClient['graphPost'],
+    graphDelete: mock(async () => ({})) as unknown as MetaClient['graphDelete'],
     graphGetAll: mock(async (endpoint: string) => {
       if (endpoint.includes('/campaigns')) return data.campaigns ?? []
       if (endpoint.includes('/adsets')) return data.adSets ?? []
       if (endpoint.includes('/ads')) return data.ads ?? []
       return []
-    }),
+    }) as unknown as MetaClient['graphGetAll'],
   }
 }
 

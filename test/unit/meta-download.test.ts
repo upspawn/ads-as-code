@@ -106,7 +106,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       return new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       await downloadMetaImages(resources, TEST_ROOT, null)
@@ -121,7 +121,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       return new Response(pngBytes, { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const resources: Resource[] = [
       makeCampaign('test-campaign'),
@@ -166,7 +166,7 @@ describe('downloadMetaImages', () => {
       return new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 })
     })
     const originalFetch = globalThis.fetch
-    globalThis.fetch = fetchMock as typeof fetch
+    globalThis.fetch = fetchMock as unknown as typeof fetch
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
@@ -192,7 +192,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       return new Response('Not Found', { status: 404 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
@@ -223,7 +223,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       throw new Error('ECONNREFUSED')
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const resources: Resource[] = [
       makeCreative('test-campaign/set1/hero/cr', {
@@ -245,7 +245,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       return new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const resources: Resource[] = [
       makeCreative('campaign/set1/hero/cr', {
@@ -283,7 +283,7 @@ describe('downloadMetaImages', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = mock(async () => {
       return new Response(new Uint8Array([255, 216, 255, 224]), { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const resources: Resource[] = [
       {
