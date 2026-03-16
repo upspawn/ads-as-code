@@ -2,6 +2,7 @@
 // Organized: Objectives → Optimization → Bidding → Targeting → Placements → Creatives → CTAs → Scheduling → Config
 
 import type { Budget } from '../core/types.ts'
+import type { UrlResult } from '../helpers/url.ts'
 
 // ─── Objectives & Optimization Goals ───────────────────────
 
@@ -114,7 +115,7 @@ export type ImageAd = {
   readonly primaryText: string
   readonly description?: string
   readonly cta?: MetaCTA
-  readonly url?: string
+  readonly url?: string | UrlResult
   readonly urlParameters?: string
   readonly displayLink?: string
   readonly status?: 'ACTIVE' | 'PAUSED'
@@ -129,7 +130,7 @@ export type VideoAd = {
   readonly primaryText: string
   readonly description?: string
   readonly cta?: MetaCTA
-  readonly url?: string
+  readonly url?: string | UrlResult
   readonly urlParameters?: string
   readonly status?: 'ACTIVE' | 'PAUSED'
 }
@@ -138,7 +139,7 @@ export type CarouselCard = {
   readonly image: string
   readonly headline: string
   readonly description?: string
-  readonly url: string
+  readonly url: string | UrlResult
   readonly cta?: MetaCTA
 }
 
@@ -148,7 +149,7 @@ export type CarouselAd = {
   readonly cards: readonly CarouselCard[]
   readonly primaryText: string
   readonly cta?: MetaCTA
-  readonly url?: string
+  readonly url?: string | UrlResult
   readonly endCard?: 'website' | 'none'
   readonly status?: 'ACTIVE' | 'PAUSED'
 }
@@ -259,6 +260,6 @@ export type AdSetConfig<T extends Objective> = {
 
 export type AdSetContent = {
   readonly ads: readonly MetaCreative[]
-  readonly url?: string
+  readonly url?: string | UrlResult
   readonly cta?: MetaCTA
 }

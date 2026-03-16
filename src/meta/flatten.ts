@@ -2,6 +2,7 @@ import type { Resource, ResourceKind, Budget } from '../core/types.ts'
 import { slugify } from '../core/flatten.ts'
 import { DEFAULT_OPTIMIZATION, OBJECTIVE_MAP } from './constants.ts'
 import type { MetaCampaign } from './index.ts'
+import type { UrlResult } from '../helpers/url.ts'
 import type {
   Objective,
   BidStrategy,
@@ -74,6 +75,27 @@ function resolveAdName(creative: MetaCreative): string {
 }
 
 /**
+ * Resolve a `string | UrlResult` to a plain URL string with UTM params baked in.
+ * Accepts both raw strings (passthrough) and UrlResult objects from the url() helper.
+ */
+function resolveUrlValue(value: string | UrlResult | undefined): string | undefined {
+  if (!value) return undefined
+  if (typeof value === 'string') return value
+  // UrlResult — build the URL with UTM params appended
+  const base = value.finalUrl
+  if (!value.utm) return base
+  const params = new URLSearchParams()
+  if (value.utm.source) params.set('utm_source', value.utm.source)
+  if (value.utm.medium) params.set('utm_medium', value.utm.medium)
+  if (value.utm.campaign) params.set('utm_campaign', value.utm.campaign)
+  if (value.utm.content) params.set('utm_content', value.utm.content)
+  if (value.utm.term) params.set('utm_term', value.utm.term)
+  const qs = params.toString()
+  if (!qs) return base
+  return base.includes('?') ? `${base}&${qs}` : `${base}?${qs}`
+}
+
+/**
  * Resolve url for an ad, falling back to ad set content defaults.
  * Throws a validation error if neither is set.
  */
@@ -83,8 +105,10 @@ function resolveUrl(creative: MetaCreative, content: AdSetContent, _adSetName: s
     return { url: '', defaulted: false }
   }
   const adUrl = 'url' in creative ? creative.url : undefined
-  if (adUrl) return { url: adUrl, defaulted: false }
-  if (content.url) return { url: content.url, defaulted: true }
+  const resolved = resolveUrlValue(adUrl)
+  if (resolved) return { url: resolved, defaulted: false }
+  const contentResolved = resolveUrlValue(content.url)
+  if (contentResolved) return { url: contentResolved, defaulted: true }
   return { url: '', defaulted: true }
 }
 
@@ -274,7 +298,11 @@ function buildCreativeProperties(
         properties: {
           name: adName,
           format: 'carousel',
-          cards: creative.cards,
+          // Resolve UrlResult objects in carousel cards to plain strings for the API
+          cards: creative.cards.map(card => ({
+            ...card,
+            url: resolveUrlValue(card.url) ?? card.url,
+          })),
           primaryText: creative.primaryText,
           cta: resolvedCta,
           url: resolvedUrl,
