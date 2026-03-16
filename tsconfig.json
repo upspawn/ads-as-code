@@ -14,6 +14,12 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    // Path aliases — resolves self-referencing imports in example/
+    "paths": {
+      "@upspawn/ads": ["./src/index.ts"],
+      "@upspawn/ads/ai": ["./src/ai/index.ts"]
+    },
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,
