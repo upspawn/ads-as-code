@@ -101,8 +101,8 @@ import { defineConfig } from '@upspawn/ads'
 
 export default defineConfig({
   google: {
-    customerId: '730-096-7494',    // your Google Ads customer ID
-    managerId: '239-066-1468',     // optional MCC manager ID
+    customerId: 'YOUR_CUSTOMER_ID',    // your Google Ads customer ID
+    managerId: 'YOUR_MANAGER_ID',     // optional MCC manager ID
     credentials: '~/.ads/credentials.json',
   },
   meta: {
