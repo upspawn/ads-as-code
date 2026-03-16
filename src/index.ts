@@ -228,3 +228,8 @@ export {
   compileMetaCopyPrompt,
   compileInterestsPrompt,
 } from './ai/index.ts'
+
+// === Assets ===
+
+export { asset, isAssetMarker } from './core/asset.ts'
+export type { AssetMarker, AssetOptions, AssetResolution } from './core/asset.ts'
