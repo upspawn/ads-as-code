@@ -375,6 +375,102 @@ Failed checks include a `Fix:` hint:
 
 ---
 
+### `ads performance`
+
+Fetch live performance data, run analysis (violations, signals, recommendations), and optionally evaluate your declared strategy with AI.
+
+```bash
+ads performance
+ads performance --period 30d
+ads performance --campaign search-pdf-renaming
+ads performance --provider google --json
+ads performance --no-ai
+ads performance --period 2026-03-01:2026-03-15
+```
+
+The command:
+1. Loads `ads.config.ts` and discovers campaign files
+2. Extracts performance targets declared on campaigns (e.g., `targetCPA`, `minROAS`, `maxBudget`, `strategy`)
+3. Fetches metrics from Google Ads (GAQL) and/or Meta (Insights API) for the specified period
+4. Computes violations (actuals vs targets with severity thresholds)
+5. Detects signals (anomalies and patterns in the data)
+6. Generates recommendations (rule-based + optional AI strategy evaluation)
+7. Outputs a human-readable report or structured JSON
+
+**Human-readable output:**
+
+```
+Performance Report — last 7d
+══════════════════════════════════════════════════════
+search-pdf-renaming (google)  budget: €3/day
+  CPA  €12.50  target: €15.00 ✓            spend: €87.50
+  ROAS 2.10x                                conversions: 7
+
+search-exact-match (google)  budget: €3/day
+  CPA  €25.00  target: €15.00 ✗            spend: €50.00
+  ROAS 0.80x                                conversions: 2
+
+Signals
+  ✗ search-exact-match — CPA 167% of target with 45% impression share — budget is constraining growth
+  ⚠ search-exact-match/pdf-renamer-en/kw:pdf-renamer:BROAD — Quality score 2/10
+
+Recommendations
+  ▲ search-pdf-renaming: scale-budget (CPA has 17% headroom vs target)  [computed]
+  ▲ search-exact-match/pdf-renamer-en: pause-resource ($18.50 spent with 0 conversions)  [computed]
+
+Summary: 2 campaigns · €137.50 spend · 9 conversions · CPA €15.28 · ROAS 1.45x
+         3 violations · 4 signals · 2 recommendations
+```
+
+**JSON output (`--json`):**
+
+```json
+{
+  "generatedAt": "2026-03-18T10:00:00.000Z",
+  "period": { "start": "2026-03-11", "end": "2026-03-18" },
+  "data": [
+    {
+      "resource": "search-pdf-renaming",
+      "provider": "google",
+      "kind": "campaign",
+      "metrics": { "impressions": 1200, "clicks": 85, "cost": 87.5, "conversions": 7, "ctr": 0.0708, "cpc": 1.03, "cpa": 12.5, "roas": 2.1 },
+      "violations": [],
+      "breakdowns": { "byDay": [...], "byDevice": {...}, "bySearchTerm": [...] }
+    }
+  ],
+  "signals": [...],
+  "recommendations": [...],
+  "summary": { "totalSpend": 137.5, "totalConversions": 9, "overallCPA": 15.28, "overallROAS": 1.45, "violationCount": 3 }
+}
+```
+
+| Flag | Description |
+|------|-------------|
+| `--period <spec>` | Lookback period: `Nd` for last N days (default `7d`) or `YYYY-MM-DD:YYYY-MM-DD` for explicit range |
+| `--campaign <slug>` | Filter to a specific campaign (matches resource path prefix) |
+| `--provider <name>` | Filter to `google` or `meta` |
+| `--json` | Output as structured JSON (designed for AI agent consumption) |
+| `--no-ai` | Skip AI strategy evaluation (only rule-based analysis) |
+
+**Performance targets** are declared on campaigns via the `performance` field:
+
+```typescript
+google.search('Brand — US', {
+  budget: daily(eur(3)),
+  bidding: 'maximize-conversions',
+  performance: {
+    targetCPA: 15,
+    minROAS: 2.0,
+    maxBudget: daily(eur(50)),
+    strategy: `Scale while CPA < target. Pause zero-conversion keywords over €50.`
+  },
+})
+```
+
+Targets cascade: a campaign's targets are inherited by its ad groups and keywords unless overridden at the child level.
+
+---
+
 ### `ads cache <action>`
 
 Manage the local SQLite cache at `.ads/cache.db`.

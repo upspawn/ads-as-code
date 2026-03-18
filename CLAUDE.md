@@ -23,6 +23,9 @@ bun cli/index.ts audiences        # List Meta custom audiences
 bun cli/index.ts history          # Show operation history
 bun cli/index.ts cache stats      # Cache statistics
 bun cli/index.ts cache clear      # Clear cache
+bun cli/index.ts performance             # Show campaign performance metrics
+bun cli/index.ts performance --json      # JSON output for AI agents
+bun cli/index.ts performance --period 30d # Last 30 days
 ```
 
 ## Architecture
@@ -45,6 +48,7 @@ src/
     fetch.ts        GAQL queries → normalized Resource[] (campaigns, ad groups, keywords, ads, extensions, negatives)
     apply.ts        Changeset → MutateOperation[] → execute in dependency order
     constants.ts    Language criteria IDs, geo target IDs
+    performance.ts  Google Ads GAQL performance fetcher (metrics, breakdowns)
   meta/           Meta (Facebook/Instagram) provider
     types.ts        Objective, AdSetConfig, MetaCreative, MetaCTA, MetaTargeting, placements
     index.ts        meta.traffic()/conversions()/leads()/... builders — chained .adSet()
@@ -59,6 +63,13 @@ src/
     provider.ts     Provider interface implementation wiring fetch/flatten/apply/codegen
     constants.ts    Objective → API enum mapping, status codes
     interests-catalog.ts  Cached interest/behavior targeting data
+    performance.ts  Meta Insights API performance fetcher (metrics, breakdowns)
+  performance/    Performance data and optimization engine
+    types.ts        PerformanceTargets, Metrics, Data, Signal, Report, computeMetrics
+    analyze.ts      Pure function: metrics + targets → violations, signals, recommendations
+    fetch.ts        Provider-agnostic fetch orchestrator
+    evaluate.ts     AI strategy evaluation via Vercel AI SDK
+    resolve.ts      Target extraction, inheritance, report building
   helpers/        SDK builder functions (the user-facing DSL)
     keywords.ts     exact(), phrase(), broad(), keywords()
     budget.ts       daily(), monthly(), lifetime(), eur(), usd()
@@ -83,6 +94,7 @@ cli/              CLI commands
   status.ts         Fetch + display live state
   auth.ts           OAuth flow + credential check
   init.ts           Scaffold ads.config.ts + campaigns/ directory
+  performance.ts    Performance metrics, analysis, and reporting
   search.ts         Search Meta targeting interests/behaviors
   audiences.ts      List Meta custom audiences
   history.ts        Query operation log from cache

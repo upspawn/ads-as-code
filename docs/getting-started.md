@@ -250,6 +250,17 @@ Flags:
 - `--dry-run` — Show plan without applying
 - `--reconcile` — Overwrite platform state where drift is detected
 
+## Monitor performance
+
+Once your campaigns are running, track how they perform against your targets:
+
+```bash
+ads performance              # Last 7 days, all campaigns
+ads performance --period 30d # Last 30 days
+```
+
+Declare `performance` targets on campaigns (targetCPA, minROAS, maxBudget, strategy) to get violation detection and AI-powered recommendations. See the [CLI reference](cli-reference.md#ads-performance) and [API reference](api.md#performance) for full details.
+
 ## Other commands
 
 **`ads validate`** — Check campaign files for syntax and structural errors without connecting to the API.

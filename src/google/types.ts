@@ -10,6 +10,7 @@ import type {
 import type { RsaMarker, KeywordsMarker } from '../ai/types.ts'
 import type { ImageRef } from './image-assets.ts'
 import type { SharedBudgetConfig } from './shared-types.ts'
+import type { PerformanceTargets } from '../performance/types.ts'
 
 /** Budget for a campaign — either an individual budget or a reference to a shared budget. */
 export type BudgetInput = Budget | SharedBudgetConfig
@@ -107,6 +108,7 @@ export type GoogleAdGroup = {
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
   readonly targeting?: Targeting
+  readonly performance?: PerformanceTargets
 }
 
 export type AdGroupInput = {
@@ -115,6 +117,7 @@ export type AdGroupInput = {
   readonly negatives?: Keyword[]
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
+  readonly performance?: PerformanceTargets
 }
 
 // === Campaign ===
@@ -151,6 +154,7 @@ export type GoogleSearchCampaign = {
   readonly finalUrlSuffix?: string
   readonly customParameters?: Record<string, string>
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 // === Unresolved Types (may contain AI markers awaiting generation) ===
@@ -161,6 +165,7 @@ export type GoogleAdGroupUnresolved = {
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
   readonly targeting?: Targeting
+  readonly performance?: PerformanceTargets
 }
 
 export type GoogleSearchCampaignUnresolved = Omit<GoogleSearchCampaign, 'groups'> & {
@@ -191,6 +196,7 @@ export type GoogleDisplayAdGroup = {
   readonly ads: GoogleDisplayAd[]
   readonly status?: 'enabled' | 'paused'
   readonly targeting?: Targeting
+  readonly performance?: PerformanceTargets
 }
 
 export type GoogleDisplayCampaign = {
@@ -209,6 +215,7 @@ export type GoogleDisplayCampaign = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 // === Display Campaign Input ===
@@ -225,12 +232,14 @@ export type DisplayCampaignInput = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 export type DisplayAdGroupInput = {
   readonly ad: GoogleDisplayAd | GoogleDisplayAd[]
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
+  readonly performance?: PerformanceTargets
 }
 
 // === Display Campaign Builder ===
@@ -268,6 +277,7 @@ export type SearchCampaignInput = {
   readonly finalUrlSuffix?: string
   readonly customParameters?: Record<string, string>
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 // === Auth Config ===
@@ -340,6 +350,7 @@ export type GooglePMaxCampaign = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 // === Performance Max Campaign Input ===
@@ -356,6 +367,7 @@ export type PMaxCampaignInput = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 // === Performance Max Campaign Builder ===
@@ -395,6 +407,7 @@ export type GoogleShoppingCampaign = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 export type ShoppingCampaignInput = {
@@ -413,6 +426,7 @@ export type ShoppingCampaignInput = {
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
   readonly networkSettings?: NetworkSettings
+  readonly performance?: PerformanceTargets
 }
 
 export type ShoppingCampaignBuilder = GoogleShoppingCampaign & {
@@ -468,6 +482,7 @@ export type DemandGenAdGroup = {
   readonly status?: 'enabled' | 'paused'
   readonly targeting?: Targeting
   readonly channels?: DemandGenChannelControls
+  readonly performance?: PerformanceTargets
 }
 
 export type GoogleDemandGenCampaign = {
@@ -485,6 +500,7 @@ export type GoogleDemandGenCampaign = {
   readonly endDate?: string
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
+  readonly performance?: PerformanceTargets
 }
 
 // === Demand Gen Campaign Input ===
@@ -500,6 +516,7 @@ export type DemandGenCampaignInput = {
   readonly endDate?: string
   readonly trackingTemplate?: string
   readonly finalUrlSuffix?: string
+  readonly performance?: PerformanceTargets
 }
 
 export type DemandGenAdGroupInput = {
@@ -507,6 +524,7 @@ export type DemandGenAdGroupInput = {
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
   readonly channels?: DemandGenChannelControls
+  readonly performance?: PerformanceTargets
 }
 
 // === Demand Gen Campaign Builder ===
@@ -535,6 +553,7 @@ export type GoogleSmartCampaign = {
   readonly language: string
   readonly keywordThemes: string[]
   readonly ad: SmartCampaignAd
+  readonly performance?: PerformanceTargets
 }
 
 export type SmartCampaignInput = {
@@ -546,6 +565,7 @@ export type SmartCampaignInput = {
   readonly language?: string
   readonly keywordThemes: string[]
   readonly ad: SmartCampaignAd
+  readonly performance?: PerformanceTargets
 }
 
 // === App Campaign ===
@@ -572,6 +592,7 @@ export type GoogleAppCampaign = {
   readonly ad: AppAdInfo
   readonly startDate?: string
   readonly endDate?: string
+  readonly performance?: PerformanceTargets
 }
 
 export type AppCampaignInput = {
@@ -585,6 +606,7 @@ export type AppCampaignInput = {
   readonly ad: AppAdInfo
   readonly startDate?: string
   readonly endDate?: string
+  readonly performance?: PerformanceTargets
 }
 
 // === Video Campaign (Read-Only) ===

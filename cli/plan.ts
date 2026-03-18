@@ -9,6 +9,10 @@ import type { Changeset, Resource, AdsConfig } from '../src/core/types.ts'
 import type { DiscoveredCampaign } from '../src/core/discovery.ts'
 import type { ProviderModule } from '../src/core/providers.ts'
 import type { GlobalFlags } from './init.ts'
+import type { PerformanceData, PerformancePeriod, AnalysisResult, PerformanceTargets } from '../src/performance/types.ts'
+import type { FetchPerformanceInput } from '../src/performance/fetch.ts'
+import { extractTargets, resolveTargetInheritance } from '../src/performance/resolve.ts'
+import { analyze } from '../src/performance/analyze.ts'
 
 // ─── Currency Formatting ────────────────────────────────────────
 
@@ -447,6 +451,167 @@ async function planForProvider(
   return { provider, changeset, desired, campaignNames, assets: allAssets }
 }
 
+// ─── Performance Integration ─────────────────────────────────────
+
+/** Default period for performance data in plan output: last 7 days. */
+function defaultPlanPeriod(): PerformancePeriod {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date(end)
+  start.setDate(start.getDate() - 7)
+  start.setHours(0, 0, 0, 0)
+  return { start, end }
+}
+
+/**
+ * Build provider clients for performance fetch.
+ * Best-effort — returns empty input if credentials are unavailable.
+ */
+async function buildPerfFetchInput(
+  config: AdsConfig,
+  period: PerformancePeriod,
+  providerFilter?: string,
+): Promise<FetchPerformanceInput> {
+  const input: {
+    google?: FetchPerformanceInput['google']
+    meta?: FetchPerformanceInput['meta']
+    period: PerformancePeriod
+  } = { period }
+
+  if (config.google && (!providerFilter || providerFilter === 'google')) {
+    try {
+      const { createGoogleClient } = await import('../src/google/api.ts')
+      const client = await createGoogleClient({ type: 'env' })
+      input.google = { client }
+    } catch {
+      // Non-fatal — performance is informational
+    }
+  }
+
+  if (config.meta && (!providerFilter || providerFilter === 'meta')) {
+    try {
+      const { createMetaClient } = await import('../src/meta/api.ts')
+      const client = createMetaClient(config.meta)
+      input.meta = { client, accountId: config.meta.accountId }
+    } catch {
+      // Non-fatal — performance is informational
+    }
+  }
+
+  return input
+}
+
+/**
+ * Fetch raw performance data (no analysis). Returns empty array on failure
+ * since performance is informational and must never break plan.
+ */
+async function fetchRawPerformanceData(
+  config: AdsConfig,
+  providerFilter?: string,
+): Promise<PerformanceData[]> {
+  try {
+    const period = defaultPlanPeriod()
+    const fetchInput = await buildPerfFetchInput(config, period, providerFilter)
+
+    if (!fetchInput.google && !fetchInput.meta) return []
+
+    const { fetchPerformance } = await import('../src/performance/fetch.ts')
+    return fetchPerformance(fetchInput)
+  } catch {
+    // Performance is best-effort — silently skip on any failure
+    return []
+  }
+}
+
+/**
+ * Single-pass analysis: merge targets from desired resources, compute violations, detect signals.
+ * Called once after both raw performance data and desired resources are available.
+ */
+function analyzePerformanceData(
+  rawData: PerformanceData[],
+  desired: Resource[],
+): AnalysisResult | null {
+  if (rawData.length === 0) return null
+
+  try {
+    const allTargets = extractTargets(desired)
+
+    // Resolve inheritance so child resources inherit parent targets
+    const resolvedTargets = new Map<string, PerformanceTargets>()
+    for (const [path] of allTargets) {
+      const resolved = resolveTargetInheritance(path, allTargets)
+      if (resolved) resolvedTargets.set(path, resolved)
+    }
+
+    return analyze(rawData, resolvedTargets)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Format performance section for plan output.
+ * Compact format: violations per campaign, budget recommendations, signals.
+ */
+function formatPerformanceSection(analysis: AnalysisResult, currency = 'USD'): string {
+  const lines: string[] = []
+
+  // Campaign-level performance data only
+  const campaigns = analysis.data.filter(d => d.kind === 'campaign')
+  if (campaigns.length === 0) return ''
+
+  lines.push('Performance (last 7d)')
+
+  for (const d of campaigns) {
+    const violations = d.violations
+    const hasViolation = violations.length > 0
+
+    if (hasViolation) {
+      // Show the most important violation (CPA first, then ROAS, etc.)
+      const v = violations[0]!
+      const icon = v.severity === 'critical' ? '\u2717' : '\u25b2'
+      const pct = Math.abs(v.deviation) === Infinity
+        ? '\u221e'
+        : `${v.deviation > 0 ? '+' : ''}${(v.deviation * 100).toFixed(0)}%`
+      const actualStr = v.actual === Infinity ? '\u221e' : `${currencySymbol(currency)}${v.actual.toFixed(2)}`
+      const targetStr = `${currencySymbol(currency)}${v.target.toFixed(2)}`
+      lines.push(`  ${icon} ${d.resource.padEnd(24)} ${v.metric.toUpperCase()} ${actualStr}  target: ${targetStr}  (${pct})`)
+    } else {
+      // No violations — show a green check with top metric
+      const cpaStr = d.metrics.cpa !== null
+        ? `CPA ${currencySymbol(currency)}${d.metrics.cpa.toFixed(2)}`
+        : `${d.metrics.impressions} impressions`
+      const targetStr = d.targets?.targetCPA !== undefined
+        ? `  target: ${currencySymbol(currency)}${d.targets.targetCPA.toFixed(2)}`
+        : ''
+      lines.push(`  \u2713 ${d.resource.padEnd(24)} ${cpaStr}${targetStr}`)
+    }
+  }
+
+  // Budget recommendations
+  const budgetRecs = analysis.recommendations.filter(
+    r => r.type === 'scale-budget' || r.type === 'reduce-budget',
+  )
+  for (const r of budgetRecs) {
+    if (r.type === 'scale-budget' || r.type === 'reduce-budget') {
+      lines.push(`  \u25b2 ${r.resource.padEnd(24)} ${r.reason}`)
+    }
+  }
+
+  // Signals (warning/critical only)
+  const importantSignals = analysis.signals.filter(s => s.severity !== 'info')
+  if (importantSignals.length > 0) {
+    lines.push('')
+    lines.push('Signals')
+    for (const s of importantSignals) {
+      const icon = s.severity === 'critical' ? '\u2717' : '\u26a0'
+      lines.push(`  ${icon} ${s.resource} \u2014 ${s.message}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
 // ─── Plan Command ────────────────────────────────────────────────
 
 export async function runPlan(
@@ -485,10 +650,15 @@ export async function runPlan(
   await Bun.write(`${cacheDir}/.keep`, '')
   const cache = new Cache(cachePath)
 
-  // 5. Run plan for each provider
-  const results: ProviderPlanResult[] = []
+  // 5. Run plan for each provider + fetch performance data in parallel.
+  //    Performance fetch starts early and runs concurrently with the structural plan.
+  //    Analysis is deferred until desired resources (with targets) are available.
   const sortedProviders = [...grouped.keys()].sort()
 
+  // Start performance fetch early — returns raw data, no analysis yet
+  const perfFetchPromise = fetchRawPerformanceData(config, options.provider)
+
+  const results: ProviderPlanResult[] = []
   for (const providerName of sortedProviders) {
     const providerCampaigns = grouped.get(providerName)!
     const providerModule = await getProvider(providerName)
@@ -504,6 +674,12 @@ export async function runPlan(
     )
     results.push(result)
   }
+
+  // Single-pass analysis: desired resources are now available, so we can
+  // extract targets and compute violations in one pass (no two-pass waste).
+  const allDesiredResources = results.flatMap(r => r.desired)
+  const rawPerfData = await perfFetchPromise
+  const perfAnalysis = analyzePerformanceData(rawPerfData, allDesiredResources)
 
   // 6. Merge all changesets for the combined return value
   const mergedChangeset: Changeset = {
@@ -571,6 +747,16 @@ export async function runPlan(
       )
     }
     console.log(outputParts.join('\n\n'))
+
+    // 10. Print performance section (informational, after structural diff)
+    if (perfAnalysis !== null) {
+      const perfCurrency = config?.meta?.currency ?? config?.google ? 'USD' : 'USD'
+      const perfOutput = formatPerformanceSection(perfAnalysis, perfCurrency)
+      if (perfOutput) {
+        console.log('')
+        console.log(perfOutput)
+      }
+    }
   }
 
   return mergedChangeset

@@ -164,7 +164,12 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
     ...(campaign.config.spendCap !== undefined && { spendCap: campaign.config.spendCap }),
     ...(campaign.config.specialAdCategories !== undefined && { specialAdCategories: campaign.config.specialAdCategories }),
     ...(campaign.config.buyingType !== undefined && { buyingType: campaign.config.buyingType }),
-  }, campaignDefaults.length > 0 ? { _defaults: campaignDefaults } : undefined))
+  }, (() => {
+    const m: Record<string, unknown> = {}
+    if (campaignDefaults.length > 0) m._defaults = campaignDefaults
+    if (campaign.config.performance) m.performanceTargets = campaign.config.performance
+    return Object.keys(m).length > 0 ? m : undefined
+  })()))
 
   // 2. Ad sets + children
   for (const adSet of campaign.adSets) {
@@ -213,7 +218,12 @@ export function flattenMeta(campaign: MetaCampaign): Resource[] {
               ...(adSet.config.conversion.customEventType && { custom_event_type: adSet.config.conversion.customEventType }),
             }}
           : {}),
-    }, adSetDefaults.length > 0 ? { _defaults: adSetDefaults } : undefined))
+    }, (() => {
+      const m: Record<string, unknown> = {}
+      if (adSetDefaults.length > 0) m._defaults = adSetDefaults
+      if (adSet.config.performance) m.performanceTargets = adSet.config.performance
+      return Object.keys(m).length > 0 ? m : undefined
+    })()))
 
     // 3. Creatives + Ads
     for (const creative of adSet.content.ads) {

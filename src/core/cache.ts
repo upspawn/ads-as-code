@@ -1,6 +1,8 @@
 import Database from 'bun:sqlite'
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
+
+const DEFAULT_PERFORMANCE_TTL_MINUTES = 15
 
 type ResourceRow = {
   project: string
@@ -93,6 +95,16 @@ export class Cache {
         changeset TEXT NOT NULL,
         results TEXT NOT NULL,
         "user" TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS performance_cache (
+        project TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        data TEXT NOT NULL,
+        cached_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (project, provider, period_start, period_end)
       );
     `)
 
@@ -219,6 +231,68 @@ export class Cache {
       changeset: JSON.parse(row.changeset),
       results: JSON.parse(row.results),
     }))
+  }
+
+  // ─── Performance Cache ───────────────────────────────────────
+
+  /**
+   * Retrieve cached performance data if it exists and is within TTL.
+   * Returns null if no cache entry exists or if the entry has expired.
+   */
+  getCachedPerformance(
+    project: string,
+    provider: string,
+    start: string,
+    end: string,
+    ttlMinutes: number = DEFAULT_PERFORMANCE_TTL_MINUTES,
+  ): unknown[] | null {
+    const row = this.db
+      .query<{ data: string; cached_at: string }, [string, string, string, string]>(
+        `SELECT data, cached_at FROM performance_cache
+         WHERE project = ? AND provider = ? AND period_start = ? AND period_end = ?`,
+      )
+      .get(project, provider, start, end)
+
+    if (!row) return null
+
+    const cachedAt = new Date(row.cached_at + 'Z')
+    const ageMs = Date.now() - cachedAt.getTime()
+    if (ageMs > ttlMinutes * 60 * 1000) return null
+
+    return JSON.parse(row.data) as unknown[]
+  }
+
+  /**
+   * Store performance data in cache, replacing any existing entry for the same key.
+   */
+  setCachedPerformance(
+    project: string,
+    provider: string,
+    start: string,
+    end: string,
+    data: unknown[],
+  ): void {
+    this.db
+      .query(
+        `INSERT INTO performance_cache (project, provider, period_start, period_end, data, cached_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(project, provider, period_start, period_end) DO UPDATE SET
+           data = excluded.data,
+           cached_at = excluded.cached_at`,
+      )
+      .run(project, provider, start, end, JSON.stringify(data))
+  }
+
+  /**
+   * Clear performance cache entries. If project is provided, only that project's
+   * entries are removed. Otherwise all performance cache entries are cleared.
+   */
+  clearPerformanceCache(project?: string): void {
+    if (project) {
+      this.db.query(`DELETE FROM performance_cache WHERE project = ?`).run(project)
+    } else {
+      this.db.exec(`DELETE FROM performance_cache`)
+    }
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────
