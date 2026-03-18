@@ -6,6 +6,7 @@ import type {
   GoogleAd,
   RSAd,
 } from '../google/types.ts'
+import type { GoogleFlattenable } from '../google/flatten.ts'
 import { isRsaMarker, isKeywordsMarker } from './types.ts'
 import type { LockFile } from './lockfile.ts'
 import { readLockFile, getSlot, isSlotStale } from './lockfile.ts'
@@ -239,16 +240,23 @@ export function checkStaleness(
  *
  * @param campaigns - Array of { file, campaign } pairs from discovery
  * @param defaultFinalUrl - Default URL for generated RSA ads
- * @returns Array of resolved GoogleSearchCampaign objects
+ * @returns Array of resolved campaigns and shared resources ready for flattening
  */
 export async function resolveAllMarkers(
   campaigns: ReadonlyArray<{ file: string; campaign: unknown }>,
   defaultFinalUrl?: string,
-): Promise<GoogleSearchCampaign[]> {
-  const resolved: GoogleSearchCampaign[] = []
+): Promise<GoogleFlattenable[]> {
+  const resolved: GoogleFlattenable[] = []
 
   for (const { file, campaign } of campaigns) {
     const unresolved = campaign as GoogleSearchCampaignUnresolved
+
+    // Shared resources (shared-budget, shared-negative-list, conversion-action)
+    // don't have groups — pass them through unchanged.
+    if (!unresolved.groups) {
+      resolved.push(campaign as GoogleFlattenable)
+      continue
+    }
 
     // Check if the campaign has any markers that need resolving
     const hasMarkers = Object.values(unresolved.groups).some(

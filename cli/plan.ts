@@ -65,6 +65,10 @@ function kindLabel(kind: string): string {
     case 'sitelink': return 'sitelink'
     case 'callout': return 'callout'
     case 'negative': return 'negative'
+    case 'sharedBudget': return 'shared budget'
+    case 'sharedSet': return 'shared set'
+    case 'sharedCriterion': return 'shared negative'
+    case 'conversionAction': return 'conversion action'
     default: return kind
   }
 }
@@ -132,6 +136,19 @@ function describeResource(resource: Resource, allResources: Resource[]): string 
       const text = props['text'] as string | undefined
       const matchType = props['matchType'] as string | undefined
       return `${padded} "${text}" (${matchType?.toLowerCase() ?? 'unknown'})`
+    }
+    case 'sharedBudget': {
+      const name = props['name'] as string ?? resource.path
+      const amount = props['amount'] as number | undefined
+      const currency = props['currency'] as string | undefined
+      const period = props['period'] as string | undefined
+      const budgetStr = amount != null && currency ? ` (${period ?? 'daily'} ${currencySymbol(currency)}${amount.toFixed(2)})` : ''
+      return `${padded} ${name}${budgetStr}`
+    }
+    case 'conversionAction': {
+      const name = props['name'] as string ?? resource.path
+      const type = props['type'] as string | undefined
+      return `${padded} ${name}${type ? ` (${type})` : ''}`
     }
     default:
       return `${padded} ${resource.path}`
@@ -210,7 +227,12 @@ function formatChangeset(
 
   for (const slug of sortedSlugs) {
     const displayName = campaignNames.get(slug) ?? slug
-    lines.push(`Campaign "${displayName}"`)
+    // Use appropriate header for shared resources vs campaigns
+    const header = slug.startsWith('budget:') ? 'Shared Budget'
+      : slug.startsWith('shared:') ? 'Shared Set'
+      : slug.startsWith('conversion:') ? 'Conversion Action'
+      : 'Campaign'
+    lines.push(`${header} "${displayName}"`)
 
     const campaignCreates = changeset.creates.filter(
       c => campaignFromPath(c.resource.path) === slug,
@@ -378,10 +400,11 @@ async function planForProvider(
   // 2. Flatten desired state
   const desired = providerModule.flatten(campaignObjects)
 
-  // 3. Build campaign slug -> name map for display
+  // 3. Build campaign/resource slug -> name map for display
   const campaignNames = new Map<string, string>()
+  const TOP_LEVEL_KINDS = new Set(['campaign', 'sharedBudget', 'sharedSet', 'conversionAction'])
   for (const r of desired) {
-    if (r.kind === 'campaign') {
+    if (TOP_LEVEL_KINDS.has(r.kind)) {
       const name = r.properties['name'] as string | undefined
       if (name) {
         campaignNames.set(r.path, name)
