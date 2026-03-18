@@ -153,21 +153,15 @@ function targetCheck(actual: number | null, target: number | undefined, lower: b
   return ok ? ' \u2713' : ' \u2717'
 }
 
-/** Extract a short display name from a resource path (last meaningful segment). */
-function shortName(path: string): string {
-  const parts = path.split('/')
-  const last = parts[parts.length - 1] ?? path
-  // For keywords: kw:text:MATCH → text [MATCH]
-  if (last.startsWith('kw:')) {
-    const [, text, match] = last.split(':')
-    return `${text} [${match}]`
-  }
-  return last
+/** Show full resource path but format keywords nicely. */
+function displayName(path: string): string {
+  // For keywords at the end: campaign/group/kw:text:MATCH → campaign/group/text [MATCH]
+  return path.replace(/kw:([^:]+):(\w+)$/, '$1 [$2]')
 }
 
 /** Format a campaign metrics table row. */
 function campaignRow(name: string, spend: number, conv: number, cpa: number | null, ctr: number | null): string {
-  const nameCol = name.length > 32 ? name.slice(0, 29) + '...' : name.padEnd(32)
+  const nameCol = name.padEnd(40)
   const spendCol = `$${spend.toFixed(2)}`.padStart(10)
   const convCol = String(conv).padStart(6)
   const cpaCol = (cpa !== null ? `$${cpa.toFixed(2)}` : '\u2014').padStart(8)
@@ -199,48 +193,49 @@ const SIGNAL_LABELS: Record<string, { icon: string; label: string; severity: num
   'improving-trend':        { icon: '\u2139', label: 'CTR Improving',       severity: 9 },
 }
 
-function formatSignalDetail(s: PerformanceSignal): string {
-  const name = shortName(s.resource).padEnd(32)
+function formatSignalDetail(s: PerformanceSignal, providerOf: Map<string, string>): string {
+  const name = displayName(s.resource)
+  const provider = providerOf.get(s.resource) ?? providerOf.get(s.resource.split('/')[0] ?? '') ?? ''
+  const tag = provider ? ` (${provider})` : ''
   const ev = s.evidence as Record<string, unknown>
 
   switch (s.type) {
     case 'zero-conversions':
-      return `   ${name} $${Number(ev.cost ?? 0).toFixed(2)} spent, 0 conv`
+      return `   ${name}${tag}  $${Number(ev.cost ?? 0).toFixed(2)} spent, 0 conv`
     case 'declining-trend':
     case 'creative-fatigue': {
       const first = Number(ev.firstHalfCtr ?? 0) * 100
       const second = Number(ev.secondHalfCtr ?? 0) * 100
       const pct = first > 0 ? Math.round(((second - first) / first) * 100) : 0
       const suffix = s.type === 'creative-fatigue' ? ' \u2014 creative fatigue' : ''
-      return `   ${name} ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}% (${pct}%)${suffix}`
+      return `   ${name}${tag}  ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}% (${pct}%)${suffix}`
     }
     case 'low-quality-score':
-      return `   ${name} ${ev.qualityScore}/10`
+      return `   ${name}${tag}  ${ev.qualityScore}/10`
     case 'spend-concentration': {
       const childCost = Number(ev.childCost ?? ev.cost ?? 0)
       const campaignCost = Number(ev.campaignCost ?? ev.parentCost ?? 1)
       const share = campaignCost > 0 ? (childCost / campaignCost) * 100 : 0
-      const parent = String(ev.childResource ? s.resource : s.resource.split('/')[0] ?? '')
-      return `   ${name} ${share.toFixed(0)}% of ${parent} ($${childCost.toFixed(2)})`
+      const parent = s.resource.split('/')[0] ?? ''
+      return `   ${name}${tag}  ${share.toFixed(0)}% of ${parent} ($${childCost.toFixed(2)})`
     }
     case 'high-frequency':
-      return `   ${name} ${Number(ev.frequency ?? 0).toFixed(1)}x frequency`
+      return `   ${name}${tag}  ${Number(ev.frequency ?? 0).toFixed(1)}x frequency`
     case 'budget-constrained':
-      return `   ${name} CPA $${Number(ev.cpa ?? 0).toFixed(2)} vs target $${Number(ev.targetCPA ?? 0).toFixed(2)}`
+      return `   ${name}${tag}  CPA $${Number(ev.cpa ?? 0).toFixed(2)} vs target $${Number(ev.targetCPA ?? 0).toFixed(2)}`
     case 'search-term-opportunity': {
       const term = String(ev.term ?? name)
-      const termDisplay = term.length > 32 ? term.slice(0, 29) + '...' : term.padEnd(32)
-      return `   ${termDisplay} ${ev.conversions} conv, ${ev.clicks} clicks`
+      return `   ${term}${tag}  ${ev.conversions} conv, ${ev.clicks} clicks`
     }
     case 'learning-phase':
-      return `   ${name} ${ev.conversions} conversions (need 50+)`
+      return `   ${name}${tag}  ${ev.conversions} conversions (need 50+)`
     case 'improving-trend': {
       const first = Number(ev.firstHalfCtr ?? 0) * 100
       const second = Number(ev.secondHalfCtr ?? 0) * 100
-      return `   ${name} ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}%`
+      return `   ${name}${tag}  ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}%`
     }
     default:
-      return `   ${name} ${s.message}`
+      return `   ${name}${tag}  ${s.message}`
   }
 }
 
@@ -265,13 +260,19 @@ export function formatReport(report: PerformanceReport, periodLabel: string): st
     lines.push('')
     lines.push(` ${label}`)
     lines.push(` ${bar}`)
-    lines.push(` ${'Campaign'.padEnd(32)} ${'Spend'.padStart(10)} ${'Conv'.padStart(6)} ${'CPA'.padStart(8)} ${'CTR'.padStart(7)}`)
+    lines.push(` ${'Campaign'.padEnd(40)} ${'Spend'.padStart(10)} ${'Conv'.padStart(6)} ${'CPA'.padStart(8)} ${'CTR'.padStart(7)}`)
 
     // Sort by spend descending
     const sorted = [...providerCampaigns].sort((a, b) => b.metrics.cost - a.metrics.cost)
     for (const c of sorted) {
       lines.push(campaignRow(c.resource, c.metrics.cost, c.metrics.conversions, c.metrics.cpa, c.metrics.ctr))
     }
+  }
+
+  // Build resource → provider lookup from all data entries
+  const providerOf = new Map<string, string>()
+  for (const d of report.data) {
+    providerOf.set(d.resource, d.provider)
   }
 
   // ── Signals grouped by type ──────────────────────────────────────
@@ -292,7 +293,7 @@ export function formatReport(report: PerformanceReport, periodLabel: string): st
       const meta = SIGNAL_LABELS[type] ?? { icon: '\u26a0', label: type, severity: 99 }
       lines.push(` ${meta.icon} ${meta.label}`)
       for (const s of signals) {
-        lines.push(formatSignalDetail(s))
+        lines.push(formatSignalDetail(s, providerOf))
       }
       lines.push('')
     }
@@ -303,9 +304,11 @@ export function formatReport(report: PerformanceReport, periodLabel: string): st
     lines.push(` Recommendations`)
     lines.push(` ${bar}`)
     for (const r of report.recommendations) {
-      const name = shortName(r.resource)
+      const name = displayName(r.resource)
+      const provider = providerOf.get(r.resource) ?? providerOf.get(r.resource.split('/')[0] ?? '') ?? ''
+      const tag = provider ? ` (${provider})` : ''
       const source = r.source === 'ai' ? ' [ai]' : ''
-      lines.push(` \u2717 ${r.type}: ${name} \u2014 ${r.reason}${source}`)
+      lines.push(` \u2717 ${r.type}: ${name}${tag} \u2014 ${r.reason}${source}`)
     }
     lines.push('')
   }
