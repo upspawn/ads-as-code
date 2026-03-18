@@ -47,6 +47,20 @@ function resolveBudget(budget: unknown): { budget: Record<string, unknown>; meta
   return { budget: budget as Record<string, unknown> }
 }
 
+/** Merge optional meta objects, returning undefined if all are empty/undefined. */
+function mergeMeta(...parts: (Record<string, unknown> | undefined)[]): Record<string, unknown> | undefined {
+  const merged: Record<string, unknown> = {}
+  for (const part of parts) {
+    if (part) Object.assign(merged, part)
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+/** Build a performanceTargets meta fragment from an optional performance field. */
+function perfMeta(performance: unknown): Record<string, unknown> | undefined {
+  return performance ? { performanceTargets: performance } : undefined
+}
+
 // ─── Flatten ──────────────────────────────────────────────
 
 /** Flatten a single Google campaign tree into a flat list of Resource objects. */
@@ -68,7 +82,7 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.customParameters !== undefined && { customParameters: campaign.customParameters }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }, budgetMeta))
+  }, mergeMeta(budgetMeta, perfMeta(campaign.performance))))
 
   // 2. Ad groups + children
   for (const [groupKey, group] of Object.entries(campaign.groups)) {
@@ -77,7 +91,7 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     resources.push(resource('adGroup', adGroupPath, {
       status: group.status ?? 'enabled',
       targeting: group.targeting,
-    }))
+    }, perfMeta(group.performance)))
 
     // Keywords
     for (const kw of group.keywords) {
@@ -199,7 +213,7 @@ export function flattenDisplay(campaign: GoogleDisplayCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }, displayBudgetMeta))
+  }, mergeMeta(displayBudgetMeta, perfMeta(campaign.performance))))
 
   // 2. Ad groups + ads (no keywords for Display)
   for (const [groupKey, group] of Object.entries(campaign.groups)) {
@@ -209,7 +223,7 @@ export function flattenDisplay(campaign: GoogleDisplayCampaign): Resource[] {
       status: group.status ?? 'enabled',
       targeting: group.targeting,
       adGroupType: 'display',
-    }))
+    }, perfMeta(group.performance)))
 
     // Responsive Display Ads
     for (const ad of group.ads) {
@@ -276,7 +290,7 @@ export function flattenPMax(campaign: GooglePMaxCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }, pmaxBudgetMeta))
+  }, mergeMeta(pmaxBudgetMeta, perfMeta(campaign.performance))))
 
   // 2. Asset groups
   for (const [key, ag] of Object.entries(campaign.assetGroups)) {
@@ -326,7 +340,7 @@ export function flattenShopping(campaign: GoogleShoppingCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }, shoppingBudgetMeta))
+  }, mergeMeta(shoppingBudgetMeta, perfMeta(campaign.performance))))
 
   // 2. Ad groups (simple — just status + optional bid)
   for (const [key, group] of Object.entries(campaign.groups)) {
@@ -368,7 +382,7 @@ export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] 
     ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
-  }, demandGenBudgetMeta))
+  }, mergeMeta(demandGenBudgetMeta, perfMeta(campaign.performance))))
 
   // 2. Ad groups + ads (no keywords — Demand Gen uses audience targeting)
   for (const [groupKey, group] of Object.entries(campaign.groups)) {
@@ -379,7 +393,7 @@ export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] 
       targeting: group.targeting,
       adGroupType: 'demand-gen',
       ...(group.channels ? { channels: group.channels } : {}),
-    }))
+    }, perfMeta(group.performance)))
 
     // Demand Gen ads (multi-asset or carousel)
     for (const ad of group.ads) {
@@ -421,7 +435,7 @@ export function flattenSmart(campaign: GoogleSmartCampaign): Resource[] {
     finalUrl: campaign.finalUrl,
     language: campaign.language,
     keywordThemes: campaign.keywordThemes,
-  }))
+  }, perfMeta(campaign.performance)))
 
   // 2. One auto-created ad group
   const adGroupPath = `${campaignPath}/default`
@@ -461,7 +475,7 @@ export function flattenApp(campaign: GoogleAppCampaign): Resource[] {
     goal: campaign.goal,
     ...(campaign.startDate !== undefined && { startDate: campaign.startDate }),
     ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
-  }))
+  }, perfMeta(campaign.performance)))
 
   // 2. One auto-created ad group
   const adGroupPath = `${campaignPath}/default`
