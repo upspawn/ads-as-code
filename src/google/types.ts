@@ -9,6 +9,10 @@ import type {
 } from '../core/types.ts'
 import type { RsaMarker, KeywordsMarker } from '../ai/types.ts'
 import type { ImageRef } from './image-assets.ts'
+import type { SharedBudgetConfig } from './shared-types.ts'
+
+/** Budget for a campaign — either an individual budget or a reference to a shared budget. */
+export type BudgetInput = Budget | SharedBudgetConfig
 
 // === Bidding ===
 
@@ -126,7 +130,7 @@ export type GoogleSearchCampaign = {
   readonly kind: 'search'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
   readonly negatives: Keyword[]
@@ -140,7 +144,7 @@ export type GoogleSearchCampaign = {
     readonly promotions?: PromotionExtension[]
     readonly images?: ImageExtension[]
   }
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -194,12 +198,12 @@ export type GoogleDisplayCampaign = {
   readonly kind: 'display'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
   readonly negatives: Keyword[]
   readonly groups: Record<string, GoogleDisplayAdGroup>
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -210,12 +214,12 @@ export type GoogleDisplayCampaign = {
 // === Display Campaign Input ===
 
 export type DisplayCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -252,12 +256,12 @@ export type CampaignBuilder = GoogleSearchCampaignUnresolved & {
 // === Search Campaign Input ===
 
 export type SearchCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -325,11 +329,11 @@ export type GooglePMaxCampaign = {
   readonly kind: 'performance-max'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy   // only maximize-conversions or maximize-conversion-value
   readonly targeting: Targeting       // geo + language only
   readonly assetGroups: Record<string, AssetGroupInput>
-  readonly sharedBudget?: string
+
   readonly urlExpansion?: boolean     // default true
   readonly startDate?: string
   readonly endDate?: string
@@ -341,11 +345,11 @@ export type GooglePMaxCampaign = {
 // === Performance Max Campaign Input ===
 
 export type PMaxCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
-  readonly sharedBudget?: string
+
   readonly urlExpansion?: boolean
   readonly startDate?: string
   readonly endDate?: string
@@ -379,13 +383,13 @@ export type GoogleShoppingCampaign = {
   readonly kind: 'shopping'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
   readonly shoppingSetting: ShoppingSetting
   readonly groups: Record<string, ShoppingAdGroup>
   readonly negatives: Keyword[]
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -394,12 +398,12 @@ export type GoogleShoppingCampaign = {
 }
 
 export type ShoppingCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
-  readonly sharedBudget?: string
+
   readonly merchantId: number
   readonly campaignPriority?: number
   readonly enableLocal?: boolean
@@ -471,12 +475,12 @@ export type GoogleDemandGenCampaign = {
   readonly kind: 'demand-gen'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
   readonly groups: Record<string, DemandGenAdGroup>
   readonly negatives: Keyword[]
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -486,12 +490,12 @@ export type GoogleDemandGenCampaign = {
 // === Demand Gen Campaign Input ===
 
 export type DemandGenCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
-  readonly sharedBudget?: string
+
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -524,7 +528,7 @@ export type GoogleSmartCampaign = {
   readonly kind: 'smart'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly businessName: string
   readonly businessProfile?: string  // 'locations/{id}'
   readonly finalUrl: string
@@ -534,7 +538,7 @@ export type GoogleSmartCampaign = {
 }
 
 export type SmartCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly status?: 'enabled' | 'paused'
   readonly businessName: string
   readonly businessProfile?: string
@@ -559,7 +563,7 @@ export type GoogleAppCampaign = {
   readonly kind: 'app'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
   readonly appId: string
@@ -571,7 +575,7 @@ export type GoogleAppCampaign = {
 }
 
 export type AppCampaignInput = {
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
@@ -592,7 +596,7 @@ export type GoogleVideoCampaign = {
   readonly kind: 'video'
   readonly name: string
   readonly status: 'enabled' | 'paused'
-  readonly budget: Budget
+  readonly budget: BudgetInput
   readonly bidding: BiddingStrategy
   readonly targeting: Targeting
 }

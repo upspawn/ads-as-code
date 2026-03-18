@@ -1320,7 +1320,7 @@ function buildCreateMutations(
         kind: 'shared-budget',
         name: resource.properties.name as string,
         amount: resource.properties.amount as number,
-        currency: resource.properties.currency as string,
+        currency: resource.properties.currency as 'EUR' | 'USD',
         period: resource.properties.period as 'daily',
       }
       ops.push(...buildSharedBudgetOperations(customerId, config))

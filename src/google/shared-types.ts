@@ -93,7 +93,7 @@ export type SharedBudgetConfig = {
   readonly kind: 'shared-budget'
   readonly name: string
   readonly amount: number
-  readonly currency: string
+  readonly currency: 'EUR' | 'USD'
   readonly period: 'daily'
 }
 
@@ -114,7 +114,7 @@ export type SharedBudgetConfig = {
  */
 export function sharedBudget(
   name: string,
-  budget: { readonly amount: number; readonly currency: string; readonly period: 'daily' },
+  budget: { readonly amount: number; readonly currency: 'EUR' | 'USD'; readonly period: 'daily' },
 ): SharedBudgetConfig {
   return {
     provider: 'google',

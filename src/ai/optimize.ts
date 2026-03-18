@@ -1,5 +1,5 @@
-import type { GoogleSearchCampaign, GoogleAdGroup, RSAd } from '../google/types.ts'
-import type { Keyword, Budget, Targeting } from '../core/types.ts'
+import type { GoogleSearchCampaign, GoogleAdGroup, RSAd, BudgetInput } from '../google/types.ts'
+import type { Keyword, Targeting } from '../core/types.ts'
 
 // === Types ===
 
@@ -36,7 +36,7 @@ type GenerateTextFn = (opts: {
 
 // === Campaign Data Formatting ===
 
-function formatBudget(budget: Budget): string {
+function formatBudget(budget: BudgetInput): string {
   return `${budget.currency} ${budget.amount}/${budget.period}`
 }
 
