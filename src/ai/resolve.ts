@@ -250,6 +250,13 @@ export async function resolveAllMarkers(
   for (const { file, campaign } of campaigns) {
     const unresolved = campaign as GoogleSearchCampaignUnresolved
 
+    // Shared resources (shared-budget, shared-negative-list, conversion-action)
+    // don't have groups — pass them through unchanged.
+    if (!unresolved.groups) {
+      resolved.push(campaign as GoogleSearchCampaign)
+      continue
+    }
+
     // Check if the campaign has any markers that need resolving
     const hasMarkers = Object.values(unresolved.groups).some(
       (group) =>
