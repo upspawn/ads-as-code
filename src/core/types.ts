@@ -152,12 +152,14 @@ export type ApplyResult = {
 // === Config ===
 
 import type { AiConfig } from '../ai/types.ts'
+import type { PerformanceConfig } from '../performance/types.ts'
 
 export type AdsConfig = {
   readonly google?: GoogleProviderConfig
   readonly meta?: MetaProviderConfig
   readonly cache?: string
   readonly ai?: AiConfig
+  readonly performance?: PerformanceConfig
 }
 
 export type GoogleProviderConfig = {
