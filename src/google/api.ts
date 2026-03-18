@@ -147,20 +147,50 @@ function mapHttpError(status: number, body: string): AdsError {
 /**
  * Extract a human-readable message from a google-ads-api gRPC error.
  * gRPC errors are plain objects (not Error instances) with shape:
- *   { errors: [{ message: string, error_code: {...} }], request_id: string }
+ *   { errors: [{ message: string, error_code: {...}, location: { field_path_elements: [...] } }], request_id: string }
  */
-function extractGrpcErrorMessage(err: unknown): string {
+export function extractGrpcErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'object' && err !== null) {
     const obj = err as Record<string, unknown>
-    // google-ads-api gRPC error shape
+
+    // google-ads-api gRPC error — check statusDetails first (most detailed)
+    if (Array.isArray(obj.statusDetails)) {
+      const allMessages: string[] = []
+      for (const detail of obj.statusDetails as Array<{ errors?: Array<{
+        message?: string
+        error_code?: Record<string, unknown>
+        location?: { field_path_elements?: Array<{ field_name?: string; index?: number }> }
+      }> }>) {
+        for (const e of detail.errors ?? []) {
+          const parts: string[] = []
+          if (e.message) parts.push(e.message)
+          if (e.error_code) {
+            const codes = Object.entries(e.error_code).filter(([, v]) => v && v !== 'UNSPECIFIED')
+            if (codes.length > 0) parts.push(`[${codes.map(([k, v]) => `${k}: ${v}`).join(', ')}]`)
+          }
+          if (e.location?.field_path_elements?.length) {
+            const path = e.location.field_path_elements
+              .map(f => f.index != null ? `${f.field_name}[${f.index}]` : f.field_name)
+              .join('.')
+            parts.push(`(field: ${path})`)
+          }
+          if (parts.length > 0) allMessages.push(parts.join(' '))
+        }
+      }
+      if (allMessages.length > 0) return allMessages.join('; ')
+    }
+
+    // google-ads-api gRPC error shape — top-level errors array
     if (Array.isArray(obj.errors)) {
       const messages = (obj.errors as Array<{ message?: string }>)
         .map(e => e.message)
         .filter(Boolean)
       if (messages.length > 0) return messages.join('; ')
     }
-    // Fallback: try .message property
+
+    // Fallback: try .details or .message property
+    if (typeof obj.details === 'string') return obj.details
     if (typeof obj.message === 'string') return obj.message
   }
   return String(err)

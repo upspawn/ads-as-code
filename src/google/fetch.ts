@@ -415,6 +415,9 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
   const campaign = row.campaign as Record<string, unknown> | undefined
 
   const adId = str(ad?.id)
+  const adGroupId = str(adGroup?.id)
+  // Composite platformId: adGroupId~adId — matches Google Ads resource name format for adGroupAds
+  const compositePlatformId = adGroupId && adId ? `${adGroupId}~${adId}` : adId
   // gRPC returns snake_case: responsive_search_ad; REST returns camelCase: responsiveSearchAd
   const rsa = (ad?.responsive_search_ad ?? ad?.responsiveSearchAd) as Record<string, unknown> | undefined
   const headlineAssets = (rsa?.headlines ?? []) as Array<{ text: string; pinned_field?: number; pinnedField?: number }>
@@ -471,7 +474,7 @@ function normalizeAdRow(row: GoogleAdsRow): Resource {
     ...(pinnedDescriptions.length > 0 ? { pinnedDescriptions } : {}),
     ...(path1 ? { path1 } : {}),
     ...(path2 ? { path2 } : {}),
-  }, adId)
+  }, compositePlatformId)
 }
 
 // ─── Display Ad Fetcher ─────────────────────────────────────
@@ -520,6 +523,8 @@ export function normalizeDisplayAdRow(row: GoogleAdsRow): Resource {
   const campaign = row.campaign as Record<string, unknown> | undefined
 
   const adId = str(ad?.id)
+  const adGroupId = str(adGroup?.id)
+  const compositePlatformId = adGroupId && adId ? `${adGroupId}~${adId}` : adId
   const rda = (ad?.responsive_display_ad ?? ad?.responsiveDisplayAd) as Record<string, unknown> | undefined
 
   // Text fields
@@ -578,7 +583,7 @@ export function normalizeDisplayAdRow(row: GoogleAdsRow): Resource {
     ...(mainColor ? { mainColor } : {}),
     ...(accentColor ? { accentColor } : {}),
     ...(callToAction ? { callToAction } : {}),
-  }, adId)
+  }, compositePlatformId)
 }
 
 // ─── Demand Gen Ad Fetcher ───────────────────────────────────
@@ -631,6 +636,8 @@ export function normalizeDemandGenAdRow(row: GoogleAdsRow): Resource {
   const campaign = row.campaign as Record<string, unknown> | undefined
 
   const adId = str(ad?.id)
+  const adGroupId = str(adGroup?.id)
+  const compositePlatformId = adGroupId && adId ? `${adGroupId}~${adId}` : adId
   const adType = resolveEnum(ad?.type, { 39: 'DEMAND_GEN_MULTI_ASSET_AD', 40: 'DEMAND_GEN_CAROUSEL_AD' })
   const adStatus = mapStatus(adGroupAd?.status)
   const finalUrls = (ad?.final_urls ?? ad?.finalUrls ?? []) as string[]
@@ -673,7 +680,7 @@ export function normalizeDemandGenAdRow(row: GoogleAdsRow): Resource {
     // Stable hash matching flattenDemandGen
     const h = Bun.hash(JSON.stringify(properties))
     const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
-    return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, adId)
+    return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, compositePlatformId)
   }
 
   // Carousel ad
@@ -707,7 +714,7 @@ export function normalizeDemandGenAdRow(row: GoogleAdsRow): Resource {
 
   const h = Bun.hash(JSON.stringify(properties))
   const hash = (typeof h === 'bigint' ? h : BigInt(h)).toString(16).slice(-12)
-  return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, adId)
+  return resource('ad', `${campaignPath}/${groupSlug}/dgad:${hash}`, properties, compositePlatformId)
 }
 
 // ─── Demand Gen Channel Controls Fetcher ────────────────────

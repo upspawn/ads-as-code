@@ -1193,62 +1193,64 @@ function buildUpdateOperations(
       // Ad resource name format: adGroupAds/{adGroupId}~{adId}
       const adResourceName = resolveResourceName(customerId, 'adGroupAds', resource.platformId)
 
-      const adGroupAdFields: Record<string, unknown> = { resource_name: adResourceName }
-      const adContentFields: Record<string, unknown> = {}
-      const mask: string[] = []
-
+      // Check which fields are changing
+      const statusChanges: typeof change.changes = []
+      const contentChanges: typeof change.changes = []
       for (const c of change.changes) {
         if (c.field === 'status') {
+          statusChanges.push(c)
+        } else {
+          contentChanges.push(c)
+        }
+      }
+
+      const mutations: MutateOperation[] = []
+
+      // Status changes can be applied via UPDATE
+      if (statusChanges.length > 0) {
+        const adGroupAdFields: Record<string, unknown> = { resource_name: adResourceName }
+        const mask: string[] = []
+        for (const c of statusChanges) {
           adGroupAdFields.status = (c.to as string) === 'paused' ? 3 : 2
           mask.push('status')
         }
-        if (c.field === 'headlines') {
-          adContentFields.responsive_search_ad = {
-            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
-            headlines: (c.to as string[]).map(text => ({ text, pinned_field: 0 })),
-          }
-          mask.push('ad.responsive_search_ad.headlines')
-        }
-        if (c.field === 'descriptions') {
-          adContentFields.responsive_search_ad = {
-            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
-            descriptions: (c.to as string[]).map(text => ({ text, pinned_field: 0 })),
-          }
-          mask.push('ad.responsive_search_ad.descriptions')
-        }
-        if (c.field === 'finalUrl') {
-          adContentFields.final_urls = [c.to as string]
-          mask.push('ad.final_urls')
-        }
-        if (c.field === 'path1') {
-          adContentFields.responsive_search_ad = {
-            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
-            path1: c.to as string,
-          }
-          mask.push('ad.responsive_search_ad.path1')
-        }
-        if (c.field === 'path2') {
-          adContentFields.responsive_search_ad = {
-            ...(adContentFields.responsive_search_ad as Record<string, unknown> ?? {}),
-            path2: c.to as string,
-          }
-          mask.push('ad.responsive_search_ad.path2')
-        }
+        mutations.push({
+          operation: 'ad_group_ad',
+          op: 'update',
+          resource: adGroupAdFields,
+          updateMask: mask.join(','),
+        })
       }
 
-      if (mask.length === 0) return []
+      // Content changes (headlines, descriptions, finalUrl, path1, path2) are IMMUTABLE
+      // in Google Ads RSA ads — cannot be modified via UPDATE.
+      // Instead, remove the old ad and create a new one with the desired content.
+      if (contentChanges.length > 0) {
+        // Extract ad group ID from composite platformId (format: adGroupId~adId)
+        const adGroupId = resource.platformId.includes('~')
+          ? resource.platformId.split('~')[0]
+          : null
 
-      // Nest ad content fields under `ad` if any were changed
-      if (Object.keys(adContentFields).length > 0) {
-        adGroupAdFields.ad = adContentFields
+        if (!adGroupId) {
+          // platformId missing the adGroupId component — likely a pre-composite cache entry.
+          // Throw so the caller reports this as a failure, not a silent skip.
+          throw new Error(`Cannot update ad content: platformId "${resource.platformId}" missing adGroupId (expected format: adGroupId~adId)`)
+        }
+
+        const adGroupResourceName = resolveResourceName(customerId, 'adGroups', adGroupId)
+
+        // 1. Remove the old ad
+        mutations.push({
+          operation: 'ad_group_ad',
+          op: 'remove' as const,
+          resource: { resource_name: adResourceName },
+        })
+
+        // 2. Create the new ad with the full desired state (not just the changed fields)
+        mutations.push(buildAdCreate(customerId, adGroupResourceName, resource))
       }
 
-      return [{
-        operation: 'ad_group_ad',
-        op: 'update',
-        resource: adGroupAdFields,
-        updateMask: mask.join(','),
-      }]
+      return mutations
     }
     case 'sharedBudget': {
       if (!resource.platformId) return []
@@ -1609,8 +1611,26 @@ export async function applyChangeset(
         continue
       }
 
-      await client.mutate(mutations)
+      const results = await client.mutate(mutations)
       succeeded.push(change)
+
+      // If this update produced a remove+create (e.g., RSA ad content change),
+      // the new resource has a new platformId. Update the cache so the next
+      // plan run doesn't see a phantom create from a stale cache entry.
+      const hasCreate = mutations.some(m => m.op === 'create')
+      if (hasCreate) {
+        const newPlatformId = extractPlatformId(results, change.resource.kind)
+        if (newPlatformId) {
+          resourceMap.set(change.resource.path, newPlatformId)
+          cache.setResource({
+            project,
+            path: change.resource.path,
+            platformId: newPlatformId,
+            kind: change.resource.kind,
+            managedBy: 'code',
+          })
+        }
+      }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       failed.push({ change, error })
@@ -1660,6 +1680,8 @@ function extractPlatformId(results: MutateResult[], kind: ResourceKind): string 
       return rn.split('/adGroupCriteria/')[1] ?? null
     }
     if (kind === 'ad' && rn.includes('/adGroupAds/')) {
+      // Google's resource name format is adGroupAds/{adGroupId}~{adId}, which
+      // conveniently matches our composite platformId format (adGroupId~adId).
       return rn.split('/adGroupAds/')[1] ?? null
     }
     if (kind === 'sharedBudget' && rn.includes('/campaignBudgets/')) {
