@@ -2,6 +2,7 @@
 // Organized: Objectives → Optimization → Bidding → Targeting → Placements → Creatives → CTAs → Scheduling → Config
 
 import type { Budget } from '../core/types.ts'
+import type { PerformanceTargets } from '../performance/types.ts'
 import type { AssetMarker } from '../core/asset.ts'
 import type { UrlResult } from '../helpers/url.ts'
 
@@ -240,6 +241,7 @@ export type MetaCampaignConfig = {
   readonly specialAdCategories?: readonly SpecialAdCategory[]
   readonly buyingType?: 'AUCTION' | 'RESERVED'
   readonly status?: 'ACTIVE' | 'PAUSED'
+  readonly performance?: PerformanceTargets
 }
 
 // ─── Ad Set Config (generic over objective) ────────────────
@@ -255,6 +257,7 @@ export type AdSetConfig<T extends Objective> = {
   readonly dsa?: DSAConfig
   readonly promotedObject?: PromotedObject
   readonly status?: 'ACTIVE' | 'PAUSED'
+  readonly performance?: PerformanceTargets
 }
 
 // ─── Ad Set Content ────────────────────────────────────────
