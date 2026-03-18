@@ -1,6 +1,6 @@
 {
   "name": "@upspawn/ads",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pulumi-style declarative ad campaign management in TypeScript",
   "type": "module",
   "exports": {
