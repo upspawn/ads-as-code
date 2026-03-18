@@ -91,6 +91,7 @@ function normalizeAdGroup(input: AdGroupInput, targetingOverride?: Targeting): G
     ...(targetingOverride ?? input.targeting
       ? { targeting: targetingOverride ?? input.targeting }
       : {}),
+    ...(input.performance !== undefined && { performance: input.performance }),
   }
   return group
 }
@@ -270,6 +271,7 @@ function normalizeDisplayAdGroup(input: DisplayAdGroupInput, targetingOverride?:
     ...(targetingOverride ?? input.targeting
       ? { targeting: targetingOverride ?? input.targeting }
       : {}),
+    ...(input.performance !== undefined && { performance: input.performance }),
   }
   return group
 }
@@ -378,6 +380,7 @@ function normalizeDemandGenAdGroup(input: DemandGenAdGroupInput, targetingOverri
       ? { targeting: targetingOverride ?? input.targeting }
       : {}),
     ...(input.channels ? { channels: input.channels } : {}),
+    ...(input.performance !== undefined && { performance: input.performance }),
   }
   return group
 }
@@ -462,6 +465,7 @@ export const google = {
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
       ...(input.customParameters !== undefined && { customParameters: input.customParameters }),
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
     return createBuilder(campaign)
   },
@@ -513,6 +517,7 @@ export const google = {
       ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
     return createDisplayBuilder(campaign)
   },
@@ -560,6 +565,7 @@ export const google = {
       ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
     return createPMaxBuilder(campaign)
   },
@@ -610,6 +616,7 @@ export const google = {
       ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
       ...(input.networkSettings !== undefined && { networkSettings: input.networkSettings }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
     return createShoppingBuilder(campaign)
   },
@@ -657,6 +664,7 @@ export const google = {
       ...(input.endDate !== undefined && { endDate: input.endDate }),
       ...(input.trackingTemplate !== undefined && { trackingTemplate: input.trackingTemplate }),
       ...(input.finalUrlSuffix !== undefined && { finalUrlSuffix: input.finalUrlSuffix }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
     return createDemandGenBuilder(campaign)
   },
@@ -688,6 +696,7 @@ export const google = {
       language: input.language ?? 'en',
       keywordThemes: input.keywordThemes,
       ad: input.ad,
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
   },
 
@@ -720,6 +729,7 @@ export const google = {
       ad: input.ad,
       ...(input.startDate !== undefined && { startDate: input.startDate }),
       ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.performance !== undefined && { performance: input.performance }),
     }
   },
 }
