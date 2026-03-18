@@ -155,7 +155,7 @@ describe('formatReport', () => {
 
     const output = formatReport(report, '7d')
     expect(output).toContain('brand-us')
-    expect(output).toContain('google')
+    expect(output).toContain('Google Ads')
     expect(output).toContain('CPA')
     expect(output).toContain('ROAS')
   })
@@ -174,12 +174,11 @@ describe('formatReport', () => {
     })
 
     const output = formatReport(report, '7d')
-    expect(output).toContain('Summary:')
-    expect(output).toContain('50 conversions')
-    expect(output).toContain('2 violations')
+    // New format uses compact summary line
+    expect(output).toContain('50 conv')
   })
 
-  test('displays signals when present', () => {
+  test('displays signals grouped by type', () => {
     const report = makeReport({
       signals: [
         {
@@ -187,14 +186,15 @@ describe('formatReport', () => {
           severity: 'critical',
           resource: 'brand-us/exact/kw:test:EXACT',
           message: 'spent $80, 0 conversions',
-          evidence: {},
+          evidence: { cost: 80 },
         },
       ],
     })
 
     const output = formatReport(report, '7d')
     expect(output).toContain('Signals')
-    expect(output).toContain('spent $80, 0 conversions')
+    expect(output).toContain('Zero Conversions')
+    expect(output).toContain('$80.00 spent, 0 conv')
   })
 
   test('displays recommendations when present', () => {
@@ -213,12 +213,11 @@ describe('formatReport', () => {
     const output = formatReport(report, '7d')
     expect(output).toContain('Recommendations')
     expect(output).toContain('pause-resource')
-    expect(output).toContain('[computed]')
+    expect(output).toContain('test [EXACT]')
   })
 
   test('handles empty report gracefully', () => {
     const output = formatReport(makeReport(), '7d')
-    expect(output).toContain('Summary:')
     expect(output).toContain('0 campaigns')
   })
 })
