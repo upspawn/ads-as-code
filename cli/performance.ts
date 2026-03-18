@@ -180,63 +180,151 @@ function groupSignals(signals: PerformanceSignal[]): Map<string, PerformanceSign
   return groups
 }
 
-const SIGNAL_LABELS: Record<string, { icon: string; label: string; severity: number }> = {
-  'zero-conversions':       { icon: '\u2717', label: 'Zero Conversions',    severity: 0 },
-  'creative-fatigue':       { icon: '\u26a0', label: 'Creative Fatigue',    severity: 1 },
-  'declining-trend':        { icon: '\u26a0', label: 'CTR Declining',       severity: 2 },
-  'low-quality-score':      { icon: '\u26a0', label: 'Low Quality Score',   severity: 3 },
-  'budget-constrained':     { icon: '\u26a0', label: 'Budget Constrained',  severity: 4 },
-  'high-frequency':         { icon: '\u26a0', label: 'High Frequency',      severity: 5 },
-  'spend-concentration':    { icon: '\u2139', label: 'Spend Concentration', severity: 6 },
-  'search-term-opportunity':{ icon: '\u2139', label: 'Search Term Opportunity', severity: 7 },
-  'learning-phase':         { icon: '\u2139', label: 'Learning Phase',      severity: 8 },
-  'improving-trend':        { icon: '\u2139', label: 'CTR Improving',       severity: 9 },
+const SIGNAL_LABELS: Record<string, { icon: string; label: string; hint: string; severity: number }> = {
+  'zero-conversions':       { icon: '\u2717', label: 'Zero Conversions',    hint: 'spending money with no results',                      severity: 0 },
+  'creative-fatigue':       { icon: '\u26a0', label: 'Creative Fatigue',    hint: 'ad CTR declining over time, audience may be tired of seeing it', severity: 1 },
+  'declining-trend':        { icon: '\u26a0', label: 'CTR Declining',       hint: 'click-through rate dropping, ads becoming less effective', severity: 2 },
+  'low-quality-score':      { icon: '\u26a0', label: 'Low Quality Score',   hint: 'ad relevance, landing page, or expected CTR needs work', severity: 3 },
+  'budget-constrained':     { icon: '\u26a0', label: 'Budget Constrained',  hint: 'CPA is under target but budget limits volume',         severity: 4 },
+  'high-frequency':         { icon: '\u26a0', label: 'High Frequency',      hint: 'audience seeing ads too often, may cause fatigue',      severity: 5 },
+  'spend-concentration':    { icon: '\u2139', label: 'Spend Concentration', hint: 'single ad group or keyword dominating campaign budget', severity: 6 },
+  'search-term-opportunity':{ icon: '\u2139', label: 'Search Term Opportunity', hint: 'converting search terms not yet added as keywords', severity: 7 },
+  'learning-phase':         { icon: '\u2139', label: 'Learning Phase',      hint: 'Meta needs ~50 conversions to optimize delivery',      severity: 8 },
+  'improving-trend':        { icon: '\u2139', label: 'CTR Improving',       hint: 'click-through rate trending up',                       severity: 9 },
 }
 
-function formatSignalDetail(s: PerformanceSignal, providerOf: Map<string, string>): string {
-  const name = displayName(s.resource)
-  const provider = providerOf.get(s.resource) ?? providerOf.get(s.resource.split('/')[0] ?? '') ?? ''
-  const tag = provider ? ` (${provider})` : ''
-  const ev = s.evidence as Record<string, unknown>
+/** Get the campaign (root) from a resource path. */
+function campaignOf(path: string): string {
+  return path.split('/')[0] ?? path
+}
 
+/** Get the child path (everything after the campaign). */
+function childPath(path: string): string {
+  const parts = path.split('/')
+  if (parts.length <= 1) return ''
+  return parts.slice(1).join('/')
+}
+
+/** Label a resource by its kind based on the child path (after campaign). */
+function kindLabel(child: string): string {
+  const last = child.split('/').pop() ?? ''
+  if (last.startsWith('kw:') || last.includes('[')) return 'keyword'
+  // child depth: 1 segment = ad group, 2+ = ad or keyword
+  const depth = child.split('/').length
+  if (depth === 1) return 'ad group'
+  return 'ad'
+}
+
+/** Format the detail value for a signal (the part after the resource name). */
+function signalValue(s: PerformanceSignal): string {
+  const ev = s.evidence as Record<string, unknown>
   switch (s.type) {
     case 'zero-conversions':
-      return `   ${name}${tag}  $${Number(ev.cost ?? 0).toFixed(2)} spent, 0 conv`
+      return `$${Number(ev.cost ?? 0).toFixed(2)} spent, 0 conv`
     case 'declining-trend':
     case 'creative-fatigue': {
       const first = Number(ev.firstHalfCtr ?? 0) * 100
       const second = Number(ev.secondHalfCtr ?? 0) * 100
       const pct = first > 0 ? Math.round(((second - first) / first) * 100) : 0
-      const suffix = s.type === 'creative-fatigue' ? ' \u2014 creative fatigue' : ''
-      return `   ${name}${tag}  ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}% (${pct}%)${suffix}`
+      return `${first.toFixed(1)}% \u2192 ${second.toFixed(1)}% (${pct}%)`
     }
     case 'low-quality-score':
-      return `   ${name}${tag}  ${ev.qualityScore}/10`
+      return `${ev.qualityScore}/10`
     case 'spend-concentration': {
       const childCost = Number(ev.childCost ?? ev.cost ?? 0)
       const campaignCost = Number(ev.campaignCost ?? ev.parentCost ?? 1)
       const share = campaignCost > 0 ? (childCost / campaignCost) * 100 : 0
-      const parent = s.resource.split('/')[0] ?? ''
-      return `   ${name}${tag}  ${share.toFixed(0)}% of ${parent} ($${childCost.toFixed(2)})`
+      return `${share.toFixed(0)}% of budget ($${childCost.toFixed(2)})`
     }
     case 'high-frequency':
-      return `   ${name}${tag}  ${Number(ev.frequency ?? 0).toFixed(1)}x frequency`
+      return `${Number(ev.frequency ?? 0).toFixed(1)}x frequency`
     case 'budget-constrained':
-      return `   ${name}${tag}  CPA $${Number(ev.cpa ?? 0).toFixed(2)} vs target $${Number(ev.targetCPA ?? 0).toFixed(2)}`
-    case 'search-term-opportunity': {
-      const term = String(ev.term ?? name)
-      return `   ${term}${tag}  ${ev.conversions} conv, ${ev.clicks} clicks`
-    }
+      return `CPA $${Number(ev.cpa ?? 0).toFixed(2)} vs target $${Number(ev.targetCPA ?? 0).toFixed(2)}`
+    case 'search-term-opportunity':
+      return `${ev.conversions} conv, ${ev.clicks} clicks`
     case 'learning-phase':
-      return `   ${name}${tag}  ${ev.conversions} conversions (need 50+)`
+      return `${ev.conversions} conversions (need 50+)`
     case 'improving-trend': {
       const first = Number(ev.firstHalfCtr ?? 0) * 100
       const second = Number(ev.secondHalfCtr ?? 0) * 100
-      return `   ${name}${tag}  ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}%`
+      return `${first.toFixed(1)}% \u2192 ${second.toFixed(1)}%`
     }
     default:
-      return `   ${name}${tag}  ${s.message}`
+      return s.message
   }
+}
+
+/** Render signals hierarchically: group by type, then by campaign. */
+function formatSignalsHierarchical(
+  signals: PerformanceSignal[],
+  providerOf: Map<string, string>,
+  campaignSpend: Map<string, number>,
+): string[] {
+  const lines: string[] = []
+  const grouped = groupSignals(signals)
+  const sortedTypes = [...grouped.entries()].sort((a, b) => {
+    const sa = SIGNAL_LABELS[a[0]]?.severity ?? 99
+    const sb = SIGNAL_LABELS[b[0]]?.severity ?? 99
+    return sa - sb
+  })
+
+  for (const [type, typeSignals] of sortedTypes) {
+    const meta = SIGNAL_LABELS[type] ?? { icon: '\u26a0', label: type, hint: '', severity: 99 }
+    lines.push(` ${meta.icon} ${meta.label}${meta.hint ? ` \u2014 ${meta.hint}` : ''}`)
+
+    // Special case: search term opportunities don't group by campaign
+    if (type === 'search-term-opportunity') {
+      for (const s of typeSignals) {
+        const term = String((s.evidence as Record<string, unknown>).term ?? s.resource)
+        const provider = providerOf.get(s.resource) ?? providerOf.get(campaignOf(s.resource)) ?? ''
+        const tag = provider ? ` (${provider})` : ''
+        lines.push(`   ${term}${tag}  ${signalValue(s)}`)
+      }
+      lines.push('')
+      continue
+    }
+
+    // Group by campaign
+    const byCampaign = new Map<string, PerformanceSignal[]>()
+    for (const s of typeSignals) {
+      const camp = campaignOf(s.resource)
+      const group = byCampaign.get(camp) ?? []
+      group.push(s)
+      byCampaign.set(camp, group)
+    }
+
+    for (const [camp, campSignals] of byCampaign) {
+      const provider = providerOf.get(camp) ?? ''
+      const tag = provider ? ` (${provider})` : ''
+      const spend = campaignSpend.get(camp)
+      const spendStr = spend !== undefined ? `  $${spend.toFixed(2)} total` : ''
+
+      // If all signals are campaign-level (no children), show inline
+      const allCampaignLevel = campSignals.every(s => campaignOf(s.resource) === s.resource)
+      if (allCampaignLevel) {
+        for (const s of campSignals) {
+          lines.push(`   ${camp}${tag}  ${signalValue(s)}`)
+        }
+      } else {
+        // Show campaign header, then children indented
+        lines.push(`   ${camp}${tag}${spendStr}`)
+        for (const s of campSignals) {
+          const child = childPath(s.resource)
+          if (!child) {
+            // Campaign-level signal
+            lines.push(`     campaign total  ${signalValue(s)}`)
+          } else {
+            const kind = kindLabel(child)
+            const label = displayName(child)
+            lines.push(`     ${kind} ${label}  ${signalValue(s)}`)
+          }
+        }
+      }
+    }
+    lines.push('')
+  }
+
+  return lines
 }
 
 export function formatReport(report: PerformanceReport, periodLabel: string): string {
@@ -275,28 +363,17 @@ export function formatReport(report: PerformanceReport, periodLabel: string): st
     providerOf.set(d.resource, d.provider)
   }
 
-  // ── Signals grouped by type ──────────────────────────────────────
+  // ── Signals grouped by type, then by campaign ──────────────────
   if (report.signals.length > 0) {
+    const campaignSpend = new Map<string, number>()
+    for (const c of campaigns) {
+      campaignSpend.set(c.resource, c.metrics.cost)
+    }
+
     lines.push('')
     lines.push(` Signals (${report.signals.length})`)
     lines.push(` ${bar}`)
-
-    const grouped = groupSignals(report.signals)
-    // Sort groups by severity (critical first)
-    const sortedTypes = [...grouped.entries()].sort((a, b) => {
-      const sa = SIGNAL_LABELS[a[0]]?.severity ?? 99
-      const sb = SIGNAL_LABELS[b[0]]?.severity ?? 99
-      return sa - sb
-    })
-
-    for (const [type, signals] of sortedTypes) {
-      const meta = SIGNAL_LABELS[type] ?? { icon: '\u26a0', label: type, severity: 99 }
-      lines.push(` ${meta.icon} ${meta.label}`)
-      for (const s of signals) {
-        lines.push(formatSignalDetail(s, providerOf))
-      }
-      lines.push('')
-    }
+    lines.push(...formatSignalsHierarchical(report.signals, providerOf, campaignSpend))
   }
 
   // ── Recommendations ──────────────────────────────────────────────
