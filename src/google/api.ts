@@ -149,7 +149,7 @@ function mapHttpError(status: number, body: string): AdsError {
  * gRPC errors are plain objects (not Error instances) with shape:
  *   { errors: [{ message: string, error_code: {...}, location: { field_path_elements: [...] } }], request_id: string }
  */
-function extractGrpcErrorMessage(err: unknown): string {
+export function extractGrpcErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'object' && err !== null) {
     const obj = err as Record<string, unknown>

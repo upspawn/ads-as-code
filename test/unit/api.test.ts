@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'bun:test'
-import { resolveCredentials, AdsApiError, mapHttpError } from '../../src/google/api.ts'
+import { resolveCredentials, AdsApiError, mapHttpError, extractGrpcErrorMessage } from '../../src/google/api.ts'
 import type { GoogleConfig } from '../../src/google/types.ts'
 
 // === Credential Resolution Tests ===
@@ -176,5 +176,84 @@ describe('AdsApiError', () => {
   test('is instanceof Error', () => {
     const err = new AdsApiError({ type: 'api', code: 500, message: 'fail' })
     expect(err).toBeInstanceOf(Error)
+  })
+})
+
+// ─── extractGrpcErrorMessage ────────────────────────────────
+
+describe('extractGrpcErrorMessage', () => {
+  test('extracts message from statusDetails with error codes and field path', () => {
+    const err = {
+      statusDetails: [{
+        errors: [{
+          message: 'Too many headlines',
+          error_code: { ad_error: 'TOO_MANY_HEADLINES', request_error: 'UNSPECIFIED' },
+          location: {
+            field_path_elements: [
+              { field_name: 'operations', index: 0 },
+              { field_name: 'create' },
+              { field_name: 'ad' },
+              { field_name: 'responsive_search_ad' },
+              { field_name: 'headlines', index: 2 },
+            ],
+          },
+        }],
+      }],
+    }
+    const msg = extractGrpcErrorMessage(err)
+    expect(msg).toContain('Too many headlines')
+    expect(msg).toContain('ad_error: TOO_MANY_HEADLINES')
+    expect(msg).toContain('operations[0].create.ad.responsive_search_ad.headlines[2]')
+    // UNSPECIFIED should be filtered out
+    expect(msg).not.toContain('request_error')
+  })
+
+  test('extracts from top-level errors array', () => {
+    const err = {
+      errors: [
+        { message: 'Budget too low' },
+        { message: 'Missing field' },
+      ],
+    }
+    expect(extractGrpcErrorMessage(err)).toBe('Budget too low; Missing field')
+  })
+
+  test('falls back to .details string', () => {
+    expect(extractGrpcErrorMessage({ details: 'connection refused' })).toBe('connection refused')
+  })
+
+  test('falls back to .message string', () => {
+    expect(extractGrpcErrorMessage({ message: 'unknown error' })).toBe('unknown error')
+  })
+
+  test('extracts from Error instance', () => {
+    expect(extractGrpcErrorMessage(new Error('native error'))).toBe('native error')
+  })
+
+  test('falls back to String() for primitives', () => {
+    expect(extractGrpcErrorMessage('raw string')).toBe('raw string')
+    expect(extractGrpcErrorMessage(42)).toBe('42')
+    expect(extractGrpcErrorMessage(null)).toBe('null')
+  })
+
+  test('handles multiple errors in statusDetails', () => {
+    const err = {
+      statusDetails: [{
+        errors: [
+          { message: 'Error 1', error_code: { policy_error: 'POLICY_FINDING' } },
+          { message: 'Error 2' },
+        ],
+      }],
+    }
+    const msg = extractGrpcErrorMessage(err)
+    expect(msg).toContain('Error 1')
+    expect(msg).toContain('Error 2')
+    expect(msg).toContain('policy_error: POLICY_FINDING')
+  })
+
+  test('handles empty statusDetails gracefully', () => {
+    // Empty statusDetails falls through to next check
+    expect(extractGrpcErrorMessage({ statusDetails: [] })).toBe('[object Object]')
+    expect(extractGrpcErrorMessage({ statusDetails: [{ errors: [] }] })).toBe('[object Object]')
   })
 })

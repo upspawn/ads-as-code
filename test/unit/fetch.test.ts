@@ -389,6 +389,30 @@ describe('fetchAds', () => {
     expect(first.properties.finalUrl).toBe('https://renamed.to/pdf-renamer')
   })
 
+  test('falls back to bare adId when adGroupId is missing', async () => {
+    const adRow: GoogleAdsRow = {
+      ad_group_ad: {
+        status: 2,
+        ad: {
+          id: 99999,
+          type: 15,
+          responsive_search_ad: {
+            headlines: [{ text: 'H1', pinned_field: 0 }],
+            descriptions: [{ text: 'D1', pinned_field: 0 }],
+          },
+          final_urls: ['https://example.com'],
+        },
+      },
+      // ad_group has no id field
+      ad_group: { name: 'Some Group' },
+      campaign: { id: 100, name: 'Test Campaign' },
+    }
+    const client = createMockClient({ ads: [adRow] })
+    const resources = await fetchAds(client)
+    // Without adGroupId, falls back to bare adId
+    expect(resources[0]!.platformId).toBe('99999')
+  })
+
   test('generates paths that match flatten.ts hash', async () => {
     const client = createMockClient({ ads: adFixtures as GoogleAdsRow[] })
     const resources = await fetchAds(client)
