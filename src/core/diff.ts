@@ -300,8 +300,11 @@ export function diff(
       matchedActualPaths.add(dPath)
       const changes = compareProperties(dResource.properties, aResource.properties)
       if (changes.length > 0) {
-        // Merge platformId and internal metadata from actual resource into desired
-        updates.push({ op: 'update', resource: { ...dResource, platformId: aResource.platformId, properties: { ...dResource.properties, budgetResourceName: aResource.properties.budgetResourceName } }, changes })
+        // Merge platformId and internal metadata from actual resource into desired.
+        // meta (e.g. budgetResourceName) is SDK-internal data needed by apply but
+        // never compared — it lives on meta, not properties.
+        const mergedMeta = aResource.meta ? { ...dResource.meta, ...aResource.meta } : dResource.meta
+        updates.push({ op: 'update', resource: { ...dResource, platformId: aResource.platformId, ...(mergedMeta ? { meta: mergedMeta } : {}) }, changes })
       }
     } else {
       // No direct path match — try RSA stable identity via cache
@@ -336,7 +339,8 @@ export function diff(
             if (aRes.kind === dResource.kind) {
               matchedActualPaths.add(aPath)
               const changes = compareProperties(dResource.properties, aRes.properties)
-              updates.push({ op: 'update', resource: { ...dResource, platformId: aRes.platformId }, changes })
+              const mergedMeta2 = aRes.meta ? { ...dResource.meta, ...aRes.meta } : dResource.meta
+              updates.push({ op: 'update', resource: { ...dResource, platformId: aRes.platformId, ...(mergedMeta2 ? { meta: mergedMeta2 } : {}) }, changes })
               matched = true
               break
             }

@@ -708,3 +708,100 @@ describe('diff', () => {
     expect(cs.updates).toEqual([])  // All differences are semantic-only
   })
 })
+
+// ─── Regression: meta propagation on update changes ─────
+
+describe('diff — meta propagation', () => {
+  test('update change includes meta.budgetResourceName from actual resource', () => {
+    // Bug: diff was not propagating meta (e.g., budgetResourceName) from actual
+    // to the update change. The apply layer needs this to know which budget
+    // resource to mutate on the platform.
+    const desired = [resource('campaign', 'search-exact', {
+      name: 'Search - Exact',
+      budget: { amount: 25, currency: 'EUR', period: 'daily' },
+    })]
+    const actual: Resource[] = [{
+      kind: 'campaign',
+      path: 'search-exact',
+      properties: {
+        name: 'Search - Exact',
+        budget: { amount: 20, currency: 'EUR', period: 'daily' },
+      },
+      platformId: '123456',
+      meta: { budgetResourceName: 'customers/123/campaignBudgets/456' },
+    }]
+
+    const cs = diff(desired, actual)
+    expect(cs.updates.length).toBe(1)
+
+    const update = cs.updates[0] as Extract<Change, { op: 'update' }>
+    expect(update.resource.meta).toBeDefined()
+    expect(update.resource.meta!.budgetResourceName).toBe('customers/123/campaignBudgets/456')
+    expect(update.resource.platformId).toBe('123456')
+  })
+
+  test('update change merges meta from both desired and actual', () => {
+    // If both desired and actual have meta, the actual's values should
+    // be merged in (actual takes precedence for platform-sourced fields).
+    const desired: Resource[] = [{
+      kind: 'campaign',
+      path: 'search-exact',
+      properties: {
+        name: 'Search - Exact',
+        status: 'paused',
+      },
+      meta: { source: 'code' },
+    }]
+    const actual: Resource[] = [{
+      kind: 'campaign',
+      path: 'search-exact',
+      properties: {
+        name: 'Search - Exact',
+        status: 'enabled',
+      },
+      platformId: '789',
+      meta: { budgetResourceName: 'customers/123/campaignBudgets/789' },
+    }]
+
+    const cs = diff(desired, actual)
+    expect(cs.updates.length).toBe(1)
+
+    const update = cs.updates[0] as Extract<Change, { op: 'update' }>
+    expect(update.resource.meta!.source).toBe('code')
+    expect(update.resource.meta!.budgetResourceName).toBe('customers/123/campaignBudgets/789')
+  })
+
+  test('update via RSA cache match also propagates meta', () => {
+    // When an ad is matched via platformId cache (path changed but same ad),
+    // meta from the actual resource should still be propagated.
+    const desired: Resource[] = [{
+      kind: 'ad',
+      path: 'camp/group/rsa:newhash',
+      properties: {
+        headlines: ['Updated Headline', 'Best Tool'],
+        descriptions: ['New description'],
+        finalUrl: 'https://renamed.to',
+      },
+    }]
+    const actual: Resource[] = [{
+      kind: 'ad',
+      path: 'camp/group/rsa:oldhash',
+      properties: {
+        headlines: ['Old Headline', 'Best Tool'],
+        descriptions: ['Old description'],
+        finalUrl: 'https://renamed.to',
+      },
+      platformId: 'ad-12345',
+      meta: { adGroupId: 'ag-999' },
+    }]
+
+    const pathToPlatformId = new Map([['camp/group/rsa:oldhash', 'ad-12345']])
+    const cs = diff(desired, actual, new Set(), pathToPlatformId)
+
+    expect(cs.updates.length).toBe(1)
+    const update = cs.updates[0] as Extract<Change, { op: 'update' }>
+    expect(update.resource.meta).toBeDefined()
+    expect(update.resource.meta!.adGroupId).toBe('ag-999')
+    expect(update.resource.platformId).toBe('ad-12345')
+  })
+})

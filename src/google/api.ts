@@ -208,25 +208,26 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
 
   async function mutate(operations: MutateOperation[]): Promise<MutateResult[]> {
     try {
-      // google-ads-api MutateOperation format:
-      // { entity: "snake_case_resource", operation: "create"|"update"|"remove", resource: {...} }
+      // Check if any update operation has an explicit updateMask.
+      // The google-ads-api library's mutateResources() auto-generates field masks
+      // from the resource object, which fails for empty sub-messages (e.g.,
+      // `maximize_conversions = {}` produces an empty mask, so the API silently
+      // ignores the bidding strategy change). When we have an explicit mask,
+      // we build the protobuf request directly to ensure our mask is used.
+      const hasExplicitMask = operations.some(op => op.op === 'update' && op.updateMask)
+
+      if (hasExplicitMask) {
+        return await mutateWithExplicitMasks(operations)
+      }
+
+      // Fast path: no explicit masks — use the library's mutateResources()
       const mutateOps = operations.map(op => {
         const operation = (op.op ?? 'create') as 'create' | 'update' | 'remove'
         if (operation === 'remove') {
-          // For remove, pass resource_name as the resource string
           const rn = (op.resource as Record<string, unknown>).resource_name as string
-          return {
-            entity: op.operation,
-            operation,
-            resource: rn,
-          }
+          return { entity: op.operation, operation, resource: rn }
         }
-        return {
-          entity: op.operation,
-          operation,
-          resource: op.resource,
-          ...(op.updateMask ? { update_mask: { paths: op.updateMask.split(',') } } : {}),
-        }
+        return { entity: op.operation, operation, resource: op.resource }
       })
 
       if (process.env['ADS_DEBUG']) {
@@ -234,18 +235,81 @@ export async function createGoogleClient(config: GoogleConfig): Promise<GoogleAd
       }
 
       const response = await customer.mutateResources(mutateOps as Parameters<typeof customer.mutateResources>[0])
-      // Response shape: { mutate_operation_responses: [{ campaign_result: { resource_name }, ... }] }
-      const responses = (response as unknown as { mutate_operation_responses?: Array<Record<string, unknown>> }).mutate_operation_responses ?? []
-      return responses.map(r => {
-        // Find the *_result key and extract resource_name
-        const resultKey = Object.keys(r).find(k => k.endsWith('_result') && r[k] != null)
-        const result = resultKey ? r[resultKey] as Record<string, unknown> : null
-        return { resourceName: (result?.resource_name as string) ?? '' }
-      })
+      return extractMutateResults(response)
     } catch (err: unknown) {
       const message = extractGrpcErrorMessage(err)
       throw adsError({ type: 'api', code: 0, message })
     }
+  }
+
+  /**
+   * Build and send the mutate request directly, bypassing the library's
+   * auto-generated field masks. This replicates buildMutationRequestAndService()
+   * from google-ads-api but uses our explicit updateMask when provided.
+   */
+  async function mutateWithExplicitMasks(operations: MutateOperation[]): Promise<MutateResult[]> {
+    // Import the protobuf constructors and utils from google-ads-api internals.
+    // We access these directly to build protobuf messages with our own field masks,
+    // bypassing the library's auto-generated masks that fail on empty sub-messages.
+    const protos = await import('google-ads-api/build/src/protos/index.js') as unknown as {
+      services: { MutateOperation: new (data: Record<string, unknown>) => unknown; MutateGoogleAdsRequest: new (data: Record<string, unknown>) => unknown }
+      protobuf: { FieldMask: new (data: { paths: string[] }) => unknown }
+    }
+    const utils = await import('google-ads-api/build/src/utils.js') as unknown as {
+      toSnakeCase: (s: string) => string
+      getFieldMask: (data: Record<string, unknown>) => unknown
+    }
+    const { toSnakeCase, getFieldMask } = utils
+
+    const mutateOperations = operations.map(op => {
+      const opType = (op.op ?? 'create') as 'create' | 'update' | 'remove'
+      const opKey = toSnakeCase(`${op.operation}Operation`)
+
+      if (opType === 'remove') {
+        const rn = (op.resource as Record<string, unknown>).resource_name as string
+        const operation = { remove: rn }
+        return new protos.services.MutateOperation({ [opKey]: operation })
+      }
+
+      const operation: Record<string, unknown> = { [opType]: op.resource }
+
+      if (opType === 'update') {
+        if (op.updateMask) {
+          // Use our explicit mask — this is the critical fix for bidding changes
+          operation.update_mask = new protos.protobuf.FieldMask({
+            paths: op.updateMask.split(','),
+          })
+        } else {
+          // Fall back to auto-generated mask (library default behavior)
+          operation.update_mask = getFieldMask(op.resource)
+        }
+      }
+
+      return new protos.services.MutateOperation({ [opKey]: operation })
+    })
+
+    const request = new protos.services.MutateGoogleAdsRequest({
+      customer_id: creds.customerId,
+      mutate_operations: mutateOperations,
+    })
+
+    // Access the gRPC service directly via the customer's internal method.
+    // loadService() is synchronous (returns cached gRPC client).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cust = customer as any
+    const service = cust.loadService('GoogleAdsServiceClient')
+    const callHeaders = cust.callHeaders
+    const response = (await service.mutate(request, { otherArgs: { headers: callHeaders } }))[0]
+    return extractMutateResults(response)
+  }
+
+  function extractMutateResults(response: unknown): MutateResult[] {
+    const responses = (response as { mutate_operation_responses?: Array<Record<string, unknown>> }).mutate_operation_responses ?? []
+    return responses.map(r => {
+      const resultKey = Object.keys(r).find(k => k.endsWith('_result') && r[k] != null)
+      const result = resultKey ? r[resultKey] as Record<string, unknown> : null
+      return { resourceName: (result?.resource_name as string) ?? '' }
+    })
   }
 
   return {

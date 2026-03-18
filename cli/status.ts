@@ -29,11 +29,15 @@ type GoogleCampaignRow = {
 const GOOGLE_STATUS_MAP: Record<number, string> = {
   0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENABLED', 3: 'PAUSED', 4: 'REMOVED',
 }
+// Official BiddingStrategyType enum from google/ads/googleads/v23/enums/bidding_strategy_type.proto
 const GOOGLE_BIDDING_MAP: Record<number, string> = {
   0: 'UNSPECIFIED', 1: 'UNKNOWN', 2: 'ENHANCED_CPC', 3: 'MANUAL_CPC',
-  6: 'TARGET_CPA', 8: 'TARGET_ROAS', 9: 'TARGET_SPEND',
+  4: 'MANUAL_CPM', 5: 'PAGE_ONE_PROMOTED', 6: 'TARGET_CPA',
+  7: 'TARGET_OUTRANK_SHARE', 8: 'TARGET_ROAS', 9: 'TARGET_SPEND',
   10: 'MAXIMIZE_CONVERSIONS', 11: 'MAXIMIZE_CONVERSION_VALUE',
-  15: 'TARGET_IMPRESSION_SHARE',
+  12: 'PERCENT_CPC', 13: 'MANUAL_CPV', 14: 'TARGET_CPM',
+  15: 'TARGET_IMPRESSION_SHARE', 16: 'COMMISSION', 17: 'INVALID',
+  18: 'MANUAL_CPA', 19: 'FIXED_CPM', 22: 'FIXED_SHARE_OF_VOICE',
 }
 
 function resolveEnum(v: unknown, map: Record<number, string>): string {

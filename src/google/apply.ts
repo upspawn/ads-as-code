@@ -995,20 +995,38 @@ function buildUpdateOperations(
         }
         if (c.field === 'bidding') {
           const newBidding = c.to as Record<string, unknown>
+          const oldBidding = c.from as Record<string, unknown> | undefined
+
+          // Bidding strategies are a protobuf oneof — setting the new field
+          // automatically clears whatever was set before.  Do NOT include the
+          // old field in the mask or resource; the API rejects mutations that
+          // contain two bidding strategy fields simultaneously.
+
+          // Google Ads API requires field masks to reference LEAF subfields
+          // for message-type fields (FIELD_HAS_SUBFIELDS error otherwise).
+          // We set the resource value AND add each leaf subfield to the mask.
           switch (newBidding.type) {
             case 'maximize-conversions':
-              campaignFields.maximize_conversions = {}
-              campaignMask.push('maximize_conversions')
+              campaignFields.maximize_conversions = { target_cpa_micros: 0 }
+              campaignMask.push('maximize_conversions.target_cpa_micros')
               break
             case 'maximize-clicks':
-              campaignFields.target_spend = newBidding.maxCpc
-                ? { cpc_bid_ceiling_micros: String(toMicros(newBidding.maxCpc as number)) }
-                : {}
-              campaignMask.push('target_spend')
+              if (newBidding.maxCpc) {
+                campaignFields.target_spend = { cpc_bid_ceiling_micros: toMicros(newBidding.maxCpc as number) }
+                campaignMask.push('target_spend.cpc_bid_ceiling_micros')
+              } else {
+                // No CPC cap — we must still reference a leaf subfield in the mask
+                // (FIELD_HAS_SUBFIELDS rejects bare "target_spend"), but 0 is
+                // rejected as TOO_LOW.  Setting a sentinel high value (1B micros =
+                // €1000) effectively means "no cap" — Google's auto-bidding will
+                // never bid that high on these low-budget campaigns.
+                campaignFields.target_spend = { cpc_bid_ceiling_micros: 1_000_000_000 }
+                campaignMask.push('target_spend.cpc_bid_ceiling_micros')
+              }
               break
             case 'manual-cpc':
               campaignFields.manual_cpc = { enhanced_cpc_enabled: newBidding.enhancedCpc ?? false }
-              campaignMask.push('manual_cpc')
+              campaignMask.push('manual_cpc.enhanced_cpc_enabled')
               break
             case 'manual-cpm':
               campaignFields.manual_cpm = {}
@@ -1019,27 +1037,29 @@ function buildUpdateOperations(
               campaignMask.push('target_cpm')
               break
             case 'target-cpa':
-              campaignFields.target_cpa = { target_cpa_micros: String(toMicros(newBidding.targetCpa as number)) }
-              campaignMask.push('target_cpa')
+              campaignFields.target_cpa = { target_cpa_micros: toMicros(newBidding.targetCpa as number) }
+              campaignMask.push('target_cpa.target_cpa_micros')
               break
             case 'target-roas':
               campaignFields.target_roas = { target_roas: newBidding.targetRoas as number }
-              campaignMask.push('target_roas')
+              campaignMask.push('target_roas.target_roas')
               break
             case 'target-impression-share': {
               const locationMap: Record<string, number> = { 'anywhere': 2, 'top': 3, 'absolute-top': 4 }
               campaignFields.target_impression_share = {
                 location: locationMap[newBidding.location as string] ?? 2,
-                location_fraction_micros: String(Math.round((newBidding.targetPercent as number) * 10000)),
-                ...(newBidding.maxCpc ? { cpc_bid_ceiling_micros: String(toMicros(newBidding.maxCpc as number)) } : {}),
+                location_fraction_micros: Math.round((newBidding.targetPercent as number) * 10000),
+                ...(newBidding.maxCpc ? { cpc_bid_ceiling_micros: toMicros(newBidding.maxCpc as number) } : {}),
               }
-              campaignMask.push('target_impression_share')
+              campaignMask.push('target_impression_share.location')
+              campaignMask.push('target_impression_share.location_fraction_micros')
+              if (newBidding.maxCpc) campaignMask.push('target_impression_share.cpc_bid_ceiling_micros')
               break
             }
             case 'maximize-conversion-value': {
               const roas = newBidding.targetRoas as number | undefined
-              campaignFields.maximize_conversion_value = roas ? { target_roas: roas } : {}
-              campaignMask.push('maximize_conversion_value')
+              campaignFields.maximize_conversion_value = roas ? { target_roas: roas } : { target_roas: 0 }
+              campaignMask.push('maximize_conversion_value.target_roas')
               break
             }
           }
@@ -1463,7 +1483,7 @@ export async function applyChangeset(
     }
   }
 
-  // Execute updates
+  // Execute updates — each campaign is independent, so continue on failure
   for (const change of orderedUpdates) {
     try {
       const mutations = changeToMutations(change, client.customerId, resourceMap)
@@ -1477,7 +1497,6 @@ export async function applyChangeset(
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       failed.push({ change, error })
-      return { succeeded, failed, skipped: [...skipped, ...remainingChanges(orderedUpdates, change), ...orderedDeletes] }
     }
   }
 

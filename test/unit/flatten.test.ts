@@ -704,6 +704,54 @@ describe('flattenAll()', () => {
   })
 })
 
+// ─── Regression: flattenAll with shared-budget kind ──────
+//
+// flattenAll() used to crash with "Object.values requires that input parameter
+// not be null or undefined" when encountering a shared-budget config, because
+// it fell through to the search campaign flattener which expects `groups`.
+
+describe('flattenAll() — shared-budget regression', () => {
+  test('does not crash when given a shared-budget config', () => {
+    // SharedBudgetConfig has kind='shared-budget', which flattenAll
+    // must route to flattenSharedBudget instead of flatten().
+    const sharedBudgetConfig = {
+      provider: 'google' as const,
+      kind: 'shared-budget' as const,
+      name: 'Search Pool',
+      amount: 30,
+      currency: 'EUR',
+      period: 'daily' as const,
+    }
+
+    const resources = flattenAll([sharedBudgetConfig])
+
+    expect(resources).toHaveLength(1)
+    expect(resources[0]!.kind).toBe('sharedBudget')
+    expect(resources[0]!.path).toBe('budget:search-pool')
+    expect(resources[0]!.properties.name).toBe('Search Pool')
+    expect(resources[0]!.properties.amount).toBe(30)
+  })
+
+  test('shared-budget mixes with regular campaigns without crashing', () => {
+    const sharedBudgetConfig = {
+      provider: 'google' as const,
+      kind: 'shared-budget' as const,
+      name: 'Shared Pool',
+      amount: 50,
+      currency: 'EUR',
+      period: 'daily' as const,
+    }
+    const campaign = makeCampaign({ name: 'Regular Campaign', groups: {}, extensions: undefined, negatives: [] })
+
+    const resources = flattenAll([campaign, sharedBudgetConfig])
+
+    expect(resources).toHaveLength(2)
+    const kinds = resources.map(r => r.kind)
+    expect(kinds).toContain('campaign')
+    expect(kinds).toContain('sharedBudget')
+  })
+})
+
 // ─── Structured Snippets ─────────────────────────────────
 
 describe('flatten — structured snippets', () => {
