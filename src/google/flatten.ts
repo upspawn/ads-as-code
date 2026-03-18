@@ -4,6 +4,9 @@ import type { SharedBudgetConfig, SharedNegativeList, ConversionActionConfig } f
 import { slugify } from '../core/flatten.ts'
 import { flattenSharedBudget, flattenSharedNegativeList, flattenConversionAction } from './flatten-shared.ts'
 
+/** All Google resource types that can appear in a campaigns/ directory and be flattened. */
+export type GoogleFlattenable = GoogleCampaign | SharedBudgetConfig | SharedNegativeList | ConversionActionConfig
+
 // ─── Stable RSA Hash ──────────────────────────────────────
 
 function stableHash(input: string): string {
@@ -481,9 +484,16 @@ export function flattenVideo(campaign: GoogleVideoCampaign): Resource[] {
 
 // ─── Multi-Kind Flatten ──────────────────────────────────
 
-/** Flatten multiple Google campaigns into a single flat list. */
-export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
+/** Flatten multiple Google campaigns and shared resources into a single flat list. */
+export function flattenAll(campaigns: GoogleFlattenable[]): Resource[] {
   return campaigns.flatMap(c => {
+    // Shared resources are discovered alongside campaigns because they export
+    // objects with provider+kind fields. Check these first before narrowing
+    // into the GoogleCampaign union (which doesn't include shared kinds).
+    if (c.kind === 'shared-budget') return flattenSharedBudget(c)
+    if (c.kind === 'shared-negative-list') return flattenSharedNegativeList(c)
+    if (c.kind === 'conversion-action') return flattenConversionAction(c)
+    // From here, TypeScript knows c is GoogleCampaign
     if (c.kind === 'display') return flattenDisplay(c)
     if (c.kind === 'performance-max') return flattenPMax(c)
     if (c.kind === 'shopping') return flattenShopping(c)
@@ -491,13 +501,6 @@ export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
     if (c.kind === 'smart') return flattenSmart(c)
     if (c.kind === 'app') return flattenApp(c)
     if (c.kind === 'video') return flattenVideo(c)
-    // Shared resources (budgets, negative lists, conversion actions) are discovered
-    // alongside campaigns because they export objects with provider+kind fields.
-    // Delegate to their dedicated flatten functions instead of falling through
-    // to the search campaign flattener (which would crash on missing `groups`).
-    if (c.kind === 'shared-budget') return flattenSharedBudget(c as unknown as SharedBudgetConfig)
-    if (c.kind === 'shared-negative-list') return flattenSharedNegativeList(c as unknown as SharedNegativeList)
-    if (c.kind === 'conversion-action') return flattenConversionAction(c as unknown as ConversionActionConfig)
     return flatten(c)
   })
 }

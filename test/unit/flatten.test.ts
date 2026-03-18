@@ -723,9 +723,7 @@ describe('flattenAll() — shared-budget regression', () => {
       period: 'daily' as const,
     }
 
-    // flattenAll accepts GoogleCampaign[] but discovers shared resources
-    // at runtime via the `kind` discriminator — cast is necessary.
-    const resources = flattenAll([sharedBudgetConfig as any])
+    const resources = flattenAll([sharedBudgetConfig])
 
     expect(resources).toHaveLength(1)
     expect(resources[0]!.kind).toBe('sharedBudget')
@@ -745,7 +743,7 @@ describe('flattenAll() — shared-budget regression', () => {
     }
     const campaign = makeCampaign({ name: 'Regular Campaign', groups: {}, extensions: undefined, negatives: [] })
 
-    const resources = flattenAll([campaign, sharedBudgetConfig as any])
+    const resources = flattenAll([campaign, sharedBudgetConfig])
 
     expect(resources).toHaveLength(2)
     const kinds = resources.map(r => r.kind)

@@ -724,8 +724,8 @@ describe('bidding strategies on update', () => {
     const resource = op.resource as Record<string, unknown>
     expect(resource.target_impression_share).toEqual({
       location: 3, // top = 3
-      location_fraction_micros: '5000',
-      cpc_bid_ceiling_micros: '3000000',
+      location_fraction_micros: 5000,
+      cpc_bid_ceiling_micros: 3000000,
     })
   })
 

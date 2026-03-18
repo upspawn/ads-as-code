@@ -81,25 +81,6 @@ function matchTypeToEnum(matchType: unknown): number {
   return MATCH_TYPE_TO_ENUM[String(matchType)] ?? 4 // default BROAD
 }
 
-// ─── Bidding Strategy Field Mapping ─────────────────────────
-
-/**
- * Map an SDK bidding type name to the Google Ads API campaign field.
- * When switching bidding strategies, the OLD field must be included in the
- * field mask to clear it — otherwise the API silently ignores the change.
- */
-const BIDDING_TYPE_TO_API_FIELD: Record<string, string> = {
-  'maximize-conversions': 'maximize_conversions',
-  'maximize-clicks': 'target_spend',
-  'manual-cpc': 'manual_cpc',
-  'manual-cpm': 'manual_cpm',
-  'target-cpm': 'target_cpm',
-  'target-cpa': 'target_cpa',
-  'target-roas': 'target_roas',
-  'target-impression-share': 'target_impression_share',
-  'maximize-conversion-value': 'maximize_conversion_value',
-}
-
 // ─── Micros Conversion ──────────────────────────────────────
 
 function toMicros(amount: number): number {

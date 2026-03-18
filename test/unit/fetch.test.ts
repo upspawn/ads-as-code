@@ -59,7 +59,7 @@ describe('fetchCampaigns', () => {
     // Should return 3 campaigns from fixture
     expect(resources).toHaveLength(3)
 
-    // First campaign: status=2 (ENABLED), bidding_strategy_type=6 (MAXIMIZE_CONVERSIONS)
+    // First campaign: status=2 (ENABLED), bidding_strategy_type=10 (MAXIMIZE_CONVERSIONS)
     const pdf = resources[0]!
     expect(pdf.kind).toBe('campaign')
     expect(pdf.path).toBe('search-pdf-renaming')
@@ -73,7 +73,7 @@ describe('fetchCampaigns', () => {
     expect(budget.currency).toBe('EUR')
     expect(budget.period).toBe('daily')
 
-    // Bidding: 6 → MAXIMIZE_CONVERSIONS → maximize-conversions
+    // Bidding: 10 → MAXIMIZE_CONVERSIONS → maximize-conversions
     const bidding = pdf.properties.bidding as { type: string }
     expect(bidding.type).toBe('maximize-conversions')
   })
@@ -82,7 +82,7 @@ describe('fetchCampaigns', () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
-    // Campaign 1: bidding_strategy_type=10 (TARGET_SPEND) with maximize_clicks.cpc_bid_ceiling_micros
+    // Campaign 1: bidding_strategy_type=9 (TARGET_SPEND) with maximize_clicks.cpc_bid_ceiling_micros
     const drive = resources[1]!
     const bidding = drive.properties.bidding as { type: string; maxCpc?: number }
     expect(bidding.type).toBe('maximize-clicks')
@@ -106,11 +106,11 @@ describe('fetchCampaigns', () => {
     const client = createMockClient({ campaigns: campaignFixtures as GoogleAdsRow[] })
     const resources = await fetchCampaigns(client, { includePaused: true })
 
-    // 6 = MAXIMIZE_CONVERSIONS → maximize-conversions
+    // 10 = MAXIMIZE_CONVERSIONS → maximize-conversions
     expect((resources[0]!.properties.bidding as { type: string }).type).toBe('maximize-conversions')
-    // 10 = TARGET_SPEND → maximize-clicks
+    // 9 = TARGET_SPEND → maximize-clicks
     expect((resources[1]!.properties.bidding as { type: string }).type).toBe('maximize-clicks')
-    // 9 = TARGET_CPA → target-cpa
+    // 6 = TARGET_CPA → target-cpa
     expect((resources[2]!.properties.bidding as { type: string }).type).toBe('target-cpa')
   })
 
@@ -868,13 +868,13 @@ describe('fetchCampaigns — missing bidding strategies', () => {
     expect(bidding.targetPercent).toBe(50)
   })
 
-  test('maps MAXIMIZE_CONVERSION_VALUE (12) correctly', async () => {
+  test('maps MAXIMIZE_CONVERSION_VALUE (11) correctly', async () => {
     const campaignRow: GoogleAdsRow = {
       campaign: {
         id: 555,
         name: 'Max Conv Value',
         status: 2,
-        bidding_strategy_type: 12,
+        bidding_strategy_type: 11,
         maximize_conversion_value: {
           target_roas: 2.0,
         },
@@ -899,7 +899,7 @@ describe('fetchCampaigns — missing bidding strategies', () => {
         id: 556,
         name: 'Max Conv Value No ROAS',
         status: 2,
-        bidding_strategy_type: 12,
+        bidding_strategy_type: 11,
       },
       campaign_budget: {
         resource_name: 'customers/7300967494/campaignBudgets/5b',
