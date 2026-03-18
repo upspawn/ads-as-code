@@ -795,3 +795,34 @@ describe('flatten — call extensions', () => {
     expect(calls[0]!.properties.countryCode).toBe('US')
   })
 })
+
+// ─── Shared Budget Campaign Linking ────────────────────────
+
+describe('shared budget in flatten', () => {
+  test('campaign with sharedBudget gets meta.sharedBudgetName', () => {
+    const campaign = makeCampaign({ sharedBudget: 'Search Campaigns Budget' })
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    expect(campaignResource.meta).toBeDefined()
+    expect(campaignResource.meta!.sharedBudgetName).toBe('search-campaigns-budget')
+  })
+
+  test('campaign without sharedBudget has no sharedBudgetName meta', () => {
+    const campaign = makeCampaign()
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    // Meta may be undefined or may not have sharedBudgetName
+    expect(campaignResource.meta?.sharedBudgetName).toBeUndefined()
+  })
+
+  test('campaign with sharedBudget still includes budget in properties', () => {
+    const campaign = makeCampaign({ sharedBudget: 'Shared Budget' })
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    // Budget remains in properties for diff purposes
+    expect(campaignResource.properties.budget).toEqual({ amount: 20, currency: 'EUR', period: 'daily' })
+  })
+})

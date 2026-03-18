@@ -27,8 +27,8 @@ function rsaHash(headlines: readonly string[], descriptions: readonly string[], 
 
 // ─── Resource Builder ─────────────────────────────────────
 
-function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>): Resource {
-  return { kind, path, properties }
+function resource(kind: ResourceKind, path: string, properties: Record<string, unknown>, meta?: Record<string, unknown>): Resource {
+  return meta ? { kind, path, properties, meta } : { kind, path, properties }
 }
 
 // ─── Flatten ──────────────────────────────────────────────
@@ -39,6 +39,7 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
   const campaignPath = slugify(campaign.name)
 
   // 1. Campaign resource
+  const searchMeta = campaign.sharedBudget ? { sharedBudgetName: slugify(campaign.sharedBudget) } : undefined
   resources.push(resource('campaign', campaignPath, {
     name: campaign.name,
     status: campaign.status,
@@ -51,7 +52,7 @@ export function flatten(campaign: GoogleSearchCampaign): Resource[] {
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.customParameters !== undefined && { customParameters: campaign.customParameters }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }))
+  }, searchMeta))
 
   // 2. Ad groups + children
   for (const [groupKey, group] of Object.entries(campaign.groups)) {
@@ -169,6 +170,7 @@ export function flattenDisplay(campaign: GoogleDisplayCampaign): Resource[] {
   const campaignPath = slugify(campaign.name)
 
   // 1. Campaign resource — same as Search but with channelType marker
+  const displayMeta = campaign.sharedBudget ? { sharedBudgetName: slugify(campaign.sharedBudget) } : undefined
   resources.push(resource('campaign', campaignPath, {
     name: campaign.name,
     status: campaign.status,
@@ -181,7 +183,7 @@ export function flattenDisplay(campaign: GoogleDisplayCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }))
+  }, displayMeta))
 
   // 2. Ad groups + ads (no keywords for Display)
   for (const [groupKey, group] of Object.entries(campaign.groups)) {
@@ -244,6 +246,7 @@ export function flattenPMax(campaign: GooglePMaxCampaign): Resource[] {
   const campaignPath = slugify(campaign.name)
 
   // 1. Campaign resource — with channelType marker
+  const pmaxMeta = campaign.sharedBudget ? { sharedBudgetName: slugify(campaign.sharedBudget) } : undefined
   resources.push(resource('campaign', campaignPath, {
     name: campaign.name,
     status: campaign.status,
@@ -257,7 +260,7 @@ export function flattenPMax(campaign: GooglePMaxCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }))
+  }, pmaxMeta))
 
   // 2. Asset groups
   for (const [key, ag] of Object.entries(campaign.assetGroups)) {
@@ -293,6 +296,7 @@ export function flattenShopping(campaign: GoogleShoppingCampaign): Resource[] {
   const campaignPath = slugify(campaign.name)
 
   // 1. Campaign resource — with channelType and shoppingSetting
+  const shoppingMeta = campaign.sharedBudget ? { sharedBudgetName: slugify(campaign.sharedBudget) } : undefined
   resources.push(resource('campaign', campaignPath, {
     name: campaign.name,
     status: campaign.status,
@@ -306,7 +310,7 @@ export function flattenShopping(campaign: GoogleShoppingCampaign): Resource[] {
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
     ...(campaign.networkSettings !== undefined && { networkSettings: campaign.networkSettings }),
-  }))
+  }, shoppingMeta))
 
   // 2. Ad groups (simple — just status + optional bid)
   for (const [key, group] of Object.entries(campaign.groups)) {
@@ -336,6 +340,7 @@ export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] 
   const campaignPath = slugify(campaign.name)
 
   // 1. Campaign resource — with channelType marker
+  const demandGenMeta = campaign.sharedBudget ? { sharedBudgetName: slugify(campaign.sharedBudget) } : undefined
   resources.push(resource('campaign', campaignPath, {
     name: campaign.name,
     status: campaign.status,
@@ -347,7 +352,7 @@ export function flattenDemandGen(campaign: GoogleDemandGenCampaign): Resource[] 
     ...(campaign.endDate !== undefined && { endDate: campaign.endDate }),
     ...(campaign.trackingTemplate !== undefined && { trackingTemplate: campaign.trackingTemplate }),
     ...(campaign.finalUrlSuffix !== undefined && { finalUrlSuffix: campaign.finalUrlSuffix }),
-  }))
+  }, demandGenMeta))
 
   // 2. Ad groups + ads (no keywords — Demand Gen uses audience targeting)
   for (const [groupKey, group] of Object.entries(campaign.groups)) {

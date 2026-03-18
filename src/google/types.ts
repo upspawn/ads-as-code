@@ -140,6 +140,7 @@ export type GoogleSearchCampaign = {
     readonly promotions?: PromotionExtension[]
     readonly images?: ImageExtension[]
   }
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -198,6 +199,7 @@ export type GoogleDisplayCampaign = {
   readonly targeting: Targeting
   readonly negatives: Keyword[]
   readonly groups: Record<string, GoogleDisplayAdGroup>
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -213,6 +215,7 @@ export type DisplayCampaignInput = {
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -254,6 +257,7 @@ export type SearchCampaignInput = {
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -325,6 +329,7 @@ export type GooglePMaxCampaign = {
   readonly bidding: BiddingStrategy   // only maximize-conversions or maximize-conversion-value
   readonly targeting: Targeting       // geo + language only
   readonly assetGroups: Record<string, AssetGroupInput>
+  readonly sharedBudget?: string
   readonly urlExpansion?: boolean     // default true
   readonly startDate?: string
   readonly endDate?: string
@@ -340,6 +345,7 @@ export type PMaxCampaignInput = {
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly status?: 'enabled' | 'paused'
+  readonly sharedBudget?: string
   readonly urlExpansion?: boolean
   readonly startDate?: string
   readonly endDate?: string
@@ -379,6 +385,7 @@ export type GoogleShoppingCampaign = {
   readonly shoppingSetting: ShoppingSetting
   readonly groups: Record<string, ShoppingAdGroup>
   readonly negatives: Keyword[]
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -392,6 +399,7 @@ export type ShoppingCampaignInput = {
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
+  readonly sharedBudget?: string
   readonly merchantId: number
   readonly campaignPriority?: number
   readonly enableLocal?: boolean
@@ -468,6 +476,7 @@ export type GoogleDemandGenCampaign = {
   readonly targeting: Targeting
   readonly groups: Record<string, DemandGenAdGroup>
   readonly negatives: Keyword[]
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
@@ -482,6 +491,7 @@ export type DemandGenCampaignInput = {
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
   readonly status?: 'enabled' | 'paused'
+  readonly sharedBudget?: string
   readonly startDate?: string
   readonly endDate?: string
   readonly trackingTemplate?: string
