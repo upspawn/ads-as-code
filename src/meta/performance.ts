@@ -411,9 +411,12 @@ function processPlacementBreakdown(
  */
 export async function fetchMetaPerformance(
   client: MetaClient,
-  accountId: string,
+  rawAccountId: string,
   period: { readonly start: Date; readonly end: Date },
 ): Promise<PerformanceData[]> {
+  // Normalize — config may include 'act_' prefix, but query helpers add it
+  const accountId = rawAccountId.replace(/^act_/, '')
+
   // Fetch all levels + demographic/placement breakdowns in parallel
   const [campaignRows, adSetRows, adRows, ageGenderRows, placementRows] = await Promise.all([
     queryInsights(client, accountId, 'campaign', period),
