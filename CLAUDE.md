@@ -178,7 +178,7 @@ Full platform coverage — all campaign types supported with round-trip import �
 - **Keyword:** text, matchType, bid (cpc_bid_micros), finalUrl, status
 - **Ad (RSA):** headlines, descriptions, finalUrl, path1, path2, pinnedHeadlines, pinnedDescriptions, status, multiple ads per group
 - **Extensions:** sitelinks, callouts, structured snippets, call — with campaign asset linking
-- **Account-level:** shared negative keyword lists, conversion actions, shared budgets
+- **Account-level:** shared negative keyword lists, conversion actions, shared budgets (campaigns link via `sharedBudget` field name reference)
 
 **Type-specific:**
 - **Display:** Responsive Display Ads, image assets, placement/topic/content keyword targeting, CPM bidding

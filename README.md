@@ -429,7 +429,7 @@ Features across all types:
 - Campaign settings: network settings, tracking template, URL suffix, custom parameters, status, dates
 - Keyword management: create, update (bid/status/finalUrl), delete
 - Ad management: create, update (headlines/descriptions/status/path), delete, multiple ads per group
-- Account-level: shared negative keyword lists, conversion actions, shared budgets
+- Account-level: shared negative keyword lists, conversion actions, shared budgets (campaigns link via `sharedBudget` name reference)
 - URL helper: `url()` auto-parses UTM params for clean DX
 
 **Meta (Facebook/Instagram):**
