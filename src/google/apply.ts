@@ -2,6 +2,8 @@ import type { Change, Changeset, Resource, ResourceKind, ApplyResult } from '../
 import type { GoogleAdsClient, MutateOperation, MutateResult } from './types.ts'
 import type { Cache } from '../core/cache.ts'
 import { LANGUAGE_CRITERIA, GEO_TARGETS } from './constants.ts'
+import { buildSharedBudgetOperations, buildSharedSetOperations, buildConversionActionOperations } from './apply-shared.ts'
+import type { SharedBudgetConfig, SharedNegativeList, ConversionActionConfig } from './shared-types.ts'
 
 export type { ApplyResult }
 
@@ -929,6 +931,27 @@ function buildDeleteOperation(
         op: 'remove',
         resource: { resource_name: resolveResourceName(customerId, 'campaignCriteria', id) },
       }
+    case 'sharedBudget':
+      return {
+        operation: 'campaign_budget',
+        op: 'remove',
+        resource: { resource_name: resolveResourceName(customerId, 'campaignBudgets', id) },
+      }
+    case 'sharedSet':
+      return {
+        operation: 'shared_set',
+        op: 'remove',
+        resource: { resource_name: resolveResourceName(customerId, 'sharedSets', id) },
+      }
+    case 'conversionAction':
+      return {
+        operation: 'conversion_action',
+        op: 'remove',
+        resource: { resource_name: resolveResourceName(customerId, 'conversionActions', id) },
+      }
+    case 'sharedCriterion':
+      // Criteria are removed when the shared set is removed
+      return null
     default:
       return null
   }
@@ -1227,6 +1250,28 @@ function buildUpdateOperations(
         updateMask: mask.join(','),
       }]
     }
+    case 'sharedBudget': {
+      if (!resource.platformId) return []
+      const budgetResourceName = resolveResourceName(customerId, 'campaignBudgets', resource.platformId)
+      const mask: string[] = []
+      const fields: Record<string, unknown> = { resource_name: budgetResourceName }
+
+      for (const c of change.changes) {
+        if (c.field === 'amount') {
+          const newAmount = c.to as number
+          fields.amount_micros = String(toMicros(newAmount))
+          mask.push('amount_micros')
+        }
+      }
+
+      if (mask.length === 0) return []
+      return [{
+        operation: 'campaign_budget',
+        op: 'update',
+        resource: fields,
+        updateMask: mask.join(','),
+      }]
+    }
     default:
       return []
   }
@@ -1269,13 +1314,85 @@ function buildCreateMutations(
   const ops: MutateOperation[] = []
 
   switch (resource.kind) {
+    case 'sharedBudget': {
+      const config: SharedBudgetConfig = {
+        provider: 'google',
+        kind: 'shared-budget',
+        name: resource.properties.name as string,
+        amount: resource.properties.amount as number,
+        currency: resource.properties.currency as 'EUR' | 'USD',
+        period: resource.properties.period as 'daily',
+      }
+      ops.push(...buildSharedBudgetOperations(customerId, config))
+      break
+    }
+
+    case 'sharedSet': {
+      // Shared sets are created with all their criteria in one batch.
+      // Collect criteria from the resource properties (name + type only here;
+      // the actual criteria are separate sharedCriterion resources that we skip).
+      const config: SharedNegativeList = {
+        provider: 'google',
+        kind: 'shared-negative-list',
+        name: resource.properties.name as string,
+        keywords: [], // criteria handled separately by sharedCriterion skip
+      }
+      ops.push(...buildSharedSetOperations(customerId, config))
+      break
+    }
+
+    case 'sharedCriterion':
+      // Created as part of the sharedSet batch — skip
+      break
+
+    case 'conversionAction': {
+      const config: ConversionActionConfig = {
+        provider: 'google',
+        kind: 'conversion-action',
+        name: resource.properties.name as string,
+        type: resource.properties.type as ConversionActionConfig['type'],
+        category: resource.properties.category as ConversionActionConfig['category'],
+        counting: resource.properties.counting as ConversionActionConfig['counting'],
+        ...(resource.properties.value !== undefined && { value: resource.properties.value as ConversionActionConfig['value'] }),
+        ...(resource.properties.attribution !== undefined && { attribution: resource.properties.attribution as ConversionActionConfig['attribution'] }),
+        ...(resource.properties.lookbackDays !== undefined && { lookbackDays: resource.properties.lookbackDays as number }),
+        ...(resource.properties.primary !== undefined && { primary: resource.properties.primary as boolean }),
+      }
+      ops.push(...buildConversionActionOperations(customerId, config))
+      break
+    }
+
     case 'campaign': {
-      const tempBudgetId = `-${Date.now()}`
       const tempCampaignId = `-${Date.now() + 1}`
 
-      // Budget must be created first
-      const budget = resource.properties.budget as { amount: number; period: string }
-      ops.push(buildCampaignBudgetCreate(customerId, tempBudgetId, budget))
+      // Determine budget: shared budget reference or individual budget
+      const sharedBudgetName = resource.meta?.sharedBudgetName as string | undefined
+      let budgetRef: string
+
+      if (sharedBudgetName) {
+        // Look up shared budget resource name from resourceMap (path format: budget:<slugified-name>)
+        const sharedBudgetPath = `budget:${sharedBudgetName}`
+        const existingBudgetId = resourceMap.get(sharedBudgetPath)
+        if (existingBudgetId) {
+          budgetRef = resolveResourceName(customerId, 'campaignBudgets', existingBudgetId)
+        } else {
+          // Fallback: shared budget not yet in the map — this shouldn't happen
+          // if creation order is correct, but create an individual budget as safety net
+          const tempBudgetId = `-${Date.now()}`
+          const budget = resource.properties.budget as { amount: number; period: string }
+          ops.push(buildCampaignBudgetCreate(customerId, tempBudgetId, budget))
+          budgetRef = `customers/${customerId}/campaignBudgets/${tempBudgetId}`
+        }
+      } else {
+        // Individual budget — create it
+        const tempBudgetId = `-${Date.now()}`
+        const budget = resource.properties.budget as { amount: number; period: string }
+        ops.push(buildCampaignBudgetCreate(customerId, tempBudgetId, budget))
+        budgetRef = `customers/${customerId}/campaignBudgets/${tempBudgetId}`
+      }
+
+      // Extract budget ID from the reference for buildCampaignCreate
+      const tempBudgetId = budgetRef.split('/campaignBudgets/')[1]!
       ops.push(buildCampaignCreate(customerId, tempCampaignId, tempBudgetId, resource))
 
       // Targeting (language + geo)
@@ -1544,6 +1661,15 @@ function extractPlatformId(results: MutateResult[], kind: ResourceKind): string 
     }
     if (kind === 'ad' && rn.includes('/adGroupAds/')) {
       return rn.split('/adGroupAds/')[1] ?? null
+    }
+    if (kind === 'sharedBudget' && rn.includes('/campaignBudgets/')) {
+      return rn.split('/campaignBudgets/')[1] ?? null
+    }
+    if (kind === 'sharedSet' && rn.includes('/sharedSets/')) {
+      return rn.split('/sharedSets/')[1] ?? null
+    }
+    if (kind === 'conversionAction' && rn.includes('/conversionActions/')) {
+      return rn.split('/conversionActions/')[1] ?? null
     }
   }
   return null

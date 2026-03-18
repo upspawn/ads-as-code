@@ -244,6 +244,214 @@ describe('changeToMutations', () => {
   })
 })
 
+// ─── Shared Resource Mutations ──────────────────────────────
+
+describe('shared resource mutations', () => {
+  test('sharedBudget create produces campaign_budget operation with explicitly_shared', () => {
+    const change: Change = {
+      op: 'create',
+      resource: makeResource('sharedBudget', 'budget:search-campaigns-budget', {
+        name: 'Search Campaigns Budget',
+        amount: 30,
+        currency: 'EUR',
+        period: 'daily',
+      }),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('campaign_budget')
+    expect(op.op).toBe('create')
+
+    const res = op.resource as Record<string, unknown>
+    expect(res.explicitly_shared).toBe(true)
+    expect(res.name).toBe('Search Campaigns Budget')
+    expect(res.amount_micros).toBe('30000000')
+  })
+
+  test('conversionAction create produces conversion_action operation', () => {
+    const change: Change = {
+      op: 'create',
+      resource: makeResource('conversionAction', 'conversion:website-signup', {
+        name: 'Website Signup',
+        type: 'webpage',
+        category: 'signup',
+        counting: 'one-per-click',
+      }),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('conversion_action')
+    expect(op.op).toBe('create')
+
+    const res = op.resource as Record<string, unknown>
+    expect(res.name).toBe('Website Signup')
+    expect(res.type).toBe(6) // webpage
+    expect(res.category).toBe(28) // signup
+    expect(res.counting_type).toBe(2) // one-per-click
+  })
+
+  test('sharedSet create produces shared_set operation', () => {
+    const change: Change = {
+      op: 'create',
+      resource: makeResource('sharedSet', 'shared:brand-exclusions', {
+        name: 'Brand Exclusions',
+        type: 'NEGATIVE_KEYWORDS',
+      }),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('shared_set')
+    expect(op.op).toBe('create')
+
+    const res = op.resource as Record<string, unknown>
+    expect(res.name).toBe('Brand Exclusions')
+    expect(res.type).toBe(3) // NEGATIVE_KEYWORDS
+  })
+
+  test('sharedCriterion create is skipped (handled by sharedSet batch)', () => {
+    const change: Change = {
+      op: 'create',
+      resource: makeResource('sharedCriterion', 'shared:brand-exclusions/neg:free:BROAD', {
+        text: 'free',
+        matchType: 'BROAD',
+      }),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+    expect(mutations).toHaveLength(0)
+  })
+
+  test('sharedBudget delete produces campaign_budget remove operation', () => {
+    const change: Change = {
+      op: 'delete',
+      resource: makeResource('sharedBudget', 'budget:old-budget', {}, '12345'),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('campaign_budget')
+    expect(op.op).toBe('remove')
+    expect((op.resource as Record<string, unknown>).resource_name).toBe('customers/7300967494/campaignBudgets/12345')
+  })
+
+  test('sharedSet delete produces shared_set remove operation', () => {
+    const change: Change = {
+      op: 'delete',
+      resource: makeResource('sharedSet', 'shared:brand-exclusions', {}, '67890'),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('shared_set')
+    expect(op.op).toBe('remove')
+  })
+
+  test('conversionAction delete produces conversion_action remove operation', () => {
+    const change: Change = {
+      op: 'delete',
+      resource: makeResource('conversionAction', 'conversion:website-signup', {}, '99999'),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('conversion_action')
+    expect(op.op).toBe('remove')
+  })
+
+  test('sharedBudget update produces campaign_budget update with amount_micros', () => {
+    const change: Change = {
+      op: 'update',
+      resource: makeResource('sharedBudget', 'budget:search-campaigns-budget', {
+        name: 'Search Campaigns Budget',
+        amount: 50,
+        currency: 'EUR',
+        period: 'daily',
+      }, '12345'),
+      changes: [{ field: 'amount', from: 30, to: 50 }],
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    expect(mutations).toHaveLength(1)
+    const op = mutations[0]!
+    expect(op.operation).toBe('campaign_budget')
+    expect(op.op).toBe('update')
+    expect(op.updateMask).toBe('amount_micros')
+
+    const res = op.resource as Record<string, unknown>
+    expect(res.amount_micros).toBe('50000000')
+  })
+})
+
+// ─── Shared Budget Campaign Linking ────────────────────────
+
+describe('shared budget campaign linking', () => {
+  test('campaign with sharedBudgetName references shared budget instead of creating individual', () => {
+    const resourceMap = new Map([['budget:search-campaigns-budget', '12345']])
+    const change: Change = {
+      op: 'create',
+      resource: {
+        kind: 'campaign',
+        path: 'my-campaign',
+        properties: {
+          name: 'My Campaign',
+          status: 'enabled',
+          budget: { amount: 20, currency: 'EUR', period: 'daily' },
+          bidding: { type: 'maximize-conversions' },
+          targeting: { rules: [] },
+        },
+        meta: { sharedBudgetName: 'search-campaigns-budget' },
+      },
+    }
+
+    const mutations = changeToMutations(change, '7300967494', resourceMap)
+
+    // Should NOT have an individual budget create — should reference the shared budget
+    const budgetCreates = mutations.filter(m => m.operation === 'campaign_budget' && m.op === 'create')
+    expect(budgetCreates).toHaveLength(0)
+
+    // The campaign op should reference the shared budget
+    const campaignOp = mutations.find(m => m.operation === 'campaign')!
+    const campaignRes = campaignOp.resource as Record<string, unknown>
+    expect(campaignRes.campaign_budget).toBe('customers/7300967494/campaignBudgets/12345')
+  })
+
+  test('campaign without sharedBudgetName creates individual budget as before', () => {
+    const change: Change = {
+      op: 'create',
+      resource: makeResource('campaign', 'regular-campaign', {
+        name: 'Regular Campaign',
+        status: 'enabled',
+        budget: { amount: 15, currency: 'EUR', period: 'daily' },
+        bidding: { type: 'maximize-conversions' },
+        targeting: { rules: [] },
+      }),
+    }
+
+    const mutations = changeToMutations(change, '7300967494', new Map())
+
+    // Should create an individual budget
+    const budgetCreates = mutations.filter(m => m.operation === 'campaign_budget' && m.op === 'create')
+    expect(budgetCreates).toHaveLength(1)
+    expect((budgetCreates[0]!.resource as Record<string, unknown>).explicitly_shared).toBe(false)
+  })
+})
+
 // ─── Dependency Ordering ────────────────────────────────────
 
 describe('dependency ordering', () => {

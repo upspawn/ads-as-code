@@ -157,7 +157,9 @@ SELECT
   campaign.url_custom_parameters,
   campaign_budget.id,
   campaign_budget.resource_name,
-  campaign_budget.amount_micros
+  campaign_budget.amount_micros,
+  campaign_budget.explicitly_shared,
+  campaign_budget.name
 FROM campaign
 WHERE campaign.status != 'REMOVED'
 `.trim()
@@ -248,8 +250,16 @@ function normalizeCampaignRow(row: GoogleAdsRow): Resource {
     ...(finalUrlSuffix ? { finalUrlSuffix } : {}),
     ...(customParameters ? { customParameters } : {}),
   }
-  const meta = budgetResourceName ? { budgetResourceName } : undefined
-  return { kind: 'campaign' as const, path, properties: props, ...(meta ? { meta } : {}), ...(id ? { platformId: id } : {}) }
+  // Detect shared budgets: if explicitly_shared is true, record the budget name
+  // so the flatten/apply pipeline can link campaigns to shared budgets
+  const explicitlyShared = budget?.explicitly_shared ?? budget?.explicitlyShared
+  const budgetName = str(budget?.name)
+  const meta: Record<string, unknown> = {}
+  if (budgetResourceName) meta.budgetResourceName = budgetResourceName
+  if (explicitlyShared === true && budgetName) meta.sharedBudgetName = slugify(budgetName)
+
+  const hasMeta = Object.keys(meta).length > 0
+  return { kind: 'campaign' as const, path, properties: props, ...(hasMeta ? { meta } : {}), ...(id ? { platformId: id } : {}) }
 }
 
 // ─── Ad Group Fetcher ───────────────────────────────────────

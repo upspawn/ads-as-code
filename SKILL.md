@@ -174,7 +174,7 @@ The most common campaign type. Returns a `CampaignBuilder` with chainable method
 
 ```ts
 type SearchCampaignInput = {
-  readonly budget: Budget
+  readonly budget: Budget | SharedBudgetConfig  // plain budget or shared budget reference
   readonly bidding: BiddingInput
   readonly targeting?: Targeting
   readonly negatives?: Keyword[]
@@ -1456,10 +1456,21 @@ sharedBudget(
   budget: { amount: number; currency: string; period: 'daily' },
 ): SharedBudgetConfig
 ```
-Shared budget for distributing spend across multiple campaigns.
+Shared budget for distributing spend across multiple campaigns. Pass it directly as the `budget` field:
 ```ts
-export default sharedBudget('Search Campaigns Budget', daily(30))
+// campaigns/shared-pool.ts
+export const pool = sharedBudget('Search Pool', daily(30))
+
+// campaigns/search-dropbox.ts
+import { pool } from './shared-pool.ts'
+
+export default google.search('Search - Dropbox', {
+  budget: pool,
+  bidding: 'maximize-conversions',
+  ...
+})
 ```
+All campaigns using the same `SharedBudgetConfig` as their `budget` share one Google Ads budget resource (`explicitly_shared=true`). Google distributes spend dynamically across them.
 
 ---
 

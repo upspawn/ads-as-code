@@ -3,6 +3,7 @@ import { slugify } from '../../src/core/flatten.ts'
 import { flatten, flattenAll } from '../../src/google/flatten.ts'
 import type { GoogleSearchCampaign } from '../../src/google/types.ts'
 import type { Headline, Description, CalloutText } from '../../src/core/types.ts'
+import { sharedBudget } from '../../src/google/shared-types.ts'
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -712,16 +713,7 @@ describe('flattenAll()', () => {
 
 describe('flattenAll() — shared-budget regression', () => {
   test('does not crash when given a shared-budget config', () => {
-    // SharedBudgetConfig has kind='shared-budget', which flattenAll
-    // must route to flattenSharedBudget instead of flatten().
-    const sharedBudgetConfig = {
-      provider: 'google' as const,
-      kind: 'shared-budget' as const,
-      name: 'Search Pool',
-      amount: 30,
-      currency: 'EUR',
-      period: 'daily' as const,
-    }
+    const sharedBudgetConfig = sharedBudget('Search Pool', { amount: 30, currency: 'EUR', period: 'daily' })
 
     const resources = flattenAll([sharedBudgetConfig])
 
@@ -733,14 +725,7 @@ describe('flattenAll() — shared-budget regression', () => {
   })
 
   test('shared-budget mixes with regular campaigns without crashing', () => {
-    const sharedBudgetConfig = {
-      provider: 'google' as const,
-      kind: 'shared-budget' as const,
-      name: 'Shared Pool',
-      amount: 50,
-      currency: 'EUR',
-      period: 'daily' as const,
-    }
+    const sharedBudgetConfig = sharedBudget('Shared Pool', { amount: 50, currency: 'EUR', period: 'daily' })
     const campaign = makeCampaign({ name: 'Regular Campaign', groups: {}, extensions: undefined, negatives: [] })
 
     const resources = flattenAll([campaign, sharedBudgetConfig])
@@ -793,5 +778,37 @@ describe('flatten — call extensions', () => {
     expect(calls[0]!.path).toBe('search-pdf-renaming/call:+1-800-555-0123')
     expect(calls[0]!.properties.phoneNumber).toBe('+1-800-555-0123')
     expect(calls[0]!.properties.countryCode).toBe('US')
+  })
+})
+
+// ─── Shared Budget Campaign Linking ────────────────────────
+
+describe('shared budget in flatten', () => {
+  test('campaign with SharedBudgetConfig as budget gets meta.sharedBudgetName', () => {
+    const pool = sharedBudget('Search Campaigns Budget', { amount: 20, currency: 'EUR', period: 'daily' })
+    const campaign = makeCampaign({ budget: pool })
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    expect(campaignResource.meta).toBeDefined()
+    expect(campaignResource.meta!.sharedBudgetName).toBe('search-campaigns-budget')
+  })
+
+  test('campaign with plain budget has no sharedBudgetName meta', () => {
+    const campaign = makeCampaign()
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    expect(campaignResource.meta?.sharedBudgetName).toBeUndefined()
+  })
+
+  test('campaign with SharedBudgetConfig extracts budget amount into properties', () => {
+    const pool = sharedBudget('Shared Budget', { amount: 30, currency: 'EUR', period: 'daily' })
+    const campaign = makeCampaign({ budget: pool })
+    const resources = flatten(campaign)
+
+    const campaignResource = resources.find(r => r.kind === 'campaign')!
+    // Budget is extracted from SharedBudgetConfig into a plain budget object
+    expect(campaignResource.properties.budget).toEqual({ amount: 30, currency: 'EUR', period: 'daily' })
   })
 })

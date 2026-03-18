@@ -154,6 +154,64 @@ describe('campaign normalization — budgetResourceName isolation', () => {
   })
 })
 
+// ─── Shared Budget Detection ─────────────────────────────────
+
+describe('fetchCampaigns — shared budget detection', () => {
+  test('campaign with explicitly_shared budget gets sharedBudgetName in meta', async () => {
+    const sharedBudgetRow: GoogleAdsRow = {
+      campaign: {
+        id: '999',
+        name: 'Shared Budget Campaign',
+        status: 2,
+        bidding_strategy_type: 10,
+        advertising_channel_type: 2,
+      },
+      campaign_budget: {
+        id: '555',
+        resource_name: 'customers/7300967494/campaignBudgets/555',
+        amount_micros: '30000000',
+        explicitly_shared: true,
+        name: 'Search Campaigns Budget',
+      },
+    }
+
+    const client = createMockClient({ campaigns: [sharedBudgetRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    expect(resources).toHaveLength(1)
+    const campaign = resources[0]!
+    expect(campaign.meta?.sharedBudgetName).toBe('search-campaigns-budget')
+    expect(campaign.meta?.budgetResourceName).toBe('customers/7300967494/campaignBudgets/555')
+  })
+
+  test('campaign with non-shared budget has no sharedBudgetName in meta', async () => {
+    const regularRow: GoogleAdsRow = {
+      campaign: {
+        id: '888',
+        name: 'Regular Campaign',
+        status: 2,
+        bidding_strategy_type: 10,
+        advertising_channel_type: 2,
+      },
+      campaign_budget: {
+        id: '444',
+        resource_name: 'customers/7300967494/campaignBudgets/444',
+        amount_micros: '20000000',
+        explicitly_shared: false,
+        name: '',
+      },
+    }
+
+    const client = createMockClient({ campaigns: [regularRow] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+
+    expect(resources).toHaveLength(1)
+    const campaign = resources[0]!
+    expect(campaign.meta?.sharedBudgetName).toBeUndefined()
+    expect(campaign.meta?.budgetResourceName).toBe('customers/7300967494/campaignBudgets/444')
+  })
+})
+
 // ─── fetchAdGroups ──────────────────────────────────────────
 
 describe('fetchAdGroups', () => {
