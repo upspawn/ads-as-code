@@ -1232,8 +1232,9 @@ function buildUpdateOperations(
           : null
 
         if (!adGroupId) {
-          // Can't determine ad group — fall back to skip (shouldn't happen with composite IDs)
-          return []
+          // platformId missing the adGroupId component — likely a pre-composite cache entry.
+          // Throw so the caller reports this as a failure, not a silent skip.
+          throw new Error(`Cannot update ad content: platformId "${resource.platformId}" missing adGroupId (expected format: adGroupId~adId)`)
         }
 
         const adGroupResourceName = resolveResourceName(customerId, 'adGroups', adGroupId)
@@ -1610,8 +1611,26 @@ export async function applyChangeset(
         continue
       }
 
-      await client.mutate(mutations)
+      const results = await client.mutate(mutations)
       succeeded.push(change)
+
+      // If this update produced a remove+create (e.g., RSA ad content change),
+      // the new resource has a new platformId. Update the cache so the next
+      // plan run doesn't see a phantom create from a stale cache entry.
+      const hasCreate = mutations.some(m => m.op === 'create')
+      if (hasCreate) {
+        const newPlatformId = extractPlatformId(results, change.resource.kind)
+        if (newPlatformId) {
+          resourceMap.set(change.resource.path, newPlatformId)
+          cache.setResource({
+            project,
+            path: change.resource.path,
+            platformId: newPlatformId,
+            kind: change.resource.kind,
+            managedBy: 'code',
+          })
+        }
+      }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       failed.push({ change, error })
@@ -1661,6 +1680,8 @@ function extractPlatformId(results: MutateResult[], kind: ResourceKind): string 
       return rn.split('/adGroupCriteria/')[1] ?? null
     }
     if (kind === 'ad' && rn.includes('/adGroupAds/')) {
+      // Google's resource name format is adGroupAds/{adGroupId}~{adId}, which
+      // conveniently matches our composite platformId format (adGroupId~adId).
       return rn.split('/adGroupAds/')[1] ?? null
     }
     if (kind === 'sharedBudget' && rn.includes('/campaignBudgets/')) {

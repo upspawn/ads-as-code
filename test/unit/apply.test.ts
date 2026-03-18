@@ -1306,6 +1306,33 @@ describe('ad update — mutable fields', () => {
     expect(mutations.find(m => m.op === 'remove')).toBeDefined()
     expect(mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')).toBeDefined()
   })
+
+  test('content change on ad without composite platformId throws', () => {
+    // Pre-composite cache entries have bare adId (no ~). The apply layer
+    // cannot determine the ad group, so it should throw — not silently skip.
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
+      finalUrl: 'https://renamed.to',
+    }, '789') // bare adId, no adGroupId~
+    expect(() => changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'headlines', from: ['Old'], to: ['New'] }],
+    }, '123', new Map())).toThrow('missing adGroupId')
+  })
+
+  test('status-only change on ad without composite platformId still works', () => {
+    // Status changes use UPDATE (not remove+create), so they don't need adGroupId
+    const resource = makeResource('ad', 'test/grp/rsa:abc', {
+      headlines: ['H1'], descriptions: ['D1'],
+      finalUrl: 'https://renamed.to', status: 'paused',
+    }, '789')
+    const mutations = changeToMutations({
+      op: 'update', resource,
+      changes: [{ field: 'status', from: 'enabled', to: 'paused' }],
+    }, '123', new Map())
+    expect(mutations).toHaveLength(1)
+    expect(mutations[0]!.op).toBe('update')
+  })
 })
 
 describe('device bid adjustments', () => {
