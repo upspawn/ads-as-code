@@ -4,6 +4,7 @@ import type { Cache } from '../core/cache.ts'
 import { slugify } from '../core/flatten.ts'
 import { GEO_TARGETS_REVERSE, LANGUAGE_CRITERIA_REVERSE } from './constants.ts'
 import { fetchDemographicTargeting, fetchAudienceTargeting } from './fetch-targeting.ts'
+import { fetchSharedBudgets } from './fetch-shared.ts'
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -1532,14 +1533,15 @@ export async function fetchAllState(
     }
   }
 
-  // Step 4: Extensions + negative keywords + targeting + devices + demographics + audiences — can run in parallel
-  const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap] = await Promise.all([
+  // Step 4: Extensions + negative keywords + targeting + devices + demographics + audiences + shared budgets — can run in parallel
+  const [extensions, negatives, targetingMap, deviceMap, demographicMap, audienceMap, sharedBudgets] = await Promise.all([
     fetchExtensions(client, campaignIds),
     fetchNegativeKeywords(client, campaignIds),
     fetchCampaignTargeting(client, campaignIds),
     fetchDeviceBidModifiers(client, campaignIds),
     fetchDemographicTargeting(client, campaignIds),
     fetchAudienceTargeting(client, campaignIds),
+    fetchSharedBudgets(client),
   ])
 
   // Merge targeting data into campaign resources (order matters: base → devices → demographics)
@@ -1550,7 +1552,7 @@ export async function fetchAllState(
   // Merge audience targeting into ad group resources
   const adGroupsWithAudiences = mergeAudiencesIntoAdGroups(adGroups, audienceMap)
 
-  return [...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...demandGenAds, ...extensions, ...negatives]
+  return [...sharedBudgets, ...campaignsWithDemographics, ...adGroupsWithAudiences, ...assetGroupResources, ...keywords, ...ads, ...displayAds, ...demandGenAds, ...extensions, ...negatives]
 }
 
 export async function fetchKnownState(

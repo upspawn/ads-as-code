@@ -360,7 +360,9 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
         const resolved = resolvedCampaignsByProvider.get(providerName) ?? campaigns.map(c => c.campaign)
         const providerDesired = provider.flatten(resolved)
         const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
+        const providerPaths = new Set(providerDesired.map(r => r.path))
         const belongsToProvider = (change: Change): boolean => {
+          if (providerPaths.has(change.resource.path)) return true
           const slug = campaignFromPath(change.resource.path)
           return providerSlugs.has(slug)
         }
@@ -459,7 +461,16 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     const providerDesired = provider.flatten(resolved)
     const providerSlugs = new Set(providerDesired.filter(r => r.kind === 'campaign').map(r => r.path))
 
+    // Shared resources (budgets, negative lists, conversion actions) have paths
+    // like "budget:...", "shared:...", "conversion:..." — they're global, not
+    // scoped under a campaign slug. Include them for this provider if the
+    // provider produced them in its desired state.
+    const providerPaths = new Set(providerDesired.map(r => r.path))
+
     const belongsToProvider = (change: Change): boolean => {
+      // Direct path match covers shared resources (budget:xxx, shared:xxx, conversion:xxx)
+      if (providerPaths.has(change.resource.path)) return true
+      // Campaign-scoped resources: check if their campaign slug is in this provider
       const slug = campaignFromPath(change.resource.path)
       return providerSlugs.has(slug)
     }
