@@ -475,6 +475,147 @@ export default defineConfig({
 
 ---
 
+## Performance
+
+Types and functions for performance monitoring. Import from `@upspawn/ads` or `src/performance/types.ts`.
+
+### `PerformanceTargets`
+
+Declared on campaigns to set performance expectations. All fields are optional.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `targetCPA` | `number` | Maximum acceptable cost per acquisition |
+| `minROAS` | `number` | Minimum return on ad spend (e.g., 2.0 = 200%) |
+| `minCTR` | `number` | Minimum click-through rate (e.g., 0.02 = 2%) |
+| `maxCPC` | `number` | Maximum cost per click |
+| `maxBudget` | `Budget` | Upper bound for budget scaling recommendations |
+| `minConversions` | `number` | Minimum expected conversions for the period |
+| `minImpressionShare` | `number` | Minimum impression share (e.g., 0.5 = 50%) |
+| `strategy` | `string` | Natural language strategy for AI evaluation |
+
+```ts
+const targets: PerformanceTargets = {
+  targetCPA: 15,
+  minROAS: 2.0,
+  maxBudget: daily(eur(50)),
+  strategy: `Scale aggressively while CPA stays under target.`
+}
+```
+
+### `PerformanceMetrics`
+
+Computed metrics for a resource over a period. Raw counters plus derived rates.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `impressions` | `number` | Total impressions |
+| `clicks` | `number` | Total clicks |
+| `cost` | `number` | Total spend (currency units, not micros) |
+| `conversions` | `number` | Total conversions |
+| `conversionValue` | `number` | Total conversion value |
+| `ctr` | `number \| null` | Click-through rate (null if 0 impressions) |
+| `cpc` | `number \| null` | Cost per click (null if 0 clicks) |
+| `cpa` | `number \| null` | Cost per acquisition (null if 0 conversions) |
+| `roas` | `number \| null` | Return on ad spend (null if 0 cost) |
+| `cpm` | `number \| null` | Cost per thousand impressions (null if 0 impressions) |
+| `impressionShare` | `number` | Google only — search impression share |
+| `qualityScore` | `number` | Google only — keyword quality score (1-10) |
+| `frequency` | `number` | Meta only — average times ad shown per user |
+| `reach` | `number` | Meta only — unique users reached |
+
+### `PerformanceData`
+
+Per-resource performance snapshot with breakdowns and violations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `resource` | `string` | Slugified resource path (e.g., `search-pdf-renaming/pdf-renamer-en`) |
+| `provider` | `'google' \| 'meta'` | Source provider |
+| `kind` | `ResourceKind` | Resource type (`campaign`, `adGroup`, `adSet`, `keyword`, `ad`) |
+| `period` | `{ start: Date; end: Date }` | Date range for the data |
+| `metrics` | `PerformanceMetrics` | Aggregated metrics for the period |
+| `targets` | `PerformanceTargets` | Resolved targets (after inheritance) |
+| `violations` | `PerformanceViolation[]` | Target violations detected |
+| `breakdowns.byDay` | `{ date, metrics }[]` | Daily breakdown |
+| `breakdowns.byDevice` | `Record<'mobile'\|'desktop'\|'tablet', metrics>` | Google: device breakdown |
+| `breakdowns.bySearchTerm` | `{ term, metrics }[]` | Google: search term breakdown |
+| `breakdowns.byAge` | `Record<string, metrics>` | Meta: age breakdown |
+| `breakdowns.byGender` | `Record<string, metrics>` | Meta: gender breakdown |
+| `breakdowns.byPlacement` | `Record<string, metrics>` | Meta: placement breakdown |
+
+### `PerformanceReport`
+
+Top-level output from `ads performance --json`. Aggregates all data, signals, and recommendations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `generatedAt` | `Date` | Timestamp of report generation |
+| `period` | `{ start: Date; end: Date }` | Query date range |
+| `data` | `PerformanceData[]` | Per-resource performance snapshots |
+| `signals` | `PerformanceSignal[]` | Detected anomalies and patterns |
+| `recommendations` | `PerformanceRecommendation[]` | Actionable suggestions |
+| `summary.totalSpend` | `number` | Total spend across campaigns |
+| `summary.totalConversions` | `number` | Total conversions across campaigns |
+| `summary.totalConversionValue` | `number` | Total conversion value |
+| `summary.overallCPA` | `number \| null` | Overall cost per acquisition |
+| `summary.overallROAS` | `number \| null` | Overall return on ad spend |
+| `summary.violationCount` | `number` | Total violation count |
+| `summary.signalCount` | `{ info, warning, critical }` | Signal counts by severity |
+
+### `computeMetrics(raw: RawMetrics): PerformanceMetrics`
+
+Derive rate metrics (CTR, CPC, CPA, ROAS, CPM) from raw counters. Returns `null` for any metric that would divide by zero.
+
+```ts
+import { computeMetrics } from '@upspawn/ads'
+
+const metrics = computeMetrics({
+  impressions: 1200,
+  clicks: 85,
+  cost: 87.5,
+  conversions: 7,
+  conversionValue: 183.75,
+})
+// { impressions: 1200, clicks: 85, cost: 87.5, conversions: 7,
+//   conversionValue: 183.75, ctr: 0.0708, cpc: 1.03, cpa: 12.5,
+//   roas: 2.1, cpm: 72.92 }
+```
+
+### Signal Types
+
+Signals are anomalies and patterns detected from raw data, independent of declared targets.
+
+| Signal | Severity | Description |
+|--------|----------|-------------|
+| `budget-constrained` | warning | CPA well below target but impression share is low — budget limits growth |
+| `zero-conversions` | warning | Resource spent >$10 with 0 conversions |
+| `creative-fatigue` | warning | Ad CTR declining >20% between period halves |
+| `spend-concentration` | warning | Child resource consuming >60% of parent campaign spend |
+| `declining-trend` | warning | CTR declining >20% between period halves |
+| `improving-trend` | info | CTR improving >20% between period halves |
+| `learning-phase` | info | Meta ad set with <50 conversions (still optimizing) |
+| `high-frequency` | warning | Meta ad frequency >4 — audience may be fatigued |
+| `low-quality-score` | warning | Google keyword quality score <= 3/10 |
+| `search-term-opportunity` | info | Search term converting with 5+ clicks — consider adding as keyword |
+
+### Recommendation Types
+
+Recommendations are actionable suggestions with a confidence level and source (`computed` or `ai`).
+
+| Type | Description |
+|------|-------------|
+| `scale-budget` | Increase budget — CPA has headroom vs target |
+| `reduce-budget` | Decrease budget — CPA exceeding target |
+| `pause-resource` | Pause keyword/ad — spending with 0 conversions |
+| `resume-resource` | Resume paused resource — conditions improved |
+| `adjust-bid` | Change bid strategy or amount |
+| `shift-budget` | Move budget from one resource to another |
+| `add-negative` | Add negative keyword — search term wasting spend |
+| `refresh-creative` | Update ad creative — fatigue detected |
+
+---
+
 ## Types
 
 ### Core Types

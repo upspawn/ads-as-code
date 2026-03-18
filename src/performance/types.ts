@@ -69,11 +69,27 @@ export function computeMetrics(raw: RawMetrics): PerformanceMetrics {
 }
 
 // ---------------------------------------------------------------------------
+// Period — date range for performance queries
+// ---------------------------------------------------------------------------
+
+export type PerformancePeriod = { readonly start: Date; readonly end: Date }
+
+// ---------------------------------------------------------------------------
+// Severity thresholds — fractional deviation from target
+// ---------------------------------------------------------------------------
+
+export type SeverityThresholds = { readonly warning: number; readonly critical: number }
+
+export const DEFAULT_THRESHOLDS: SeverityThresholds = { warning: 0.20, critical: 0.50 }
+
+// ---------------------------------------------------------------------------
 // Violations — when actuals breach targets
 // ---------------------------------------------------------------------------
 
+export type ViolationMetric = 'cpa' | 'roas' | 'ctr' | 'cpc' | 'spend' | 'conversions' | 'impressionShare'
+
 export type PerformanceViolation = {
-  readonly metric: 'cpa' | 'roas' | 'ctr' | 'cpc' | 'spend' | 'conversions' | 'impressionShare'
+  readonly metric: ViolationMetric
   readonly actual: number
   readonly target: number
   readonly deviation: number
@@ -194,4 +210,15 @@ export type PerformanceReport = {
     readonly violationCount: number
     readonly signalCount: { readonly info: number; readonly warning: number; readonly critical: number }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Analysis result — output of the analyze() pipeline
+// ---------------------------------------------------------------------------
+
+export type AnalysisResult = {
+  readonly data: PerformanceData[]
+  readonly violations: PerformanceViolation[]
+  readonly signals: PerformanceSignal[]
+  readonly recommendations: PerformanceRecommendation[]
 }

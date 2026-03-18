@@ -17,6 +17,7 @@ Manage Google Ads and Meta (Facebook/Instagram) campaigns as version-controlled 
 - **Campaign import** -- `ads import` pulls your existing campaigns and generates idiomatic TypeScript files
 - **SQLite cache + history** -- local cache maps code paths to platform IDs, stores snapshots for rollback
 - **Multi-provider** -- Google Ads (Search, Display, Performance Max, Shopping, Demand Gen, Smart, App) and Meta/Facebook (traffic, conversions, leads, and more)
+- **Performance monitoring** -- declare CPA/ROAS targets alongside campaigns, detect violations and anomalies, get AI-powered strategy recommendations
 
 ## Quick Start
 
@@ -267,6 +268,38 @@ export default google.search('My Campaign', { /* ... */ })
   .callouts('No Credit Card', 'GDPR Ready', 'Made in Germany')
 ```
 
+### Performance monitoring
+
+Declare performance targets alongside your campaigns. The SDK tracks actuals against targets, detects anomalies, and generates recommendations.
+
+```typescript
+import { google, daily, eur } from '@upspawn/ads'
+
+export default google.search('Brand — US', {
+  budget: daily(eur(3)),
+  bidding: 'maximize-conversions',
+  performance: {
+    targetCPA: 15,
+    maxBudget: daily(eur(50)),
+    strategy: `Scale aggressively while CPA stays under target.
+      Pause any keyword spending over €50 with zero conversions.`
+  },
+})
+```
+
+```bash
+# See how your campaigns are performing
+ads performance --json
+
+# Filter by campaign or provider
+ads performance --campaign brand-us --period 30d
+
+# Skip AI strategy evaluation
+ads performance --no-ai
+```
+
+Works for both Google and Meta campaigns. The analysis engine detects 10 signal types (zero conversions, declining CTR trends, creative fatigue, budget constraints, low quality scores, high frequency, spend concentration, learning phase, search term opportunities, improving trends), computes target violations with configurable severity thresholds, and generates actionable recommendations. With `--json`, the output is structured for consumption by AI agents or dashboards.
+
 ### Helper reference
 
 | Helper | Purpose | Example |
@@ -308,6 +341,7 @@ export default google.search('My Campaign', { /* ... */ })
 | `ads audiences` | List Meta custom audiences | |
 | `ads history` | Show operation history | `--diff N`, `--rollback N` |
 | `ads doctor` | Run diagnostic checks on project setup | |
+| `ads performance` | Performance monitoring and analysis | `--period`, `--campaign`, `--no-ai`, `--json` |
 | `ads cache` | Manage the local cache | `clear`, `stats` |
 
 Global flags: `--json` (JSON output), `--provider <google|meta>` (filter provider), `--help`
@@ -478,7 +512,8 @@ PRs welcome. The codebase is structured as:
 - `src/meta/` -- Meta Graph API client, fetch, apply, upload, codegen
 - `src/helpers/` -- keyword, budget, targeting, ad, extension, URL, meta-creative helpers
 - `src/ai/` -- AI-powered ad copy generation markers and prompts
-- `cli/` -- CLI commands (init, auth, import, plan, apply, pull, status, search, audiences, history, doctor, cache)
+- `src/performance/` -- Performance analysis engine (types, fetch orchestrator, analysis, target resolution, AI evaluation)
+- `cli/` -- CLI commands (init, auth, import, plan, apply, pull, status, performance, search, audiences, history, doctor, cache)
 - `test/unit/` -- unit tests for all modules
 - `example/` -- example project with real campaign files
 
