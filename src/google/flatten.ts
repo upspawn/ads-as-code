@@ -1,6 +1,8 @@
 import type { Resource, ResourceKind } from '../core/types.ts'
 import type { GoogleSearchCampaign, GoogleDisplayCampaign, GooglePMaxCampaign, GoogleShoppingCampaign, GoogleDemandGenCampaign, GoogleSmartCampaign, GoogleAppCampaign, GoogleVideoCampaign, GoogleCampaign } from './types.ts'
+import type { SharedBudgetConfig, SharedNegativeList, ConversionActionConfig } from './shared-types.ts'
 import { slugify } from '../core/flatten.ts'
+import { flattenSharedBudget, flattenSharedNegativeList, flattenConversionAction } from './flatten-shared.ts'
 
 // ─── Stable RSA Hash ──────────────────────────────────────
 
@@ -489,6 +491,13 @@ export function flattenAll(campaigns: GoogleCampaign[]): Resource[] {
     if (c.kind === 'smart') return flattenSmart(c)
     if (c.kind === 'app') return flattenApp(c)
     if (c.kind === 'video') return flattenVideo(c)
+    // Shared resources (budgets, negative lists, conversion actions) are discovered
+    // alongside campaigns because they export objects with provider+kind fields.
+    // Delegate to their dedicated flatten functions instead of falling through
+    // to the search campaign flattener (which would crash on missing `groups`).
+    if (c.kind === 'shared-budget') return flattenSharedBudget(c as unknown as SharedBudgetConfig)
+    if (c.kind === 'shared-negative-list') return flattenSharedNegativeList(c as unknown as SharedNegativeList)
+    if (c.kind === 'conversion-action') return flattenConversionAction(c as unknown as ConversionActionConfig)
     return flatten(c)
   })
 }

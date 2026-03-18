@@ -916,6 +916,69 @@ describe('fetchCampaigns — missing bidding strategies', () => {
   })
 })
 
+// ─── Regression: BIDDING_STRATEGY_MAP enum values ──────────
+//
+// The gRPC enum for BiddingStrategyType must map to the correct strategy.
+// This was broken once (e.g., enum 9 was mapped to TARGET_CPA instead of TARGET_SPEND).
+// These tests pin the critical enum→strategy mapping to prevent regression.
+
+describe('BIDDING_STRATEGY_MAP — regression test', () => {
+  // Helper: create a minimal campaign row with a specific bidding_strategy_type enum value
+  function biddingRow(enumValue: number, extra?: Record<string, unknown>): GoogleAdsRow {
+    return {
+      campaign: {
+        id: 99000 + enumValue,
+        name: `Bidding Test ${enumValue}`,
+        status: 2,
+        bidding_strategy_type: enumValue,
+        ...extra,
+      },
+      campaign_budget: {
+        resource_name: `customers/7300967494/campaignBudgets/bid-${enumValue}`,
+        amount_micros: 1000000,
+      },
+    }
+  }
+
+  async function biddingType(enumValue: number, extra?: Record<string, unknown>): Promise<string> {
+    const client = createMockClient({ campaigns: [biddingRow(enumValue, extra)] })
+    const resources = await fetchCampaigns(client, { includePaused: true })
+    return (resources[0]!.properties.bidding as { type: string }).type
+  }
+
+  test('enum 3 = MANUAL_CPC → manual-cpc', async () => {
+    expect(await biddingType(3)).toBe('manual-cpc')
+  })
+
+  test('enum 4 = MANUAL_CPM → manual-cpm', async () => {
+    expect(await biddingType(4)).toBe('manual-cpm')
+  })
+
+  test('enum 6 = TARGET_CPA → target-cpa', async () => {
+    expect(await biddingType(6, { target_cpa: { target_cpa_micros: 5000000 } })).toBe('target-cpa')
+  })
+
+  test('enum 9 = TARGET_SPEND → maximize-clicks', async () => {
+    expect(await biddingType(9)).toBe('maximize-clicks')
+  })
+
+  test('enum 10 = MAXIMIZE_CONVERSIONS → maximize-conversions', async () => {
+    expect(await biddingType(10)).toBe('maximize-conversions')
+  })
+
+  test('enum 11 = MAXIMIZE_CONVERSION_VALUE → maximize-conversion-value', async () => {
+    expect(await biddingType(11)).toBe('maximize-conversion-value')
+  })
+
+  test('enum 8 = TARGET_ROAS → target-roas', async () => {
+    expect(await biddingType(8, { target_roas: { target_roas: 2.5 } })).toBe('target-roas')
+  })
+
+  test('enum 14 = TARGET_CPM → target-cpm', async () => {
+    expect(await biddingType(14)).toBe('target-cpm')
+  })
+})
+
 // ─── Device Bid Adjustments ────────────────────────────────
 
 describe('fetchDeviceBidModifiers', () => {
