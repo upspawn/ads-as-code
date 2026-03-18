@@ -153,74 +153,171 @@ function targetCheck(actual: number | null, target: number | undefined, lower: b
   return ok ? ' \u2713' : ' \u2717'
 }
 
+/** Extract a short display name from a resource path (last meaningful segment). */
+function shortName(path: string): string {
+  const parts = path.split('/')
+  const last = parts[parts.length - 1] ?? path
+  // For keywords: kw:text:MATCH → text [MATCH]
+  if (last.startsWith('kw:')) {
+    const [, text, match] = last.split(':')
+    return `${text} [${match}]`
+  }
+  return last
+}
+
+/** Format a campaign metrics table row. */
+function campaignRow(name: string, spend: number, conv: number, cpa: number | null, ctr: number | null): string {
+  const nameCol = name.length > 32 ? name.slice(0, 29) + '...' : name.padEnd(32)
+  const spendCol = `$${spend.toFixed(2)}`.padStart(10)
+  const convCol = String(conv).padStart(6)
+  const cpaCol = (cpa !== null ? `$${cpa.toFixed(2)}` : '\u2014').padStart(8)
+  const ctrCol = (ctr !== null ? `${(ctr * 100).toFixed(1)}%` : '\u2014').padStart(7)
+  return ` ${nameCol} ${spendCol} ${convCol} ${cpaCol} ${ctrCol}`
+}
+
+/** Group signals by type for grouped display. */
+function groupSignals(signals: PerformanceSignal[]): Map<string, PerformanceSignal[]> {
+  const groups = new Map<string, PerformanceSignal[]>()
+  for (const s of signals) {
+    const group = groups.get(s.type) ?? []
+    group.push(s)
+    groups.set(s.type, group)
+  }
+  return groups
+}
+
+const SIGNAL_LABELS: Record<string, { icon: string; label: string; severity: number }> = {
+  'zero-conversions':       { icon: '\u2717', label: 'Zero Conversions',    severity: 0 },
+  'creative-fatigue':       { icon: '\u26a0', label: 'Creative Fatigue',    severity: 1 },
+  'declining-trend':        { icon: '\u26a0', label: 'CTR Declining',       severity: 2 },
+  'low-quality-score':      { icon: '\u26a0', label: 'Low Quality Score',   severity: 3 },
+  'budget-constrained':     { icon: '\u26a0', label: 'Budget Constrained',  severity: 4 },
+  'high-frequency':         { icon: '\u26a0', label: 'High Frequency',      severity: 5 },
+  'spend-concentration':    { icon: '\u2139', label: 'Spend Concentration', severity: 6 },
+  'search-term-opportunity':{ icon: '\u2139', label: 'Search Term Opportunity', severity: 7 },
+  'learning-phase':         { icon: '\u2139', label: 'Learning Phase',      severity: 8 },
+  'improving-trend':        { icon: '\u2139', label: 'CTR Improving',       severity: 9 },
+}
+
+function formatSignalDetail(s: PerformanceSignal): string {
+  const name = shortName(s.resource).padEnd(32)
+  const ev = s.evidence as Record<string, unknown>
+
+  switch (s.type) {
+    case 'zero-conversions':
+      return `   ${name} $${Number(ev.cost ?? 0).toFixed(2)} spent, 0 conv`
+    case 'declining-trend':
+    case 'creative-fatigue': {
+      const first = Number(ev.firstHalfCtr ?? 0) * 100
+      const second = Number(ev.secondHalfCtr ?? 0) * 100
+      const pct = first > 0 ? Math.round(((second - first) / first) * 100) : 0
+      const suffix = s.type === 'creative-fatigue' ? ' \u2014 creative fatigue' : ''
+      return `   ${name} ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}% (${pct}%)${suffix}`
+    }
+    case 'low-quality-score':
+      return `   ${name} ${ev.qualityScore}/10`
+    case 'spend-concentration': {
+      const childCost = Number(ev.childCost ?? ev.cost ?? 0)
+      const campaignCost = Number(ev.campaignCost ?? ev.parentCost ?? 1)
+      const share = campaignCost > 0 ? (childCost / campaignCost) * 100 : 0
+      const parent = String(ev.childResource ? s.resource : s.resource.split('/')[0] ?? '')
+      return `   ${name} ${share.toFixed(0)}% of ${parent} ($${childCost.toFixed(2)})`
+    }
+    case 'high-frequency':
+      return `   ${name} ${Number(ev.frequency ?? 0).toFixed(1)}x frequency`
+    case 'budget-constrained':
+      return `   ${name} CPA $${Number(ev.cpa ?? 0).toFixed(2)} vs target $${Number(ev.targetCPA ?? 0).toFixed(2)}`
+    case 'search-term-opportunity': {
+      const term = String(ev.term ?? name)
+      const termDisplay = term.length > 32 ? term.slice(0, 29) + '...' : term.padEnd(32)
+      return `   ${termDisplay} ${ev.conversions} conv, ${ev.clicks} clicks`
+    }
+    case 'learning-phase':
+      return `   ${name} ${ev.conversions} conversions (need 50+)`
+    case 'improving-trend': {
+      const first = Number(ev.firstHalfCtr ?? 0) * 100
+      const second = Number(ev.secondHalfCtr ?? 0) * 100
+      return `   ${name} ${first.toFixed(1)}% \u2192 ${second.toFixed(1)}%`
+    }
+    default:
+      return `   ${name} ${s.message}`
+  }
+}
+
 export function formatReport(report: PerformanceReport, periodLabel: string): string {
   const lines: string[] = []
+  const bar = '\u2500'.repeat(65)
 
-  lines.push(`Performance Report \u2014 last ${periodLabel}`)
-  lines.push('\u2550'.repeat(50))
-  lines.push('')
+  lines.push(`Performance \u2014 last ${periodLabel}`)
+  lines.push('\u2550'.repeat(65))
 
-  // Campaign-level data
+  // ── Campaign tables grouped by provider ──────────────────────────
   const campaigns = report.data.filter(d => d.kind === 'campaign')
-
-  for (const d of campaigns) {
-    const budget = d.targets?.maxBudget
-    const budgetStr = budget ? `  budget: ${sym(budget.currency)}${budget.amount}/day` : ''
-
-    lines.push(`${d.resource} (${d.provider})${budgetStr}`)
-
-    // CPA line
-    const cpaTarget = d.targets?.targetCPA
-    const cpaStr = d.metrics.cpa !== null ? fmtMoney(d.metrics.cpa) : 'n/a'
-    const cpaTargetStr = cpaTarget !== undefined ? `  target: ${fmtMoney(cpaTarget)}` : ''
-    const cpaCheck = targetCheck(d.metrics.cpa, cpaTarget, false)
-    const spendStr = `spend: ${fmtMoney(d.metrics.cost)}`
-    lines.push(`  CPA  ${cpaStr}${cpaTargetStr}${cpaCheck}            ${spendStr}`)
-
-    // ROAS line
-    const roasTarget = d.targets?.minROAS
-    const roasStr = fmtRatio(d.metrics.roas)
-    const roasTargetStr = roasTarget !== undefined ? `  target: ${fmtRatio(roasTarget)}` : ''
-    const roasCheck = targetCheck(d.metrics.roas, roasTarget, true)
-    const convStr = `conversions: ${d.metrics.conversions}`
-    lines.push(`  ROAS ${roasStr}${roasTargetStr}${roasCheck}             ${convStr}`)
-
-    lines.push('')
+  const byProvider = new Map<string, typeof campaigns>()
+  for (const c of campaigns) {
+    const group = byProvider.get(c.provider) ?? []
+    group.push(c)
+    byProvider.set(c.provider, group)
   }
 
-  // Signals
-  const warningAndCritical = report.signals.filter(s => s.severity !== 'info')
-  if (warningAndCritical.length > 0) {
-    lines.push('Signals')
-    for (const s of warningAndCritical) {
-      const icon = s.severity === 'critical' ? '\u2717' : '\u26a0'
-      lines.push(`  ${icon} ${s.resource} \u2014 ${s.message}`)
+  for (const [provider, providerCampaigns] of byProvider) {
+    const label = provider === 'google' ? 'Google Ads' : provider === 'meta' ? 'Meta Ads' : provider
+    lines.push('')
+    lines.push(` ${label}`)
+    lines.push(` ${bar}`)
+    lines.push(` ${'Campaign'.padEnd(32)} ${'Spend'.padStart(10)} ${'Conv'.padStart(6)} ${'CPA'.padStart(8)} ${'CTR'.padStart(7)}`)
+
+    // Sort by spend descending
+    const sorted = [...providerCampaigns].sort((a, b) => b.metrics.cost - a.metrics.cost)
+    for (const c of sorted) {
+      lines.push(campaignRow(c.resource, c.metrics.cost, c.metrics.conversions, c.metrics.cpa, c.metrics.ctr))
     }
-    lines.push('')
   }
 
-  // Recommendations
+  // ── Signals grouped by type ──────────────────────────────────────
+  if (report.signals.length > 0) {
+    lines.push('')
+    lines.push(` Signals (${report.signals.length})`)
+    lines.push(` ${bar}`)
+
+    const grouped = groupSignals(report.signals)
+    // Sort groups by severity (critical first)
+    const sortedTypes = [...grouped.entries()].sort((a, b) => {
+      const sa = SIGNAL_LABELS[a[0]]?.severity ?? 99
+      const sb = SIGNAL_LABELS[b[0]]?.severity ?? 99
+      return sa - sb
+    })
+
+    for (const [type, signals] of sortedTypes) {
+      const meta = SIGNAL_LABELS[type] ?? { icon: '\u26a0', label: type, severity: 99 }
+      lines.push(` ${meta.icon} ${meta.label}`)
+      for (const s of signals) {
+        lines.push(formatSignalDetail(s))
+      }
+      lines.push('')
+    }
+  }
+
+  // ── Recommendations ──────────────────────────────────────────────
   if (report.recommendations.length > 0) {
-    lines.push('Recommendations')
+    lines.push(` Recommendations`)
+    lines.push(` ${bar}`)
     for (const r of report.recommendations) {
-      const source = r.source === 'ai' ? '[ai]' : '[computed]'
-      lines.push(`  \u25b2 ${r.resource}: ${r.type} (${r.reason})  ${source}`)
+      const name = shortName(r.resource)
+      const source = r.source === 'ai' ? ' [ai]' : ''
+      lines.push(` \u2717 ${r.type}: ${name} \u2014 ${r.reason}${source}`)
     }
     lines.push('')
   }
 
-  // Summary
+  // ── Summary ──────────────────────────────────────────────────────
   const s = report.summary
+  lines.push(` ${bar}`)
   lines.push(
-    `Summary: ${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''} \u00b7 ` +
-    `${fmtMoney(s.totalSpend)} spend \u00b7 ${s.totalConversions} conversions \u00b7 ` +
-    `CPA ${s.overallCPA !== null ? fmtMoney(s.overallCPA) : 'n/a'} \u00b7 ` +
-    `ROAS ${fmtRatio(s.overallROAS)}`,
-  )
-  lines.push(
-    `         ${s.violationCount} violation${s.violationCount !== 1 ? 's' : ''} \u00b7 ` +
-    `${report.signals.length} signal${report.signals.length !== 1 ? 's' : ''} \u00b7 ` +
-    `${report.recommendations.length} recommendation${report.recommendations.length !== 1 ? 's' : ''}`,
+    ` ${campaigns.length} campaigns \u00b7 $${s.totalSpend.toFixed(2)} \u00b7 ` +
+    `${s.totalConversions} conv \u00b7 ` +
+    `CPA ${s.overallCPA !== null ? `$${s.overallCPA.toFixed(2)}` : '\u2014'} \u00b7 ` +
+    `ROAS ${s.overallROAS !== null ? `${s.overallROAS.toFixed(2)}x` : '\u2014'}`,
   )
 
   return lines.join('\n')
