@@ -24,40 +24,44 @@ This is differentiated from platform-native optimization (Google Smart Bidding, 
 
 ### Performance targets on builders
 
-`.performance()` is an optional method on campaign and ad-group/ad-set builders, following the same pattern as `.budget()` or `.targeting()`:
+`performance` is an optional field on campaign input configs and ad-group/ad-set configs. This matches how `budget`, `bidding`, and `targeting` already work — they go in the config object, not as chained methods.
 
 ```typescript
-// Google
-google.search("Brand — US")
-  .budget(daily(eur(3)))
-  .bidding("maximize-conversions")
-  .performance({
-    targetCPA: eur(15),
+// Google — performance in campaign input config and ad group input
+google.search("Brand — US", {
+  budget: daily(eur(3)),
+  bidding: "maximize-conversions",
+  performance: {
+    targetCPA: 15,
     maxBudget: daily(eur(50)),
     strategy: `Launch phase campaign. First 2 weeks prioritize reach
       and impression share over CPA efficiency. After learning phase,
       pivot to strict CPA optimization. Pause any keyword that spends
       over €50 with zero conversions.`
+  },
+})
+  .group("Exact Match", {
+    performance: { targetCPA: 10 },  // tighter target for this group
   })
-  .group("Exact Match")
-    .performance({ targetCPA: eur(10) })  // tighter target for this group
     .keywords(exact("my brand"), exact("competitor name"))
     .rsa(headlines(...), descriptions(...))
 
-// Meta
-meta.conversions("Retargeting — Lookalikes")
-  .budget(daily(eur(200)))
-  .performance({
-    targetCPA: eur(30),
+// Meta — performance in campaign config and ad set config
+meta.conversions("Retargeting — Lookalikes", {
+  budget: daily(eur(200)),
+  performance: {
+    targetCPA: 30,
     minROAS: 2.5,
     maxBudget: daily(eur(500)),
     strategy: `Scale aggressively while ROAS holds above 2x.
       This audience has historically strong LTV — accept higher
       upfront CPA if conversion volume is growing.`
+  },
+})
+  .adSet("Lookalike 1%", {
+    performance: { targetCPA: 25 },
+    targeting: lookalike("seed-audience", 1),
   })
-  .adSet("Lookalike 1%")
-    .performance({ targetCPA: eur(25) })
-    .targeting(lookalike("seed-audience", 1))
     .ad(image("creative.jpg", { ... }))
 ```
 
@@ -67,13 +71,13 @@ All fields are optional. Targets inherit downward — campaign-level targets app
 
 ```typescript
 type PerformanceTargets = {
-  // Efficiency targets
-  targetCPA?: Budget;           // cost per acquisition ceiling
+  // Efficiency targets (plain numbers in account currency)
+  targetCPA?: number;           // cost per acquisition ceiling
   minROAS?: number;             // minimum return on ad spend
   minCTR?: number;              // minimum click-through rate (0-1)
-  maxCPC?: Budget;              // max cost per click
+  maxCPC?: number;              // max cost per click
 
-  // Budget scaling
+  // Budget scaling (Budget type — has period dimension)
   maxBudget?: Budget;           // ceiling for elastic budget scaling
 
   // Volume targets
@@ -85,16 +89,7 @@ type PerformanceTargets = {
 }
 ```
 
-### Constraint helpers
-
-For use in `strategy` evaluation and potential future structured conditions:
-
-```typescript
-import { under, over, between } from '@upspawn/ads/performance';
-
-// These are used internally by the analysis engine for target comparison
-// and could be exposed for more complex declarative constraints in the future
-```
+Note: `targetCPA` and `maxCPC` are plain numbers (in account currency), not `Budget`. A CPA target has no period dimension — it's just a monetary amount. This is consistent with how Google bidding types work (`targetCpa: number`, `targetRoas: number`). Only `maxBudget` uses the `Budget` type because it has a meaningful period (daily max vs monthly max).
 
 ### Degradation behavior
 
@@ -102,20 +97,20 @@ The DSL degrades gracefully based on what's declared:
 
 ```typescript
 // Monitoring only — no scaling authority
-.performance({ targetCPA: eur(15) })
+performance: { targetCPA: 15 }
 
 // Monitoring + scaling authority
-.performance({ targetCPA: eur(15), maxBudget: daily(eur(50)) })
+performance: { targetCPA: 15, maxBudget: daily(eur(50)) }
 
 // AI-driven — strategy text with guardrails
-.performance({
+performance: {
   maxBudget: daily(eur(200)),
   strategy: `Brand awareness campaign. Optimize for CPM and reach,
     not conversions. Target 80%+ impression share in our geo.`
-})
+}
 
 // Pure guardrail — just a spend cap, no targets
-.performance({ maxBudget: daily(eur(100)) })
+performance: { maxBudget: daily(eur(100)) }
 ```
 
 ## Data Model
@@ -133,8 +128,8 @@ type PerformanceMetrics = {
   conversionValue: number;
   ctr: number;               // computed: clicks / impressions
   cpc: number;               // computed: cost / clicks
-  cpa: number;               // computed: cost / conversions (Infinity if 0 conversions)
-  roas: number;              // computed: conversionValue / cost (0 if 0 cost)
+  cpa: number | null;         // computed: cost / conversions (null if 0 conversions)
+  roas: number | null;        // computed: conversionValue / cost (null if 0 cost)
 
   // Provider-specific (populated when available)
   impressionShare?: number;  // Google: search impression share (0-1)
@@ -159,6 +154,9 @@ type PerformanceData = {
   targets?: PerformanceTargets;         // from campaign definition (if declared)
   violations: PerformanceViolation[];   // computed: targets vs actuals
 
+  // Breakdowns are for dimensions that do NOT map to managed resources.
+  // Keyword-level and ad-level data are separate PerformanceData[] entries
+  // with their own paths — not breakdowns.
   breakdowns: {
     // Time
     byDay?: { date: string; metrics: PerformanceMetrics }[];
@@ -171,10 +169,8 @@ type PerformanceData = {
     byAge?: Record<string, PerformanceMetrics>;         // Meta
     byGender?: Record<string, PerformanceMetrics>;      // Meta
 
-    // Content
-    byKeyword?: { text: string; matchType: string; metrics: PerformanceMetrics }[];  // Google
-    bySearchTerm?: { term: string; metrics: PerformanceMetrics }[];                  // Google
-    byAd?: { path: string; metrics: PerformanceMetrics }[];
+    // Search terms (Google — not managed resources, discovered at query time)
+    bySearchTerm?: { term: string; metrics: PerformanceMetrics }[];
   };
 }
 ```
@@ -224,24 +220,49 @@ type PerformanceSignal = {
 Actionable suggestions — either computed deterministically or AI-generated:
 
 ```typescript
-type PerformanceRecommendation = {
-  type:
-    | 'scale-budget'       // increase budget (elastic scaling)
-    | 'reduce-budget'      // decrease budget (underperforming)
-    | 'pause-resource'     // pause keyword/ad/campaign
-    | 'resume-resource'    // resume paused resource
-    | 'adjust-bid'         // change bid amount
-    | 'shift-budget'       // move budget between campaigns
-    | 'add-negative'       // add negative keyword (from search terms)
-    | 'refresh-creative';  // replace fatigued ads
-
-  resource: string;
-  from?: any;              // current value
-  to?: any;                // recommended value
-  reason: string;          // LLM-readable explanation
-  confidence: 'high' | 'medium' | 'low';
-  source: 'computed' | 'ai';  // whether this came from deterministic analysis or AI
-}
+type PerformanceRecommendation =
+  | {
+      type: 'scale-budget' | 'reduce-budget';
+      resource: string;
+      from: Budget;
+      to: Budget;
+      reason: string;
+      confidence: 'high' | 'medium' | 'low';
+      source: 'computed' | 'ai';
+    }
+  | {
+      type: 'adjust-bid';
+      resource: string;
+      from: number;          // current bid in account currency
+      to: number;            // recommended bid
+      reason: string;
+      confidence: 'high' | 'medium' | 'low';
+      source: 'computed' | 'ai';
+    }
+  | {
+      type: 'pause-resource' | 'resume-resource' | 'refresh-creative';
+      resource: string;
+      reason: string;
+      confidence: 'high' | 'medium' | 'low';
+      source: 'computed' | 'ai';
+    }
+  | {
+      type: 'shift-budget';
+      resource: string;        // source campaign
+      toResource: string;      // destination campaign
+      amount: Budget;
+      reason: string;
+      confidence: 'high' | 'medium' | 'low';
+      source: 'computed' | 'ai';
+    }
+  | {
+      type: 'add-negative';
+      resource: string;        // campaign path
+      keyword: string;         // search term to negate
+      reason: string;
+      confidence: 'high' | 'medium' | 'low';
+      source: 'computed' | 'ai';
+    };
 ```
 
 ### PerformanceReport
@@ -279,7 +300,6 @@ src/
     analyze.ts        # Raw metrics → violations + signals + recommendations (pure function)
     evaluate.ts       # AI evaluation of strategy text via Vercel AI SDK
     resolve.ts        # Campaigns with targets + live metrics → PerformanceReport
-    helpers.ts        # under(), over(), between() constraint helpers
   google/
     performance.ts    # GAQL queries for metrics, breakdowns (campaigns, keywords, ads, search terms)
   meta/
@@ -342,6 +362,10 @@ Campaign code              Provider APIs              Analysis
 **Analysis is a pure function.** `analyze(data: PerformanceData[], targets: Map<string, PerformanceTargets>) → { violations, signals, recommendations }`. No side effects, no API calls. Testable with fixtures. The AI evaluation in `evaluate.ts` is the only impure part and is opt-in (only runs when `strategy` is present).
 
 **Target inheritance.** Campaign-level targets cascade to ad groups/ad sets unless overridden. Resolution order: ad group target → campaign target → no target. Same model as CSS specificity. Implemented in `resolve.ts` when building the final PerformanceReport.
+
+**Target extraction pipeline.** Performance targets flow from campaign definitions to the analysis engine via `Resource.meta`. During flatten, targets declared on campaign/ad-group configs are stored in `Resource.meta.performanceTargets`. This is consistent with existing patterns — `budgetResourceName` is already stored in `Resource.meta`. The `meta` field is documented as "SDK-internal data: never compared, never sent to API" which is exactly what performance targets are. The `resolve.ts` module reads targets from `Resource.meta` and matches them to `PerformanceData[]` by path.
+
+**Performance data caching.** Performance API queries (especially with breakdowns) are expensive and rate-limited. To avoid redundant calls when running `ads performance` followed by `ads plan` (or multiple commands in sequence), fetched performance data is cached in SQLite with a short TTL (default: 15 minutes, configurable). The cache uses the existing `bun:sqlite` infrastructure. A new `performance_cache` table stores serialized `PerformanceData[]` keyed by (project, provider, period). Within the TTL, subsequent commands reuse cached data instead of hitting the API again.
 
 ### Two-layer analysis
 
@@ -556,31 +580,31 @@ Agent: "Meta is acquiring at half the CPA with double the ROAS. Shift 20% of Goo
 
 ## Type Changes to Existing Code
 
-### Campaign builder types
+### Campaign input config types
 
-Add optional `performance()` method to existing builders:
+Add optional `performance` field to existing input config types:
 
 **`src/google/types.ts`:**
 ```typescript
-// Add to GoogleSearchCampaign builder chain
-.performance(targets: PerformanceTargets): this
+// Add to SearchCampaignInput, DisplayCampaignInput, etc.
+performance?: PerformanceTargets;
 
-// Add to GoogleAdGroupBuilder
-.performance(targets: PerformanceTargets): this
+// Add to AdGroupInput
+performance?: PerformanceTargets;
 ```
 
 **`src/meta/types.ts`:**
 ```typescript
-// Add to MetaCampaignBuilder
-.performance(targets: PerformanceTargets): this
+// Add to MetaCampaignConfig (all objective builders)
+performance?: PerformanceTargets;
 
-// Add to AdSetBuilder
-.performance(targets: PerformanceTargets): this
+// Add to AdSetConfig
+performance?: PerformanceTargets;
 ```
 
 ### Resource type
 
-Performance targets are stored on the campaign/ad-group config objects (the builder output), NOT on `Resource`. The `Resource` type is unchanged — it represents platform state. Targets are resolved by matching campaign definitions to their corresponding performance data by path.
+The `Resource` type itself is unchanged — it represents platform state. However, performance targets are stored in `Resource.meta.performanceTargets` during flatten, following the same pattern as `budgetResourceName`. This allows the performance engine to access targets without re-importing campaign files.
 
 ### AdsConfig
 
@@ -609,8 +633,7 @@ export default defineConfig({
 ### Unit tests
 
 - **analyze.ts** — pure function, test with fixture data: known metrics + known targets → expected violations, signals, recommendations
-- **resolve.ts** — target inheritance (campaign → ad group), merging computed + AI results
-- **helpers.ts** — under/over/between constraint evaluation
+- **resolve.ts** — target inheritance (campaign → ad group), target extraction from Resource.meta, merging computed + AI results
 - **google/performance.ts** — mock GAQL responses → normalized PerformanceData
 - **meta/performance.ts** — mock Graph API Insights responses → normalized PerformanceData
 - **evaluate.ts** — mock Vercel AI SDK, verify prompt compilation and Zod schema validation
