@@ -1223,7 +1223,7 @@ describe('ad update — mutable fields', () => {
     expect(adOp.updateMask).toContain('status')
   })
 
-  test('updates headlines', () => {
+  test('content change (headlines) produces remove + create', () => {
     const resource = makeResource('ad', 'test/grp/rsa:abc', {
       headlines: ['New H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
       finalUrl: 'https://renamed.to',
@@ -1232,18 +1232,15 @@ describe('ad update — mutable fields', () => {
       op: 'update', resource,
       changes: [{ field: 'headlines', from: ['Old H1', 'H2', 'H3'], to: ['New H1', 'H2', 'H3'] }],
     }, '123', new Map())
-    const adOp = mutations.find(m => m.operation === 'ad_group_ad' && m.op === 'update')!
-    expect(adOp).toBeDefined()
-    const ad = adOp.resource.ad as Record<string, unknown>
-    const rsa = ad.responsive_search_ad as Record<string, unknown>
-    expect(rsa.headlines).toBeDefined()
-    const headlines = rsa.headlines as Array<{ text: string; pinned_field: number }>
-    expect(headlines).toHaveLength(3)
-    expect(headlines[0]!.text).toBe('New H1')
-    expect(adOp.updateMask).toContain('ad.responsive_search_ad.headlines')
+    // RSA content is immutable — remove old ad + create new one
+    const removeOp = mutations.find(m => m.op === 'remove')!
+    expect(removeOp).toBeDefined()
+    expect(removeOp.operation).toBe('ad_group_ad')
+    const createOp = mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')!
+    expect(createOp).toBeDefined()
   })
 
-  test('updates descriptions', () => {
+  test('content change (descriptions) produces remove + create', () => {
     const resource = makeResource('ad', 'test/grp/rsa:abc', {
       headlines: ['H1', 'H2', 'H3'], descriptions: ['New D1', 'D2'],
       finalUrl: 'https://renamed.to',
@@ -1252,16 +1249,11 @@ describe('ad update — mutable fields', () => {
       op: 'update', resource,
       changes: [{ field: 'descriptions', from: ['Old D1', 'D2'], to: ['New D1', 'D2'] }],
     }, '123', new Map())
-    const adOp = mutations.find(m => m.operation === 'ad_group_ad' && m.op === 'update')!
-    const ad = adOp.resource.ad as Record<string, unknown>
-    const rsa = ad.responsive_search_ad as Record<string, unknown>
-    const descriptions = rsa.descriptions as Array<{ text: string; pinned_field: number }>
-    expect(descriptions).toHaveLength(2)
-    expect(descriptions[0]!.text).toBe('New D1')
-    expect(adOp.updateMask).toContain('ad.responsive_search_ad.descriptions')
+    expect(mutations.find(m => m.op === 'remove')).toBeDefined()
+    expect(mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')).toBeDefined()
   })
 
-  test('updates finalUrl', () => {
+  test('content change (finalUrl) produces remove + create', () => {
     const resource = makeResource('ad', 'test/grp/rsa:abc', {
       headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
       finalUrl: 'https://renamed.to/new',
@@ -1270,13 +1262,11 @@ describe('ad update — mutable fields', () => {
       op: 'update', resource,
       changes: [{ field: 'finalUrl', from: 'https://renamed.to/old', to: 'https://renamed.to/new' }],
     }, '123', new Map())
-    const adOp = mutations.find(m => m.operation === 'ad_group_ad' && m.op === 'update')!
-    const ad = adOp.resource.ad as Record<string, unknown>
-    expect(ad.final_urls).toEqual(['https://renamed.to/new'])
-    expect(adOp.updateMask).toContain('ad.final_urls')
+    expect(mutations.find(m => m.op === 'remove')).toBeDefined()
+    expect(mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')).toBeDefined()
   })
 
-  test('updates path1 and path2', () => {
+  test('content change (path1/path2) produces remove + create', () => {
     const resource = makeResource('ad', 'test/grp/rsa:abc', {
       headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
       finalUrl: 'https://renamed.to', path1: 'new-path', path2: 'v2',
@@ -1288,16 +1278,11 @@ describe('ad update — mutable fields', () => {
         { field: 'path2', from: 'v1', to: 'v2' },
       ],
     }, '123', new Map())
-    const adOp = mutations.find(m => m.operation === 'ad_group_ad' && m.op === 'update')!
-    const ad = adOp.resource.ad as Record<string, unknown>
-    const rsa = ad.responsive_search_ad as Record<string, unknown>
-    expect(rsa.path1).toBe('new-path')
-    expect(rsa.path2).toBe('v2')
-    expect(adOp.updateMask).toContain('ad.responsive_search_ad.path1')
-    expect(adOp.updateMask).toContain('ad.responsive_search_ad.path2')
+    expect(mutations.find(m => m.op === 'remove')).toBeDefined()
+    expect(mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')).toBeDefined()
   })
 
-  test('combined status + headlines update produces single mutation', () => {
+  test('combined status + content produces update (status) + remove + create (content)', () => {
     const resource = makeResource('ad', 'test/grp/rsa:abc', {
       headlines: ['H1', 'H2', 'H3'], descriptions: ['D1', 'D2'],
       finalUrl: 'https://renamed.to', status: 'paused',
@@ -1312,10 +1297,14 @@ describe('ad update — mutable fields', () => {
     // Should be a single mutation with both fields
     const adOps = mutations.filter(m => m.operation === 'ad_group_ad' && m.op === 'update')
     expect(adOps).toHaveLength(1)
-    expect(adOps[0]!.resource.status).toBe(3)
-    expect(adOps[0]!.resource.ad).toBeDefined()
-    expect(adOps[0]!.updateMask).toContain('status')
-    expect(adOps[0]!.updateMask).toContain('ad.responsive_search_ad.headlines')
+    // Status update
+    const statusOp = mutations.find(m => m.op === 'update')!
+    expect(statusOp).toBeDefined()
+    expect(statusOp.resource.status).toBe(3)
+    expect(statusOp.updateMask).toContain('status')
+    // Content change → remove + create
+    expect(mutations.find(m => m.op === 'remove')).toBeDefined()
+    expect(mutations.find(m => m.op === 'create' && m.operation === 'ad_group_ad')).toBeDefined()
   })
 })
 

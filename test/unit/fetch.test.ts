@@ -374,7 +374,7 @@ describe('fetchAds', () => {
 
     const first = resources[0]!
     expect(first.kind).toBe('ad')
-    expect(first.platformId).toBe('50001')
+    expect(first.platformId).toBe('111111~50001')
     expect(first.path).toMatch(/^search-pdf-renaming\/pdf-core\/rsa:/)
 
     // Headlines extracted and sorted

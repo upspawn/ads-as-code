@@ -167,7 +167,7 @@ describe('fetch: normalizeDisplayAdRow', () => {
 
     expect(resource.kind).toBe('ad')
     expect(resource.path).toMatch(/^display-remarketing\/remarketing\/rda:[0-9a-f]+$/)
-    expect(resource.platformId).toBe('9001')
+    expect(resource.platformId).toBe('200~9001')
   })
 
   test('extracts text fields correctly', () => {
