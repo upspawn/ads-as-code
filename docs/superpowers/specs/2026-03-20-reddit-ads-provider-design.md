@@ -11,7 +11,7 @@ Add a complete Reddit Ads provider to the ads-as-code SDK. Full parity with Redd
 ## Scope
 
 - 7 campaign objectives (awareness, traffic, engagement, video-views, app-installs, conversions, leads)
-- 6 ad formats (image, video, carousel, free-form, product, conversation)
+- 5 ad formats (image, video, carousel, free-form, product)
 - Full targeting (subreddits, interests, keywords, demographics, device, custom audiences, dayparting, expansion)
 - 3 bid strategies (lowestCost, costCap, manualBid)
 - 2 confirmed placements (feed, conversation) + automatic
@@ -58,6 +58,32 @@ REST/JSON API at `ads-api.reddit.com/api/v3/`. OAuth2 bearer tokens. Rate limite
 
 **Note:** Catalog Sales exists in the Reddit UI but has limited API support (beta). The `product()` ad format and `catalog-sales` objective are included as types but marked beta — they may not be fully testable until Reddit opens API access. Lead Generation is the 7th fully confirmed objective.
 
+### Optimization Goals per Objective
+
+```typescript
+type OptimizationGoalMap = {
+  'awareness':    'REACH' | 'IMPRESSIONS'
+  'traffic':      'LINK_CLICKS' | 'LANDING_PAGE_VIEWS'
+  'engagement':   'POST_ENGAGEMENT' | 'IMPRESSIONS'
+  'video-views':  'VIDEO_VIEWS' | 'THRUPLAY'
+  'app-installs': 'APP_INSTALLS' | 'APP_EVENTS'
+  'conversions':  'CONVERSIONS' | 'VALUE'
+  'leads':        'LEADS' | 'CONVERSIONS'
+}
+
+type DefaultOptimization = {
+  'awareness':    'REACH'
+  'traffic':      'LINK_CLICKS'
+  'engagement':   'POST_ENGAGEMENT'
+  'video-views':  'VIDEO_VIEWS'
+  'app-installs': 'APP_INSTALLS'
+  'conversions':  'CONVERSIONS'
+  'leads':        'LEADS'
+}
+```
+
+This powers the generic constraint: `AdGroupConfig<'traffic'>` only accepts `optimizationGoal?: 'LINK_CLICKS' | 'LANDING_PAGE_VIEWS'`. Invalid goals are compile-time errors.
+
 ### Ad Formats
 
 | Format | Builder Helper | Key Properties |
@@ -67,7 +93,8 @@ REST/JSON API at `ads-api.reddit.com/api/v3/`. OAuth2 bearer tokens. Rate limite
 | Carousel | `carousel(cards, config)` | 2-6 cards: image + headline + url, caption (50 chars each) |
 | Free-form | `freeform(config)` | rich body (40K chars), up to 20 images + 5 videos, captions |
 | Product | `product(config)` | catalog ref, headline — for catalog-linked campaigns |
-| Conversation | `conversationAd(config)` | placed between posts/comments — same creative as image/video |
+
+**Note on conversation ads:** Conversation placement is controlled via the `conversation()` placement helper on the ad group, not a separate ad format. All standard ad formats (image, video, carousel) can appear in conversation placement. There is no separate `conversationAd()` builder — removed.
 
 **Image specs:** 1080×1080 (1:1), 1080×1350 (4:5), 1920×1080 (16:9). JPG/PNG/GIF, max 3MB.
 **Video specs:** MP4/MOV, 30 FPS max, 1GB max (50-100MB recommended), 5-30s optimal.
@@ -202,11 +229,11 @@ export const summerTraffic = reddit.traffic('Summer Sale Traffic', {
 
 **Type safety:** `reddit.traffic()` returns `RedditCampaignBuilder<'traffic'>`, constraining valid optimization goals per objective at compile time. Builder is immutable — each `.adGroup()` returns a new frozen instance.
 
-**Builder signature:** `.adGroup(name, config, content)` where:
+**Builder signature:** `.adGroup(name, config, ads)` where:
 - `config: AdGroupConfig<T>` — bid, targeting, placement, schedule, optimization goal
-- `content: RedditAd[]` — array of ad creatives (image, video, carousel, etc.)
+- `ads: RedditAd[]` — bare array of ad creatives (image, video, carousel, etc.)
 
-This matches the Meta pattern where `.adSet(name, config, content)` separates targeting config from ad creative content.
+Unlike Meta's `.adSet(name, config, content)` which wraps ads in an `AdSetContent` object with shared url/cta, Reddit uses a simpler bare array. Reddit ads carry their own `clickUrl` and `cta` individually — there's no ad-set-level URL inheritance. This is a deliberate simplification since Reddit's ad model is flatter than Meta's.
 
 **Schedule type:**
 ```typescript
@@ -243,7 +270,7 @@ src/reddit/
   performance.ts     # Reddit reporting API → metrics
 
 src/helpers/
-  reddit-creative.ts   # image(), video(), carousel(), freeform(), product(), conversationAd()
+  reddit-creative.ts   # image(), video(), carousel(), freeform(), product()
   reddit-targeting.ts  # subreddits(), interests(), keywords(), geo(), age(), gender(), etc.
   reddit-bidding.ts    # lowestCost(), costCap(), manualBid()
   reddit-placement.ts  # feed(), conversation(), automatic()
@@ -375,6 +402,14 @@ T1-T4 are fully independent — they import only from T0 (types, api client, con
 7. **Rate limit handling** — Reddit's API has rate limits (headers: `X-Ratelimit-Remaining`, `X-Ratelimit-Reset`). API client should respect these and backoff automatically.
 
 8. **Media upload during apply** — images/videos are uploaded when `apply` runs, not at definition time. Asset references in campaign definitions are local file paths; they become Reddit media URLs after upload.
+
+9. **Provider field on campaign output** — `RedditCampaign<T>` must have `readonly provider: 'reddit'` as a const field. Campaign discovery uses this to route campaigns to the correct provider module. Builder sets this automatically.
+
+10. **`postImportFetch` hook** — `provider.ts` should implement the optional `postImportFetch` to call `download.ts` for creative asset download during import. Wire in T5 integration.
+
+11. **`dryRunChangeset` support** — T3's `apply.ts` should export a `dryRunChangeset` function that returns the planned API calls without executing them. This powers `apply --dry-run`. Wire in T5.
+
+12. **`RedditClient` type** — `api.ts` (T0) should export a `RedditClient` type/interface (similar to `MetaClient`) that T4's performance module can reference in `FetchPerformanceInput`.
 
 ---
 
