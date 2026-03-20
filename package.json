@@ -13,6 +13,26 @@
       "bun": "./src/ai/index.ts",
       "import": "./dist/ai/index.js",
       "types": "./dist/ai/index.d.ts"
+    },
+    "./helpers/reddit-targeting": {
+      "bun": "./src/helpers/reddit-targeting.ts",
+      "import": "./dist/helpers/reddit-targeting.js",
+      "types": "./dist/helpers/reddit-targeting.d.ts"
+    },
+    "./helpers/reddit-creative": {
+      "bun": "./src/helpers/reddit-creative.ts",
+      "import": "./dist/helpers/reddit-creative.js",
+      "types": "./dist/helpers/reddit-creative.d.ts"
+    },
+    "./helpers/reddit-bidding": {
+      "bun": "./src/helpers/reddit-bidding.ts",
+      "import": "./dist/helpers/reddit-bidding.js",
+      "types": "./dist/helpers/reddit-bidding.d.ts"
+    },
+    "./helpers/reddit-placement": {
+      "bun": "./src/helpers/reddit-placement.ts",
+      "import": "./dist/helpers/reddit-placement.js",
+      "types": "./dist/helpers/reddit-placement.d.ts"
     }
   },
   "bin": {

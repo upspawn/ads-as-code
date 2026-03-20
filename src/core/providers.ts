@@ -80,6 +80,10 @@ const PROVIDERS: Record<string, () => Promise<ProviderModule>> = {
     const mod = await import('../meta/provider.ts')
     return mod.default
   },
+  reddit: async () => {
+    const mod = await import('../reddit/provider.ts')
+    return mod.default
+  },
 }
 
 /** Cache of already-loaded provider modules to avoid re-importing. */

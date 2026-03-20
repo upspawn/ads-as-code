@@ -71,7 +71,7 @@ async function main() {
       const provider = args[1]
       if (!provider) {
         console.error('Usage: ads auth <provider> [--check]')
-        console.error('Providers: google')
+        console.error('Providers: google, reddit')
         process.exit(1)
       }
       const check = args.includes('--check')

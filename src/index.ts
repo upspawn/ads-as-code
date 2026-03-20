@@ -166,6 +166,22 @@ export type {
   AdSetContent,
 } from './meta/types.ts'
 
+export { reddit, RedditCampaignBuilder } from './reddit/index.ts'
+export type {
+  Objective as RedditObjective,
+  RedditCampaign,
+  RedditAdGroup,
+  RedditCampaignConfig,
+  AdGroupConfig as RedditAdGroupConfig,
+  RedditAd,
+  RedditBidStrategy,
+  RedditTargetingRule,
+  RedditPlacement,
+  RedditCTA,
+  RedditSchedule,
+  RedditProviderConfig,
+} from './reddit/types.ts'
+
 // === Meta Helpers ===
 
 export {

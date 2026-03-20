@@ -8,6 +8,10 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_ADS_SCOPE = 'https://www.googleapis.com/auth/adwords'
 
+const REDDIT_AUTH_URL = 'https://www.reddit.com/api/v1/authorize'
+const REDDIT_TOKEN_URL = 'https://www.reddit.com/api/v1/access_token'
+const REDDIT_SCOPES = 'adsread,adswrite'
+
 type Credentials = {
   clientId: string
   clientSecret: string
@@ -51,6 +55,28 @@ async function saveCredentials(creds: Credentials): Promise<void> {
   const dir = join(homedir(), '.ads')
   mkdirSync(dir, { recursive: true })
   await Bun.write(CREDENTIALS_PATH, JSON.stringify(creds, null, 2) + '\n')
+}
+
+/**
+ * Merge new key-value pairs into the existing credentials file.
+ * Preserves credentials for other providers.
+ */
+async function mergeCredentials(newFields: Record<string, string>): Promise<void> {
+  const dir = join(homedir(), '.ads')
+  mkdirSync(dir, { recursive: true })
+
+  let existing: Record<string, string> = {}
+  const file = Bun.file(CREDENTIALS_PATH)
+  if (await file.exists()) {
+    try {
+      existing = (await file.json()) as Record<string, string>
+    } catch {
+      // If the file is corrupted, start fresh
+    }
+  }
+
+  const merged = { ...existing, ...newFields }
+  await Bun.write(CREDENTIALS_PATH, JSON.stringify(merged, null, 2) + '\n')
 }
 
 async function getAccessToken(
@@ -263,17 +289,153 @@ async function runAuthGoogle(): Promise<void> {
   }
 }
 
+async function runAuthReddit(): Promise<void> {
+  // Check for existing Reddit credentials
+  const existing = await loadCredentials()
+  if (existing && (existing as Record<string, string>)['reddit_app_id']) {
+    console.log(`Existing Reddit credentials found at ${CREDENTIALS_PATH}`)
+    const reauth = await promptConfirm('Re-authenticate? (y/N) ')
+    if (!reauth) {
+      console.log('Keeping existing credentials.')
+      return
+    }
+  }
+
+  // Prompt for app credentials
+  const appId = await prompt('Enter your Reddit App ID (from https://www.reddit.com/prefs/apps): ')
+  if (!appId) {
+    console.error('App ID is required.')
+    process.exit(1)
+  }
+
+  const appSecret = await prompt('Enter your Reddit App Secret: ')
+  if (!appSecret) {
+    console.error('App secret is required.')
+    process.exit(1)
+  }
+
+  // Start local server to capture the OAuth callback
+  let resolveCode: (code: string) => void
+  let rejectCode: (err: Error) => void
+  const codePromise = new Promise<string>((resolve, reject) => {
+    resolveCode = resolve
+    rejectCode = reject
+  })
+
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url)
+      const code = url.searchParams.get('code')
+      const error = url.searchParams.get('error')
+
+      if (error) {
+        rejectCode!(new Error(`Reddit OAuth error: ${error}`))
+        return new Response(
+          '<html><body><h1>Authentication failed.</h1><p>You can close this window.</p></body></html>',
+          { headers: { 'Content-Type': 'text/html' } },
+        )
+      }
+
+      if (code) {
+        resolveCode!(code)
+        return new Response(
+          '<html><body><h1>Authenticated with Reddit!</h1><p>You can close this window and return to the terminal.</p></body></html>',
+          { headers: { 'Content-Type': 'text/html' } },
+        )
+      }
+
+      return new Response('Waiting for OAuth callback...', { status: 400 })
+    },
+  })
+
+  const port = server.port
+  const redirectUri = `http://localhost:${port}`
+  const state = crypto.randomUUID()
+
+  // Build OAuth URL
+  const authParams = new URLSearchParams({
+    client_id: appId,
+    response_type: 'code',
+    state,
+    redirect_uri: redirectUri,
+    duration: 'permanent',
+    scope: REDDIT_SCOPES,
+  })
+  const authUrl = `${REDDIT_AUTH_URL}?${authParams.toString()}`
+
+  console.log('Opening browser...')
+  Bun.spawn(['open', authUrl])
+  console.log(`\nIf the browser didn't open, visit:\n${authUrl}\n`)
+  console.log('Waiting for authorization...')
+
+  const timeout = setTimeout(() => {
+    rejectCode!(new Error('OAuth callback timed out after 120 seconds.'))
+    server.stop()
+  }, 120_000)
+
+  try {
+    const code = await codePromise
+    clearTimeout(timeout)
+    server.stop()
+
+    console.log('Authorization code received. Exchanging for tokens...')
+
+    // Reddit uses HTTP Basic Auth for token exchange (app_id:app_secret)
+    const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString('base64')
+    const response = await fetch(REDDIT_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'ads-as-code/1.0',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+      }),
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(`Token exchange failed (${response.status}): ${body}`)
+    }
+
+    const data = (await response.json()) as { refresh_token?: string }
+    if (!data.refresh_token) {
+      throw new Error('No refresh token received. Make sure duration=permanent is set.')
+    }
+
+    await mergeCredentials({
+      reddit_app_id: appId,
+      reddit_app_secret: appSecret,
+      reddit_refresh_token: data.refresh_token,
+    })
+
+    console.log(
+      `\nAuthenticated with Reddit successfully. Credentials saved to ${CREDENTIALS_PATH}`,
+    )
+  } catch (err) {
+    clearTimeout(timeout)
+    server.stop()
+    throw err
+  }
+}
+
 export async function runAuth(
   provider: string,
   options: { check?: boolean },
 ): Promise<void> {
-  if (provider !== 'google') {
-    console.error('Only \'google\' provider is supported.')
+  if (provider !== 'google' && provider !== 'reddit') {
+    console.error(`Unsupported provider: '${provider}'. Supported: google, reddit`)
     process.exit(1)
   }
 
   if (options.check) {
     await runAuthCheck()
+  } else if (provider === 'reddit') {
+    await runAuthReddit()
   } else {
     await runAuthGoogle()
   }
