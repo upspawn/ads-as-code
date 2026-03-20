@@ -157,6 +157,7 @@ import type { PerformanceConfig } from '../performance/types.ts'
 export type AdsConfig = {
   readonly google?: GoogleProviderConfig
   readonly meta?: MetaProviderConfig
+  readonly reddit?: import('../reddit/types').RedditProviderConfig
   readonly cache?: string
   readonly ai?: AiConfig
   readonly performance?: PerformanceConfig

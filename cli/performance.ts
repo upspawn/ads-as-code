@@ -102,6 +102,20 @@ export async function buildFetchInput(
     }
   }
 
+  // Reddit
+  if (config.reddit && (!providerFilter || providerFilter === 'reddit')) {
+    try {
+      const { createRedditClient } = await import('../src/reddit/api.ts')
+      const client = await createRedditClient(config.reddit)
+      ;(input as Record<string, unknown>).reddit = { client, config: config.reddit }
+    } catch {
+      if (providerFilter === 'reddit') {
+        console.error('Failed to create Reddit Ads client. Check credentials.')
+        process.exit(1)
+      }
+    }
+  }
+
   return input
 }
 
@@ -344,7 +358,7 @@ export function formatReport(report: PerformanceReport, periodLabel: string): st
   }
 
   for (const [provider, providerCampaigns] of byProvider) {
-    const label = provider === 'google' ? 'Google Ads' : provider === 'meta' ? 'Meta Ads' : provider
+    const label = provider === 'google' ? 'Google Ads' : provider === 'meta' ? 'Meta Ads' : provider === 'reddit' ? 'Reddit Ads' : provider
     lines.push('')
     lines.push(` ${label}`)
     lines.push(` ${bar}`)
@@ -435,8 +449,8 @@ export async function runPerformance(args: string[], flags: GlobalFlags): Promis
   // 3. Build provider clients and fetch performance data
   const fetchInput = await buildFetchInput(config, period, flags.provider)
 
-  if (!fetchInput.google && !fetchInput.meta) {
-    console.error('No provider credentials available. Configure google or meta in ads.config.ts.')
+  if (!fetchInput.google && !fetchInput.meta && !fetchInput.reddit) {
+    console.error('No provider credentials available. Configure google, meta, or reddit in ads.config.ts.')
     process.exit(1)
     return
   }
