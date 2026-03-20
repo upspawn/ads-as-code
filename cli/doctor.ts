@@ -42,33 +42,67 @@ export async function runDoctor(rootDir: string): Promise<void> {
     })
   }
 
-  // 2. Credentials exist
+  // 2. Google credentials
   const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? ''
   const credentialsPath = join(home, '.ads', 'credentials.json')
   const hasCredentialsFile = existsSync(credentialsPath)
 
-  const hasEnvVars =
+  const hasGoogleEnvVars =
     !!process.env['GOOGLE_ADS_CLIENT_ID'] &&
     !!process.env['GOOGLE_ADS_CLIENT_SECRET'] &&
     !!process.env['GOOGLE_ADS_REFRESH_TOKEN'] &&
     !!process.env['GOOGLE_ADS_DEVELOPER_TOKEN'] &&
     !!process.env['GOOGLE_ADS_CUSTOMER_ID']
 
-  if (hasCredentialsFile || hasEnvVars) {
+  if (hasCredentialsFile || hasGoogleEnvVars) {
     const source = hasCredentialsFile ? '~/.ads/credentials.json' : 'environment variables'
     checks.push({
-      name: 'Credentials',
+      name: 'Google credentials',
       pass: true,
       message: `Found credentials via ${source}`,
     })
   } else {
     checks.push({
-      name: 'Credentials',
+      name: 'Google credentials',
       pass: false,
-      message: 'No credentials found',
+      message: 'No Google credentials found',
       fix: 'Run `ads auth google` or set GOOGLE_ADS_* environment variables',
     })
   }
+
+  // 2b. Reddit credentials
+  let hasRedditCreds = false
+  if (hasCredentialsFile) {
+    try {
+      const content = await Bun.file(credentialsPath).json() as Record<string, string>
+      hasRedditCreds = !!content['reddit_app_id'] && !!content['reddit_app_secret']
+    } catch {
+      // Ignore parse errors — already caught above
+    }
+  }
+
+  const hasRedditEnvVars =
+    !!process.env['REDDIT_APP_ID'] &&
+    !!process.env['REDDIT_APP_SECRET']
+
+  if (hasRedditCreds || hasRedditEnvVars) {
+    const source = hasRedditCreds ? '~/.ads/credentials.json' : 'environment variables'
+    checks.push({
+      name: 'Reddit credentials',
+      pass: true,
+      message: `Found Reddit credentials via ${source}`,
+    })
+  } else {
+    checks.push({
+      name: 'Reddit credentials',
+      pass: false,
+      message: 'No Reddit credentials found (optional)',
+      fix: 'Run `ads auth reddit` or set REDDIT_APP_ID + REDDIT_APP_SECRET environment variables',
+    })
+  }
+
+  // Keep combined flag for API connectivity check below
+  const hasEnvVars = hasGoogleEnvVars
 
   // 3. API connectivity
   if (hasCredentialsFile || hasEnvVars) {
