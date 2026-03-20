@@ -56,7 +56,7 @@ REST/JSON API at `ads-api.reddit.com/api/v3/`. OAuth2 bearer tokens. Rate limite
 | `conversions` | `CONVERSIONS` |
 | `leads` | `LEAD_GENERATION` |
 
-**Note:** Catalog Sales exists in the Reddit UI but may have limited API support. We'll include it as a type but mark it as beta. Lead Generation replaces it as the 7th confirmed objective.
+**Note:** Catalog Sales exists in the Reddit UI but has limited API support (beta). The `product()` ad format and `catalog-sales` objective are included as types but marked beta — they may not be fully testable until Reddit opens API access. Lead Generation is the 7th fully confirmed objective.
 
 ### Ad Formats
 
@@ -87,10 +87,9 @@ REST/JSON API at `ads-api.reddit.com/api/v3/`. OAuth2 bearer tokens. Rate limite
 
 | Helper | Description |
 |---|---|
-| `subreddits(...names)` | Target specific subreddits |
+| `subreddits(...names)` | Target specific subreddits (Reddit's "community targeting") |
 | `interests(...names)` | Reddit interest categories |
 | `keywords(...terms)` | Target posts/comments containing keywords |
-| `communities(...names)` | Community-level targeting |
 | `geo(...locations)` | Country/region/metro |
 | `age(min, max)` | Age range |
 | `gender(value)` | Gender targeting |
@@ -120,6 +119,43 @@ Two flows, credential resolution order:
 
 **OAuth refresh token flow** (primary): `ads auth reddit` command launches OAuth dance, stores refresh token.
 **Username/password flow** (fallback): Script-type app credentials, no browser needed.
+
+### RedditProviderConfig
+
+```typescript
+type RedditProviderConfig = {
+  accountId: string          // Reddit ad account ID (e.g., 'a2_eaf73mplhhps')
+  appId?: string             // OAuth app ID (overrides credentials file / env)
+  appSecret?: string         // OAuth app secret
+  refreshToken?: string      // OAuth refresh token (primary auth)
+  username?: string          // Reddit username (fallback script auth)
+  password?: string          // Reddit password (fallback script auth)
+  userAgent?: string         // Custom user-agent (defaults to 'ads-as-code/1.0')
+  currency?: string          // Account currency ISO-4217 (default: 'USD')
+  credentials?: string       // Path to credentials file (default: '~/.ads/credentials.json')
+}
+```
+
+### Status Mapping
+
+Reddit exposes `configured_status` (user-set) and `effective_status` (computed by platform). The SDK maps `configured_status` → Resource `status` field — matching how Google and Meta handle it (user intent, not computed state). This is critical for zero-diff round-trips.
+
+### Error Response Format
+
+Reddit API errors return JSON with this shape:
+```json
+{ "error": { "code": "UNAUTHORIZED", "message": "..." } }
+```
+
+Error code mapping to SDK `AdsError`:
+| Reddit Code | SDK Error Type |
+|---|---|
+| `UNAUTHORIZED`, `FORBIDDEN` | `auth` |
+| `RATE_LIMITED` (HTTP 429) | `quota` |
+| `INVALID_REQUEST`, `VALIDATION_ERROR` | `validation` |
+| `POLICY_VIOLATION` | `policy` |
+| `NOT_FOUND` | `api` |
+| `INTERNAL_SERVER_ERROR` | `api` |
 
 ---
 
@@ -166,6 +202,26 @@ export const summerTraffic = reddit.traffic('Summer Sale Traffic', {
 
 **Type safety:** `reddit.traffic()` returns `RedditCampaignBuilder<'traffic'>`, constraining valid optimization goals per objective at compile time. Builder is immutable — each `.adGroup()` returns a new frozen instance.
 
+**Builder signature:** `.adGroup(name, config, content)` where:
+- `config: AdGroupConfig<T>` — bid, targeting, placement, schedule, optimization goal
+- `content: RedditAd[]` — array of ad creatives (image, video, carousel, etc.)
+
+This matches the Meta pattern where `.adSet(name, config, content)` separates targeting config from ad creative content.
+
+**Schedule type:**
+```typescript
+type RedditSchedule = {
+  start: string             // ISO date 'YYYY-MM-DD'
+  end?: string              // ISO date, optional (ongoing if omitted)
+  dayparting?: DaypartRule[] // Optional time-of-day rules
+}
+type DaypartRule = {
+  days: ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[]
+  startHour: number  // 0-23
+  endHour: number    // 0-23
+}
+```
+
 ---
 
 ## File Structure
@@ -175,7 +231,7 @@ src/reddit/
   types.ts           # Objectives, RedditCampaign<T>, AdGroupConfig<T>, ad format types,
                      # RedditTargeting, RedditPlacement, RedditBidStrategy, CTA enum
   index.ts           # RedditCampaignBuilder<T>, reddit.* namespace (7 objective methods)
-  api.ts             # OAuth2 client, error mapping, credential resolution, rate limiting
+  api.ts             # OAuth2 client, error mapping, credential resolution, rate limiting, pagination (T0 — foundational)
   fetch.ts           # Reddit API → Resource[] normalization
   flatten.ts         # Campaign tree → Resource[] with provider='reddit'
   apply.ts           # Changeset → Reddit API mutations (dependency-ordered)
@@ -195,11 +251,16 @@ src/helpers/
 
 ### Core Touchpoints
 
-- `src/core/types.ts` — add `reddit?: RedditProviderConfig` to `AdsConfig`
+- `src/core/types.ts` — add `RedditProviderConfig` and `reddit?` to `AdsConfig`
 - `src/core/providers.ts` — add `reddit` entry to `PROVIDERS` map
-- `cli/auth.ts` — add `reddit` case to auth router
+- `cli/index.ts` — add `reddit` case to auth and subcommand routing
+- `cli/auth.ts` — add `reddit` auth flow
 - `cli/import.ts` — add `reddit` to `--provider` choices
+- `cli/doctor.ts` — add Reddit credential/config checks
 - `cli/performance.ts` — add `reddit` to performance provider routing
+- `src/performance/fetch.ts` — add `reddit?` to `FetchPerformanceInput`
+- `src/performance/types.ts` — add Reddit performance config if needed
+- `package.json` — add `exports` entries for `@upspawn/ads/helpers/reddit-*`
 
 ---
 
@@ -207,15 +268,16 @@ src/helpers/
 
 ### Phase 0 — Foundation (sequential, must land first)
 
-**T0: Core types + provider registration**
+**T0: Core types + provider registration + API client interface**
 
-All types, interfaces, and the builder fully defined. Provider registered with stub implementations.
+All types, interfaces, the builder, and the API client interface fully defined. Provider registered with stub implementations. The API client is included in T0 because T2 (fetch), T3 (apply), and T4 (performance) all depend on it — without it, those tasks cannot be truly independent.
 
 Files created:
-- `src/reddit/types.ts` — all type definitions
-- `src/reddit/index.ts` — builder with all 7 objective methods
-- `src/reddit/constants.ts` — enum maps, defaults
-- `src/reddit/provider.ts` — stub ProviderModule (throws "not yet implemented")
+- `src/reddit/types.ts` — all type definitions including `RedditProviderConfig`, `AdGroupConfig<T>`, `RedditAdGroupContent`, CTA enum, ad format types, targeting/placement/bidding types
+- `src/reddit/index.ts` — builder with all 7 objective methods, immutable `.adGroup(name, config, content)` pattern (content is a `RedditAdGroupContent` containing ads array + optional shared url/cta, matching Meta's pattern)
+- `src/reddit/constants.ts` — enum maps, defaults, creation/deletion order, status maps
+- `src/reddit/api.ts` — Reddit API client with OAuth2 (both flows), credential resolution, rate limit handling, error mapping → AdsError, pagination helpers. This is a foundational piece — all parallel tasks import from it.
+- `src/reddit/provider.ts` — stub ProviderModule (throws "not yet implemented" for fetch/flatten/apply/codegen)
 
 Files modified:
 - `src/core/types.ts` — add `RedditProviderConfig` to `AdsConfig`
@@ -225,17 +287,19 @@ After T0 lands:
 - `reddit.traffic('name', config).adGroup(...).build()` compiles and returns correct structure
 - Campaign files using `reddit.*` are discoverable by the CLI
 - `bun cli/index.ts plan --provider reddit` resolves the provider (fails at fetch — expected)
-- T1-T4 agents can import from `src/reddit/types.ts` and `src/reddit/index.ts` without conflicts
+- T1-T4 agents can import from `src/reddit/types.ts`, `src/reddit/index.ts`, and `src/reddit/api.ts` without conflicts
+- All Resource kinds used are existing (`campaign`, `adGroup`, `ad`) — no new ResourceKind values needed
 
 ### Phase 1 — Parallel tracks (independent worktrees, all depend on T0)
 
-**T1: API client + Auth + Helpers (bidding/placement)**
+**T1: Auth command + Helpers (bidding/placement)**
 
-- `src/reddit/api.ts` — OAuth2 client (both flows), error mapping → AdsError, credential resolution, rate limit handling
 - `cli/auth.ts` — add `ads auth reddit` command (OAuth dance + token storage)
+- `cli/index.ts` — add `reddit` case to auth router
+- `cli/doctor.ts` — add Reddit credential check
 - `src/helpers/reddit-bidding.ts` — `lowestCost()`, `costCap()`, `manualBid()`
 - `src/helpers/reddit-placement.ts` — `feed()`, `conversation()`, `automatic()`
-- Tests: API client mocking, auth flow, bidding/placement helper validation
+- Tests: auth flow, bidding/placement helper validation
 
 **T2: Fetch + Flatten + Helpers (targeting/creative)**
 
@@ -256,7 +320,11 @@ After T0 lands:
 
 - `src/reddit/codegen.ts` — Resource[] → idiomatic TypeScript (smart defaults, import tracking)
 - `src/reddit/performance.ts` — Reddit reporting API → metrics (impressions, clicks, spend, CTR, CPC, CPM, conversions)
-- CLI updates: `--provider reddit` in import, performance routing
+- `src/performance/fetch.ts` — add `reddit?` to `FetchPerformanceInput`, wire Reddit fetcher
+- `src/performance/types.ts` — add Reddit performance config if needed
+- `cli/import.ts` — add `reddit` to `--provider` choices
+- `cli/performance.ts` — add `reddit` to performance routing
+- `package.json` — add `exports` entries for `@upspawn/ads/helpers/reddit-*`
 - Tests: codegen snapshot tests, performance metric normalization
 
 ### Phase 2 — Integration (sequential, after all T1-T4 merge)
@@ -274,14 +342,16 @@ After T0 lands:
 ## Dependency Graph
 
 ```
-        T0 (foundation)
+        T0 (foundation: types + builder + api client + constants + provider stub)
        / |  \    \
      T1  T2  T3   T4
        \ |  /    /
         T5 (integration)
 ```
 
-T1-T4 are fully independent — they import only from T0 types and core modules, never from each other.
+T1-T4 are fully independent — they import only from T0 (types, api client, constants) and core modules, never from each other. The API client lives in T0 specifically to enable this independence.
+
+**Pagination:** Reddit's list endpoints use cursor-based pagination. The API client in T0 provides a `fetchAll()` helper that handles this, so T2/T4 don't need to implement pagination themselves.
 
 ---
 
