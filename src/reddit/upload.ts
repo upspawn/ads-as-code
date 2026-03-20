@@ -28,12 +28,12 @@ export async function uploadRedditMedia(
   const formData = new FormData()
   formData.append('file', new Blob([fileData]), fileName)
 
-  const response = await client.upload(
+  const response = await client.upload<{ asset?: { asset_id?: string; url?: string } }>(
     `accounts/${accountId}/media`,
     formData,
   )
 
-  const asset = response.asset as { asset_id?: string; url?: string } | undefined
+  const asset = response.asset
   if (!asset?.asset_id) {
     throw new Error(
       `Reddit media upload failed: no asset in response -- ${JSON.stringify(response)}`

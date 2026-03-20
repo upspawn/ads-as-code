@@ -131,6 +131,7 @@ function createMockClient(data: {
       if (endpoint.includes('/ads')) return (data.ads ?? []) as T[]
       return [] as T[]
     },
+    upload: async () => ({} as any),
   }
 }
 

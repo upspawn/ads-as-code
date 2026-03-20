@@ -233,6 +233,7 @@ export type RedditClient = {
   readonly put: <T = unknown>(endpoint: string, body: unknown) => Promise<T>
   readonly delete: <T = unknown>(endpoint: string) => Promise<T>
   readonly fetchAll: <T>(endpoint: string, params?: Record<string, string>) => Promise<T[]>
+  readonly upload: <T = unknown>(endpoint: string, formData: FormData) => Promise<T>
 }
 
 type PaginatedResponse<T> = {
@@ -342,7 +343,30 @@ export function createRedditClient(config: RedditProviderConfig): RedditClient {
     return results
   }
 
-  return { get, post, put, delete: del, fetchAll }
+  async function upload<T = unknown>(endpoint: string, formData: FormData): Promise<T> {
+    const token = await ensureToken()
+    const url = new URL(`${BASE_URL}/${endpoint}`)
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': credentials.userAgent,
+      },
+      body: formData,
+    })
+
+    await handleRateLimit(response)
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ error: { code: 'UNKNOWN', message: response.statusText } }))
+      throw new RedditApiError(mapRedditError(response.status, errorBody))
+    }
+
+    return (await response.json()) as T
+  }
+
+  return { get, post, put, delete: del, fetchAll, upload }
 }
 
 export { RedditApiError }

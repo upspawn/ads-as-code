@@ -81,6 +81,7 @@ describe('reddit performance — fetchRedditPerformance', () => {
       put: async <T>() => ({} as T),
       delete: async <T>() => ({} as T),
       fetchAll: async <T>() => ([] as T[]),
+      upload: async <T>() => ({} as T),
     }
   }
 

@@ -47,7 +47,7 @@ function mockClient(): RedditClient & { _mocks: { post: MockFn; put: MockFn; del
     put: putFn as unknown as RedditClient['put'],
     delete: deleteFn as unknown as RedditClient['delete'],
     fetchAll: mock(async () => []) as unknown as RedditClient['fetchAll'],
-    upload: mock(async () => ({})),
+    upload: mock(async () => ({})) as unknown as RedditClient['upload'],
     _mocks: { post: postFn, put: putFn, delete: deleteFn },
   }
 }

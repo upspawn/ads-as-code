@@ -8,7 +8,7 @@ function mockClient(uploadResponse: Record<string, unknown> = {}): RedditClient 
     put: mock(async () => ({})) as unknown as RedditClient['put'],
     delete: mock(async () => ({})) as unknown as RedditClient['delete'],
     fetchAll: mock(async () => []) as unknown as RedditClient['fetchAll'],
-    upload: mock(async () => uploadResponse),
+    upload: mock(async () => uploadResponse) as unknown as RedditClient['upload'],
   }
 }
 
