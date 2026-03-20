@@ -50,7 +50,7 @@ function biddingToApiParams(bidding: Record<string, unknown>): Record<string, un
   params['bid_strategy'] = type
 
   if (type === 'COST_CAP' || type === 'MANUAL_BID') {
-    params['bid_micro'] = bidding.amount as number
+    params['bid_micro'] = Math.round((bidding.amount as number) * 1_000_000)
   }
 
   return params
@@ -85,7 +85,7 @@ function buildCampaignCreateBody(resource: Resource): Record<string, unknown> {
   }
 
   if (props.spendCap !== undefined) {
-    body['spend_cap_micro'] = props.spendCap as number
+    body['spend_cap_micro'] = Math.round((props.spendCap as number) * 1_000_000)
   }
 
   return body
@@ -200,9 +200,12 @@ function buildAdCreateBody(
   const props = resource.properties
   const meta = resource.meta ?? {}
 
+  // Derive ad name from slug (last path segment) if not explicitly set
+  const name = (props.name as string | undefined) ?? resource.path.split('/').pop() ?? 'ad'
+
   const body: Record<string, unknown> = {
     ad_group_id: adGroupId,
-    name: props.name as string,
+    name,
     configured_status: statusToApi(props.status),
   }
 
@@ -285,7 +288,7 @@ function buildUpdateBody(change: Change & { op: 'update' }): Record<string, unkn
         body['call_to_action'] = c.to
         break
       case 'spendCap':
-        body['spend_cap_micro'] = c.to
+        body['spend_cap_micro'] = Math.round((c.to as number) * 1_000_000)
         break
       // Skip SDK-internal fields
       case '_defaults':

@@ -57,7 +57,7 @@ export function mapRedditError(httpStatus: number, body: unknown): AdsError {
   const message = error.message
 
   // Auth errors
-  if (error.code === 'UNAUTHORIZED' || httpStatus === 401 || httpStatus === 403) {
+  if (error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN' || httpStatus === 401 || httpStatus === 403) {
     return { type: 'auth', message }
   }
 
@@ -67,7 +67,7 @@ export function mapRedditError(httpStatus: number, body: unknown): AdsError {
   }
 
   // Validation errors
-  if (error.code === 'INVALID_REQUEST') {
+  if (error.code === 'INVALID_REQUEST' || error.code === 'VALIDATION_ERROR') {
     return { type: 'validation', field: 'unknown', message }
   }
 
@@ -263,7 +263,7 @@ export function createRedditClient(config: RedditProviderConfig): RedditClient {
     }
   }
 
-  async function request<T>(method: string, endpoint: string, body?: unknown, params?: Record<string, string>): Promise<T> {
+  async function request<T>(method: string, endpoint: string, body?: unknown, params?: Record<string, string>, retried?: boolean): Promise<T> {
     const token = await ensureToken()
     const url = new URL(`${BASE_URL}/${endpoint}`)
 
@@ -298,9 +298,9 @@ export function createRedditClient(config: RedditProviderConfig): RedditClient {
       }
 
       // Retry once on 401 — token may have expired
-      if (response.status === 401 && accessToken) {
+      if (response.status === 401 && accessToken && !retried) {
         accessToken = null
-        return request<T>(method, endpoint, body, params)
+        return request<T>(method, endpoint, body, params, true)
       }
 
       throw new RedditApiError(mapRedditError(response.status, errorBody))

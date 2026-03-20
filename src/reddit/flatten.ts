@@ -192,13 +192,14 @@ function flattenAdGroup(
     ...(adGroup.config.schedule !== undefined && { schedule: adGroup.config.schedule }),
   }, adGroupDefaults.length > 0 ? { _defaults: adGroupDefaults } : undefined))
 
-  // 3. Ads
+  // 3. Ads — inherit status from ad group (Reddit ads don't have independent status in the SDK)
   for (const ad of adGroup.ads) {
     const adName = deriveAdName(ad)
     const adSlug = slugify(adName)
     const adPath = `${adGroupPath}/${adSlug}`
 
     const { properties, meta } = buildAdProperties(ad)
+    properties.status = adGroupStatus
 
     resources.push(resource('ad', adPath, properties, Object.keys(meta).length > 0 ? meta : undefined))
   }

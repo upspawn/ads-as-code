@@ -132,14 +132,19 @@ function normalizeTargeting(raw: RedditApiTargeting): RedditTargetingRule[] {
     rules.push({ _type: 'age', min: raw.age.min, max: raw.age.max })
   }
 
+  // Omit gender 'ALL' — it's the platform default, emitting it causes phantom diffs
   if (raw.gender && raw.gender !== 'ALL') {
     rules.push({ _type: 'gender', value: raw.gender.toLowerCase() as 'male' | 'female' })
-  } else if (raw.gender === 'ALL') {
-    rules.push({ _type: 'gender', value: 'all' })
   }
 
+  // Omit device targeting when all types are present — it's the platform default
   if (raw.device_types && raw.device_types.length > 0) {
-    rules.push({ _type: 'device', types: raw.device_types.map(t => t.toLowerCase() as 'mobile' | 'desktop') })
+    const ALL_DEVICE_TYPES = new Set(['MOBILE', 'DESKTOP', 'TABLET'])
+    const upperTypes = raw.device_types.map(t => t.toUpperCase())
+    const isAllDevices = upperTypes.length >= ALL_DEVICE_TYPES.size && upperTypes.every(t => ALL_DEVICE_TYPES.has(t))
+    if (!isAllDevices) {
+      rules.push({ _type: 'device', types: raw.device_types.map(t => t.toLowerCase() as 'mobile' | 'desktop') })
+    }
   }
 
   if (raw.os && raw.os.length > 0) {

@@ -222,12 +222,15 @@ describe('fetchRedditAll', () => {
       const resources = await fetchRedditAll(config, client)
       const adGroup = resources.find(r => r.kind === 'adGroup')!
       const targeting = adGroup.properties.targeting as any[]
+      // gender 'ALL' is omitted (platform default) to prevent phantom diffs
       expect(targeting).toEqual(expect.arrayContaining([
         { _type: 'subreddits', names: ['r/technology', 'r/programming'] },
         { _type: 'geo', locations: ['US', 'CA'] },
         { _type: 'age', min: 18, max: 45 },
-        { _type: 'gender', value: 'all' },
         { _type: 'device', types: ['mobile', 'desktop'] },
+      ]))
+      expect(targeting).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ _type: 'gender', value: 'all' }),
       ]))
     })
 

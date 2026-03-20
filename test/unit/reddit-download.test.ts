@@ -42,7 +42,7 @@ describe('downloadRedditAssets', () => {
           name: 'Hero Ad',
           format: 'image',
         }, {
-          imageUrl: 'https://reddit-cdn.com/images/abc123.png',
+          mediaUrl: 'https://reddit-cdn.com/images/abc123.png',
         }),
         // Non-ad resource should be skipped
         makeResource('campaign', 'camp', { name: 'Campaign' }),
@@ -53,13 +53,13 @@ describe('downloadRedditAssets', () => {
       expect(result.summary?.downloaded).toBe(1)
       expect(result.summary?.failed).toBe(0)
 
-      // The ad resource should have its imageUrl updated to a local path
+      // The ad resource should have its mediaUrl updated to a local path
       const updatedAd = result.resources.find(r => r.path === 'camp/group/hero')!
-      expect(updatedAd.meta?.imageUrl).toContain('./assets/imported/')
-      expect(updatedAd.meta?.imageUrl).toContain('.png')
+      expect(updatedAd.meta?.mediaUrl).toContain('./assets/imported/')
+      expect(updatedAd.meta?.mediaUrl).toContain('.png')
 
       // File should exist on disk
-      const localPath = join(TEST_DIR, (updatedAd.meta!.imageUrl as string).replace('./', ''))
+      const localPath = join(TEST_DIR, (updatedAd.meta!.mediaUrl as string).replace('./', ''))
       expect(existsSync(localPath)).toBe(true)
     } finally {
       globalThis.fetch = originalFetch
@@ -86,7 +86,7 @@ describe('downloadRedditAssets', () => {
           name: 'Hero Ad',
           format: 'image',
         }, {
-          imageUrl: 'https://reddit-cdn.com/images/abc123.png',
+          mediaUrl: 'https://reddit-cdn.com/images/abc123.png',
         }),
       ]
 
@@ -118,7 +118,7 @@ describe('downloadRedditAssets', () => {
           name: 'Hero Ad',
           format: 'image',
         }, {
-          imageUrl: 'https://reddit-cdn.com/images/missing.png',
+          mediaUrl: 'https://reddit-cdn.com/images/missing.png',
         }),
       ]
 

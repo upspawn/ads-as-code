@@ -53,7 +53,8 @@ function isRemoteUrl(s: string): boolean {
 
 /**
  * Extract all media URLs from Reddit ad resources.
- * Looks in meta.imageUrl, meta.videoUrl, meta.thumbnailUrl for remote URLs.
+ * Looks in meta.mediaUrl and meta.thumbnailUrl for remote URLs.
+ * (fetch.ts stores the primary media URL as meta.mediaUrl)
  */
 function extractMediaUrls(resources: Resource[]): Array<{
   url: string
@@ -74,16 +75,10 @@ function extractMediaUrls(resources: Resource[]): Array<{
     const meta = r.meta ?? {}
     const name = props.name as string | undefined
 
-    // Image URL
-    const imageUrl = meta.imageUrl as string | undefined
-    if (imageUrl && isRemoteUrl(imageUrl)) {
-      media.push({ url: imageUrl, name, resourcePath: r.path, field: 'imageUrl' })
-    }
-
-    // Video URL
-    const videoUrl = meta.videoUrl as string | undefined
-    if (videoUrl && isRemoteUrl(videoUrl)) {
-      media.push({ url: videoUrl, name: name ? `${name}-video` : 'video', resourcePath: r.path, field: 'videoUrl' })
+    // Primary media URL (image or video — fetch.ts stores as meta.mediaUrl)
+    const mediaUrl = meta.mediaUrl as string | undefined
+    if (mediaUrl && isRemoteUrl(mediaUrl)) {
+      media.push({ url: mediaUrl, name, resourcePath: r.path, field: 'mediaUrl' })
     }
 
     // Thumbnail URL
@@ -170,15 +165,13 @@ export async function downloadRedditAssets(
   const updatedResources = resources.map((r) => {
     if (r.kind !== 'ad') return r
 
-    const imageLocal = localPaths.get(`${r.path}:imageUrl`)
-    const videoLocal = localPaths.get(`${r.path}:videoUrl`)
+    const mediaLocal = localPaths.get(`${r.path}:mediaUrl`)
     const thumbLocal = localPaths.get(`${r.path}:thumbnailUrl`)
 
-    if (!imageLocal && !videoLocal && !thumbLocal) return r
+    if (!mediaLocal && !thumbLocal) return r
 
     const updatedMeta = { ...(r.meta ?? {}) }
-    if (imageLocal) updatedMeta.imageUrl = imageLocal
-    if (videoLocal) updatedMeta.videoUrl = videoLocal
+    if (mediaLocal) updatedMeta.mediaUrl = mediaLocal
     if (thumbLocal) updatedMeta.thumbnailUrl = thumbLocal
 
     return { ...r, meta: updatedMeta }

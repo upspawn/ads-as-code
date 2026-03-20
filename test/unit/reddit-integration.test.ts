@@ -57,6 +57,7 @@ function mockFetchedResources(): Resource[] {
       kind: 'ad',
       path: 'retargeting-us/tech-subreddits/hero-banner',
       properties: {
+        status: 'ACTIVE',
         format: 'image',
         headline: 'Check out our product',
         clickUrl: 'https://example.com',

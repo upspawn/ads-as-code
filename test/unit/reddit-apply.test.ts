@@ -182,7 +182,7 @@ describe('applyRedditChangeset', () => {
       objective: 'TRAFFIC',
       status: 'enabled',
       budget: { amount: 50, period: 'daily', currency: 'USD' },
-      spendCap: 1000_000_000,
+      spendCap: 1000,
     })
 
     const changeset: Changeset = {
@@ -202,9 +202,9 @@ describe('applyRedditChangeset', () => {
     expect(body.name).toBe('Launch Campaign')
     expect(body.objective).toBe('TRAFFIC')
     expect(body.configured_status).toBe('ACTIVE')
-    // Budget: $50 = 50_000_000 micros
+    // Budget: $50 = 50_000_000 micros, spendCap: $1000 = 1_000_000_000 micros
     expect(body.daily_budget_micro).toBe(50_000_000)
-    expect(body.spend_cap_micro).toBe(1000_000_000)
+    expect(body.spend_cap_micro).toBe(1_000_000_000)
   })
 
   test('ad group create builds correct params with targeting', async () => {
@@ -225,7 +225,7 @@ describe('applyRedditChangeset', () => {
         { _type: 'geo', locations: ['US', 'CA'] },
         { _type: 'interests', names: ['technology', 'gaming'] },
       ],
-      bid: { type: 'MANUAL_BID', amount: 150_000 },
+      bid: { type: 'MANUAL_BID', amount: 0.15 },
       optimization: 'LINK_CLICKS',
       placement: 'FEED',
     })
@@ -247,7 +247,7 @@ describe('applyRedditChangeset', () => {
     expect(body.campaign_id).toBe('camp-123')
     expect(body.name).toBe('Tech Group')
     expect(body.configured_status).toBe('PAUSED')
-    expect(body.bid_micro).toBe(150_000)
+    expect(body.bid_micro).toBe(150_000) // $0.15 = 150_000 micros
     expect(body.bid_strategy).toBe('MANUAL_BID')
     expect(body.optimization_goal).toBe('LINK_CLICKS')
     expect(body.goal_type).toBe('LINK_CLICKS')

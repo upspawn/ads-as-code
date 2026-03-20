@@ -56,7 +56,8 @@ function objectiveToMethod(apiObjective: string): string {
 
 function isDefault(meta: Record<string, unknown> | undefined, field: string): boolean {
   if (!meta) return false
-  const defaults = meta._defaults as Record<string, boolean> | undefined
+  const defaults = meta._defaults as string[] | Record<string, boolean> | undefined
+  if (Array.isArray(defaults)) return defaults.includes(field)
   return defaults?.[field] === true
 }
 
@@ -95,15 +96,15 @@ function formatBudget(budget: Record<string, unknown>, imports: Set<string>): st
 
   if (period === 'lifetime') {
     const endTime = budget.endTime as string | undefined
-    if (currency === 'EUR') {
+    if (currency === 'USD') {
       return endTime ? `lifetime(${amount}, ${quote(endTime)})` : `lifetime(${amount})`
     }
     return endTime
-      ? `lifetime(${amount}, ${quote(currency)}, ${quote(endTime)})`
+      ? `lifetime(${amount}, ${quote(endTime)}, ${quote(currency)})`
       : `lifetime(${amount}, ${quote(currency)})`
   }
 
-  if (currency === 'EUR') {
+  if (currency === 'USD') {
     return `${fn}(${amount})`
   }
   return `${fn}(${amount}, ${quote(currency)})`
@@ -412,8 +413,8 @@ function generateRedditCampaignFile(
     }
 
     // Optimization goal (omit if default for objective)
-    const optimization = adGroup.properties.optimizationGoal as string | undefined
-    if (optimization && !isDefaultOptimization(optimization, objective) && !isDefault(agMeta, 'optimizationGoal')) {
+    const optimization = adGroup.properties.optimization as string | undefined
+    if (optimization && !isDefaultOptimization(optimization, objective) && !isDefault(agMeta, 'optimization')) {
       agConfigParts.push(`optimizationGoal: ${quote(optimization)},`)
     }
 
@@ -448,45 +449,43 @@ function generateRedditCampaignFile(
     }
   }
 
-  // Build import statement — map codegen names to their SDK module paths
-  // Reddit targeting/creative/bidding/placement helpers are namespaced differently
-  const REDDIT_HELPER_IMPORTS = new Set([
+  // Build import statements — group by source module
+  const TARGETING_HELPERS = new Set([
     'geo', 'subreddits', 'interests', 'keywords', 'age', 'gender',
     'device', 'os', 'customAudience', 'lookalike', 'expansion',
   ])
-  const REDDIT_BIDDING_IMPORTS = new Set(['lowestCost', 'costCap', 'manualBid'])
-  const REDDIT_PLACEMENT_IMPORTS = new Set(['feed', 'conversation', 'automatic'])
-  const REDDIT_CREATIVE_IMPORTS = new Set(['image', 'video', 'carousel', 'freeform', 'product'])
-  const BUDGET_IMPORTS = new Set(['daily', 'monthly', 'lifetime'])
+  const BIDDING_HELPERS = new Set(['lowestCost', 'costCap', 'manualBid'])
+  const PLACEMENT_HELPERS = new Set(['feed', 'conversation', 'automatic'])
+  const CREATIVE_HELPERS = new Set(['image', 'video', 'carousel', 'freeform', 'product'])
+  const BUDGET_HELPERS = new Set(['daily', 'monthly', 'lifetime'])
 
-  // For simplicity, emit all helpers from '@upspawn/ads' with proper aliases
-  const IMPORT_ALIASES: Record<string, string> = {
-    image: 'redditImage as image',
-    video: 'redditVideo as video',
-    carousel: 'redditCarousel as carousel',
-    freeform: 'redditFreeform as freeform',
-    product: 'redditProduct as product',
-    geo: 'redditGeo as geo',
-    subreddits: 'redditSubreddits as subreddits',
-    interests: 'redditInterests as interests',
-    keywords: 'redditKeywords as keywords',
-    age: 'redditAge as age',
-    gender: 'redditGender as gender',
-    device: 'redditDevice as device',
-    os: 'redditOs as os',
-    customAudience: 'redditCustomAudience as customAudience',
-    lookalike: 'redditLookalike as lookalike',
-    expansion: 'redditExpansion as expansion',
-    lowestCost: 'redditLowestCost as lowestCost',
-    costCap: 'redditCostCap as costCap',
-    manualBid: 'redditManualBid as manualBid',
-    feed: 'redditFeed as feed',
-    conversation: 'redditConversation as conversation',
-    automatic: 'redditAutomatic as automatic',
+  // Main package: reddit namespace + budget helpers
+  const mainImports = ['reddit', ...Array.from(imports).filter(i => BUDGET_HELPERS.has(i)).sort()]
+  const importLines: string[] = [
+    `import { ${mainImports.join(', ')} } from '@upspawn/ads'`,
+  ]
+
+  const targetingImports = Array.from(imports).filter(i => TARGETING_HELPERS.has(i)).sort()
+  if (targetingImports.length > 0) {
+    importLines.push(`import { ${targetingImports.join(', ')} } from '@upspawn/ads/helpers/reddit-targeting'`)
   }
 
-  const importList = Array.from(imports).sort().map((i) => IMPORT_ALIASES[i] ?? i)
-  const importLine = `import { ${importList.join(', ')} } from '@upspawn/ads'`
+  const creativeImports = Array.from(imports).filter(i => CREATIVE_HELPERS.has(i)).sort()
+  if (creativeImports.length > 0) {
+    importLines.push(`import { ${creativeImports.join(', ')} } from '@upspawn/ads/helpers/reddit-creative'`)
+  }
+
+  const biddingImports = Array.from(imports).filter(i => BIDDING_HELPERS.has(i)).sort()
+  if (biddingImports.length > 0) {
+    importLines.push(`import { ${biddingImports.join(', ')} } from '@upspawn/ads/helpers/reddit-bidding'`)
+  }
+
+  const placementImports = Array.from(imports).filter(i => PLACEMENT_HELPERS.has(i)).sort()
+  if (placementImports.length > 0) {
+    importLines.push(`import { ${placementImports.join(', ')} } from '@upspawn/ads/helpers/reddit-placement'`)
+  }
+
+  const importLine = importLines.join('\n')
 
   // Assemble file
   const lines: string[] = []
@@ -515,6 +514,7 @@ function generateRedditCampaignFile(
     lines.push(adGroupLine)
   }
 
+  lines.push('.build()')
   lines.push('')
   return lines.join('\n')
 }
