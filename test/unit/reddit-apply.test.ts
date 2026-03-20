@@ -52,8 +52,14 @@ function mockClient(): RedditClient & { _mocks: { post: MockFn; put: MockFn; del
   }
 }
 
-function mockCache(): Cache {
+function mockCache(): Cache & { _mocks: { setResource: MockFn; removeResource: MockFn } } {
   const resources = new Map<string, { path: string; platformId: string; kind: string }>()
+  const setResourceFn = mock((r: { project: string; path: string; platformId?: string | null; kind: string; managedBy: string }) => {
+    resources.set(r.path, { path: r.path, platformId: r.platformId ?? '', kind: r.kind })
+  })
+  const removeResourceFn = mock((_project: string, path: string) => {
+    return resources.delete(path)
+  })
   return {
     getResourceMap: mock((_project: string) =>
       Array.from(resources.values()).map(r => ({
@@ -65,13 +71,10 @@ function mockCache(): Cache {
         updatedAt: new Date().toISOString(),
       })),
     ),
-    setResource: mock((r: { project: string; path: string; platformId?: string | null; kind: string; managedBy: string }) => {
-      resources.set(r.path, { path: r.path, platformId: r.platformId ?? '', kind: r.kind })
-    }),
-    removeResource: mock((_project: string, path: string) => {
-      return resources.delete(path)
-    }),
-  } as unknown as Cache
+    setResource: setResourceFn,
+    removeResource: removeResourceFn,
+    _mocks: { setResource: setResourceFn, removeResource: removeResourceFn },
+  } as unknown as Cache & { _mocks: { setResource: MockFn; removeResource: MockFn } }
 }
 
 /** Type-safe access to mock call args. */
@@ -475,6 +478,367 @@ describe('applyRedditChangeset', () => {
     expect(result.failed).toHaveLength(1)
     expect(result.succeeded).toHaveLength(1)
   })
+
+  // ─── NEW: Update operation field mapping ───────────────────
+
+  test('update maps bid change to API params', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const adGroup = makeResource('adGroup', 'camp/group', { name: 'G' }, undefined, 'ag-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', adGroup, [
+          { field: 'bid', from: { type: 'LOWEST_COST' }, to: { type: 'COST_CAP', amount: 2.5 } },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const putCalls = calls(client._mocks.put)
+    expect(putCalls).toHaveLength(1)
+    const body = putCalls[0]![1] as Record<string, unknown>
+    expect(body.bid_strategy).toBe('COST_CAP')
+    expect(body.bid_micro).toBe(2_500_000)
+  })
+
+  test('update maps targeting change to API targeting spec', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const adGroup = makeResource('adGroup', 'camp/group', { name: 'G' }, undefined, 'ag-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', adGroup, [
+          {
+            field: 'targeting',
+            from: [],
+            to: [
+              { _type: 'geo', locations: ['US'] },
+              { _type: 'interests', names: ['tech'] },
+            ],
+          },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const putCalls = calls(client._mocks.put)
+    const body = putCalls[0]![1] as Record<string, unknown>
+    const targeting = body.targeting as Record<string, unknown>
+    expect(targeting.geos).toEqual({ locations: ['US'] })
+    expect(targeting.interests).toEqual(['tech'])
+  })
+
+  test('update maps spendCap to micros', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const campaign = makeResource('campaign', 'camp', { name: 'C' }, undefined, 'camp-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', campaign, [
+          { field: 'spendCap', from: 500, to: 1000 },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.put)[0]![1] as Record<string, unknown>
+    expect(body.spend_cap_micro).toBe(1_000_000_000)
+  })
+
+  test('update maps budget change correctly', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const campaign = makeResource('campaign', 'camp', { name: 'C' }, undefined, 'camp-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', campaign, [
+          { field: 'budget', from: { amount: 50, period: 'daily' }, to: { amount: 100, period: 'daily' } },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.put)[0]![1] as Record<string, unknown>
+    expect(body.daily_budget_micro).toBe(100_000_000)
+  })
+
+  test('update maps headline, body, clickUrl, cta fields', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const ad = makeResource('ad', 'camp/group/ad', { name: 'A' }, undefined, 'ad-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', ad, [
+          { field: 'headline', from: 'Old', to: 'New Headline' },
+          { field: 'body', from: 'Old body', to: 'New body' },
+          { field: 'clickUrl', from: 'https://old.com', to: 'https://new.com' },
+          { field: 'cta', from: 'LEARN_MORE', to: 'SHOP_NOW' },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.put)[0]![1] as Record<string, unknown>
+    expect(body.headline).toBe('New Headline')
+    expect(body.body).toBe('New body')
+    expect(body.click_url).toBe('https://new.com')
+    expect(body.call_to_action).toBe('SHOP_NOW')
+  })
+
+  test('update skips _defaults field', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const campaign = makeResource('campaign', 'camp', { name: 'C' }, undefined, 'camp-1')
+
+    const changeset: Changeset = {
+      creates: [],
+      updates: [
+        makeChange('update', campaign, [
+          { field: '_defaults', from: {}, to: { status: true } },
+        ]),
+      ],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    // No PUT call because _defaults is skipped and body is empty
+    const putCalls = calls(client._mocks.put)
+    expect(putCalls).toHaveLength(0)
+  })
+
+  // ─── NEW: Carousel ad creation ─────────────────────────────
+
+  test('carousel ad creation builds correct params with cards array', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    ;(cache.getResourceMap as MockFn).mockReturnValue([
+      { project: 'test', path: 'camp', platformId: 'c-1', kind: 'campaign', managedBy: 'code', updatedAt: '' },
+      { project: 'test', path: 'camp/group', platformId: 'ag-1', kind: 'adGroup', managedBy: 'code', updatedAt: '' },
+    ])
+
+    const ad = makeResource('ad', 'camp/group/carousel-ad', {
+      name: 'Carousel Ad',
+      status: 'enabled',
+      format: 'carousel',
+      cards: [
+        { image: 'https://img.example.com/1.jpg', headline: 'Card 1', url: 'https://example.com/1' },
+        { image: 'https://img.example.com/2.jpg', headline: 'Card 2', url: 'https://example.com/2' },
+      ],
+      clickUrl: 'https://example.com',
+      cta: 'SHOP_NOW',
+    })
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', ad)],
+      updates: [],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.post)[0]![1] as Record<string, unknown>
+    expect(body.ad_group_id).toBe('ag-1')
+    expect(body.ad_type).toBe('CAROUSEL')
+    expect(body.carousel_cards).toHaveLength(2)
+    expect(body.click_url).toBe('https://example.com')
+    expect(body.call_to_action).toBe('SHOP_NOW')
+  })
+
+  // ─── NEW: Freeform ad creation ─────────────────────────────
+
+  test('freeform ad creation includes body, images, videos', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    ;(cache.getResourceMap as MockFn).mockReturnValue([
+      { project: 'test', path: 'camp', platformId: 'c-1', kind: 'campaign', managedBy: 'code', updatedAt: '' },
+      { project: 'test', path: 'camp/group', platformId: 'ag-1', kind: 'adGroup', managedBy: 'code', updatedAt: '' },
+    ])
+
+    const ad = makeResource('ad', 'camp/group/freeform-ad', {
+      name: 'Freeform Ad',
+      status: 'enabled',
+      format: 'freeform',
+      headline: 'Big News',
+      body: 'Rich content text',
+      images: ['https://img.example.com/a.jpg', 'https://img.example.com/b.jpg'],
+      videos: ['https://vid.example.com/c.mp4'],
+      clickUrl: 'https://example.com',
+    })
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', ad)],
+      updates: [],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.post)[0]![1] as Record<string, unknown>
+    expect(body.ad_type).toBe('FREEFORM')
+    expect(body.headline).toBe('Big News')
+    expect(body.body).toBe('Rich content text')
+    expect(body.images).toEqual(['https://img.example.com/a.jpg', 'https://img.example.com/b.jpg'])
+    expect(body.videos).toEqual(['https://vid.example.com/c.mp4'])
+  })
+
+  // ─── NEW: Product ad creation ──────────────────────────────
+
+  test('product ad creation includes catalogId', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    ;(cache.getResourceMap as MockFn).mockReturnValue([
+      { project: 'test', path: 'camp', platformId: 'c-1', kind: 'campaign', managedBy: 'code', updatedAt: '' },
+      { project: 'test', path: 'camp/group', platformId: 'ag-1', kind: 'adGroup', managedBy: 'code', updatedAt: '' },
+    ])
+
+    const ad = makeResource('ad', 'camp/group/product-ad', {
+      name: 'Product Ad',
+      status: 'enabled',
+      format: 'product',
+      catalogId: 'cat_xyz',
+      headline: 'Shop Collection',
+      clickUrl: 'https://shop.example.com',
+    })
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', ad)],
+      updates: [],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const body = calls(client._mocks.post)[0]![1] as Record<string, unknown>
+    expect(body.ad_type).toBe('PRODUCT')
+    expect(body.catalog_id).toBe('cat_xyz')
+    expect(body.headline).toBe('Shop Collection')
+  })
+
+  // ─── NEW: Cache updates after successful create ────────────
+
+  test('cache is updated with path->platformId after successful create', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    const campaign = makeResource('campaign', 'my-camp', {
+      name: 'Camp',
+      objective: 'TRAFFIC',
+      status: 'enabled',
+    })
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', campaign)],
+      updates: [],
+      deletes: [],
+      drift: [],
+    }
+
+    await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    const setCalls = calls(cache._mocks.setResource)
+    expect(setCalls).toHaveLength(1)
+    const setArg = setCalls[0]![0] as { project: string; path: string; platformId: string; kind: string; managedBy: string }
+    expect(setArg.project).toBe('test')
+    expect(setArg.path).toBe('my-camp')
+    expect(setArg.platformId).toMatch(/^new-id-/)
+    expect(setArg.kind).toBe('campaign')
+    expect(setArg.managedBy).toBe('code')
+  })
+
+  // ─── NEW: Failure stops all remaining, including updates and deletes ──
+
+  test('failure on 2nd of 3 creates skips 3rd create plus updates and deletes', async () => {
+    const { applyRedditChangeset } = await import('../../src/reddit/apply')
+
+    const client = mockClient()
+    const cache = mockCache()
+
+    let callIdx = 0
+    client._mocks.post.mockImplementation(async () => {
+      callIdx++
+      if (callIdx === 2) throw new Error('Boom')
+      return { id: `id-${callIdx}` }
+    })
+
+    const c1 = makeResource('campaign', 'c1', { name: 'C1', objective: 'TRAFFIC', status: 'enabled' })
+    const c2 = makeResource('campaign', 'c2', { name: 'C2', objective: 'TRAFFIC', status: 'enabled' })
+    const c3 = makeResource('campaign', 'c3', { name: 'C3', objective: 'TRAFFIC', status: 'enabled' })
+    const existing = makeResource('campaign', 'existing', { name: 'Existing' }, undefined, 'e-1')
+    const toDelete = makeResource('campaign', 'old', { name: 'Old' }, undefined, 'old-1')
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', c1), makeChange('create', c2), makeChange('create', c3)],
+      updates: [makeChange('update', existing, [{ field: 'status', from: 'enabled', to: 'paused' }])],
+      deletes: [makeChange('delete', toDelete)],
+      drift: [],
+    }
+
+    const result = await applyRedditChangeset(changeset, TEST_CONFIG, cache, 'test', client)
+
+    expect(result.succeeded).toHaveLength(1) // only c1
+    expect(result.failed).toHaveLength(1)    // c2
+    // c3 + update + delete = 3 skipped
+    expect(result.skipped).toHaveLength(3)
+  })
 })
 
 describe('dryRunRedditChangeset', () => {
@@ -549,5 +913,37 @@ describe('dryRunRedditChangeset', () => {
     expect(dryRunCalls[0]!.method).toBe('PUT')
     expect(dryRunCalls[1]!.op).toBe('delete')
     expect(dryRunCalls[1]!.method).toBe('DELETE')
+  })
+
+  test('dry run builds correct body for carousel ad', () => {
+    const { dryRunRedditChangeset } = require('../../src/reddit/apply') as typeof import('../../src/reddit/apply')
+
+    const cache = mockCache()
+    ;(cache.getResourceMap as MockFn).mockReturnValue([
+      { project: 'test', path: 'camp', platformId: 'c-1', kind: 'campaign', managedBy: 'code', updatedAt: '' },
+      { project: 'test', path: 'camp/group', platformId: 'ag-1', kind: 'adGroup', managedBy: 'code', updatedAt: '' },
+    ])
+
+    const ad = makeResource('ad', 'camp/group/carousel', {
+      name: 'Carousel',
+      format: 'carousel',
+      status: 'enabled',
+      cards: [
+        { image: 'https://a.jpg', headline: 'A', url: 'https://a.com' },
+        { image: 'https://b.jpg', headline: 'B', url: 'https://b.com' },
+      ],
+    })
+
+    const changeset: Changeset = {
+      creates: [makeChange('create', ad)],
+      updates: [],
+      deletes: [],
+      drift: [],
+    }
+
+    const dryRunCalls = dryRunRedditChangeset(changeset, TEST_CONFIG, cache, 'test')
+    expect(dryRunCalls).toHaveLength(1)
+    expect(dryRunCalls[0]!.body!.carousel_cards).toHaveLength(2)
+    expect(dryRunCalls[0]!.body!.ad_type).toBe('CAROUSEL')
   })
 })

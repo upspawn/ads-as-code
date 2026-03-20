@@ -49,4 +49,50 @@ describe('uploadRedditMedia', () => {
       ),
     ).rejects.toThrow('upload failed')
   })
+
+  test('throws when file does not exist', async () => {
+    const { uploadRedditMedia } = await import('../../src/reddit/upload')
+
+    const client = mockClient({
+      asset: { asset_id: 'a1', url: 'https://example.com' },
+    })
+
+    await expect(
+      uploadRedditMedia(
+        '/nonexistent/path/to/file.jpg',
+        't2_testaccount',
+        client,
+      ),
+    ).rejects.toThrow()
+  })
+
+  test('throws when response has asset but no asset_id', async () => {
+    const { uploadRedditMedia } = await import('../../src/reddit/upload')
+
+    // asset object present but asset_id is missing
+    const client = mockClient({ asset: { url: 'https://reddit.com/media/abc' } })
+
+    await expect(
+      uploadRedditMedia(
+        import.meta.dir + '/reddit-upload.test.ts',
+        't2_testaccount',
+        client,
+      ),
+    ).rejects.toThrow('upload failed')
+  })
+
+  test('returns empty string url when response asset has asset_id but no url', async () => {
+    const { uploadRedditMedia } = await import('../../src/reddit/upload')
+
+    const client = mockClient({ asset: { asset_id: 'media_xyz' } })
+
+    const result = await uploadRedditMedia(
+      import.meta.dir + '/reddit-upload.test.ts',
+      't2_testaccount',
+      client,
+    )
+
+    expect(result.assetId).toBe('media_xyz')
+    expect(result.url).toBe('')
+  })
 })

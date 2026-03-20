@@ -182,6 +182,75 @@ describe('reddit creative helpers', () => {
     })
   })
 
+  describe('headline boundary', () => {
+    test('headline at exactly 300 chars passes', () => {
+      const headline = 'x'.repeat(300)
+      const ad = image('./hero.jpg', { headline, clickUrl: 'https://example.com' })
+      expect(ad.format).toBe('image')
+    })
+
+    test('headline at 301 chars throws', () => {
+      const headline = 'x'.repeat(301)
+      expect(() => image('./hero.jpg', { headline, clickUrl: 'https://example.com' })).toThrow('300')
+    })
+  })
+
+  describe('freeform body validation', () => {
+    test('body at exactly 40,000 chars passes', () => {
+      const body = 'a'.repeat(40_000)
+      const ad = freeform({ headline: 'Title', body })
+      expect(ad.format).toBe('freeform')
+    })
+
+    test('body over 40,000 chars throws', () => {
+      const body = 'a'.repeat(40_001)
+      expect(() => freeform({ headline: 'Title', body })).toThrow('40000')
+    })
+  })
+
+  describe('freeform media count validation', () => {
+    test('20 images passes', () => {
+      const images = Array.from({ length: 20 }, (_, i) => `./img${i}.jpg`)
+      const ad = freeform({ headline: 'Title', body: 'Body', images })
+      expect(ad.format).toBe('freeform')
+    })
+
+    test('21 images throws', () => {
+      const images = Array.from({ length: 21 }, (_, i) => `./img${i}.jpg`)
+      expect(() => freeform({ headline: 'Title', body: 'Body', images })).toThrow('20')
+    })
+
+    test('5 videos passes', () => {
+      const videos = Array.from({ length: 5 }, (_, i) => `./vid${i}.mp4`)
+      const ad = freeform({ headline: 'Title', body: 'Body', videos })
+      expect(ad.format).toBe('freeform')
+    })
+
+    test('6 videos throws', () => {
+      const videos = Array.from({ length: 6 }, (_, i) => `./vid${i}.mp4`)
+      expect(() => freeform({ headline: 'Title', body: 'Body', videos })).toThrow('5')
+    })
+  })
+
+  describe('carousel caption validation', () => {
+    test('caption at exactly 50 chars passes', () => {
+      const cards = [
+        { image: './a.jpg', headline: 'A', url: 'https://a.com', caption: 'c'.repeat(50) },
+        { image: './b.jpg', headline: 'B', url: 'https://b.com' },
+      ]
+      const ad = carousel(cards)
+      expect(ad.format).toBe('carousel')
+    })
+
+    test('caption over 50 chars throws', () => {
+      const cards = [
+        { image: './a.jpg', headline: 'A', url: 'https://a.com', caption: 'c'.repeat(51) },
+        { image: './b.jpg', headline: 'B', url: 'https://b.com' },
+      ]
+      expect(() => carousel(cards)).toThrow('50')
+    })
+  })
+
   test('all helpers return valid RedditAd types', () => {
     const ads: RedditAd[] = [
       image('./hero.jpg', { headline: 'Title', clickUrl: 'https://example.com' }),

@@ -41,6 +41,55 @@ describe('reddit performance — normalizeRedditMetrics', () => {
     expect(metrics.cpm).toBeCloseTo(5) // 50/10000 * 1000
   })
 
+  test('zero spend: CPC/CPM/CPA are null, not NaN/Infinity', () => {
+    const row: RedditReportRow = {
+      campaign_id: 'c_1',
+      campaign_name: 'Zero Spend',
+      impressions: 0,
+      clicks: 0,
+      spend_micros: 0,
+      conversions: 0,
+      conversion_value_micros: 0,
+      video_views: 0,
+      video_completions: 0,
+      upvotes: 0,
+      downvotes: 0,
+      date: '2026-03-15',
+    }
+
+    const metrics = normalizeRedditMetrics(row)
+    // All rate metrics should be null, not NaN or Infinity
+    expect(metrics.cpc).toBeNull()
+    expect(metrics.cpm).toBeNull()
+    expect(metrics.cpa).toBeNull()
+    expect(metrics.roas).toBeNull()
+    expect(metrics.ctr).toBeNull()
+  })
+
+  test('spend with zero clicks: CPC is null, CPM is calculated', () => {
+    const row: RedditReportRow = {
+      campaign_id: 'c_1',
+      campaign_name: 'No Clicks',
+      impressions: 1000,
+      clicks: 0,
+      spend_micros: 10_000_000, // $10
+      conversions: 0,
+      conversion_value_micros: 0,
+      video_views: 0,
+      video_completions: 0,
+      upvotes: 5,
+      downvotes: 0,
+      date: '2026-03-15',
+    }
+
+    const metrics = normalizeRedditMetrics(row)
+    expect(metrics.cpc).toBeNull()     // 0 clicks → null
+    expect(metrics.cpa).toBeNull()     // 0 conversions → null
+    expect(metrics.cpm).toBeCloseTo(10) // $10 / 1000 * 1000 = $10
+    expect(metrics.ctr).toBeCloseTo(0)  // 0 / 1000 = 0
+    expect(metrics.roas).toBeCloseTo(0) // 0 / 10 = 0
+  })
+
   test('handles zero impressions (null for ratios)', () => {
     const row: RedditReportRow = {
       campaign_id: 'c_1',

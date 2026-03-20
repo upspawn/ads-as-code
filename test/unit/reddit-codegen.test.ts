@@ -417,6 +417,84 @@ describe('reddit codegen', () => {
     expect(code).toContain('export const _123Campaign')
   })
 
+  test('freeform ad format includes images and videos arrays', () => {
+    const resources: Resource[] = [
+      campaignResource('Freeform Full', 'ENGAGEMENT'),
+      adGroupResource('freeform-full', 'Rich Group', {
+        targeting: [{ _type: 'geo', locations: ['US'] }],
+      }),
+      adResource('freeform-full', 'rich-group', 'Rich Post', 'freeform', {
+        headline: 'Announcement',
+        body: 'Full details here',
+        images: ['./img1.jpg', './img2.jpg'],
+        videos: ['./vid1.mp4'],
+        clickUrl: 'https://example.com',
+        cta: 'LEARN_MORE',
+      }),
+    ]
+
+    const code = codegenReddit(resources)
+    expect(code).toContain('freeform({')
+    expect(code).toContain("headline: 'Announcement'")
+    expect(code).toContain("body: 'Full details here'")
+    expect(code).toContain("images: ['./img1.jpg', './img2.jpg']")
+    expect(code).toContain("videos: ['./vid1.mp4']")
+    expect(code).toContain("clickUrl: 'https://example.com'")
+    expect(code).toContain("cta: 'LEARN_MORE'")
+  })
+
+  test('product ad format includes catalogId and all fields', () => {
+    const resources: Resource[] = [
+      campaignResource('Product Full', 'CONVERSIONS'),
+      adGroupResource('product-full', 'Catalog Group', {
+        targeting: [{ _type: 'geo', locations: ['US'] }],
+      }),
+      adResource('product-full', 'catalog-group', 'Catalog Ad', 'product', {
+        catalogId: 'cat_abc',
+        headline: 'Our Best Products',
+        clickUrl: 'https://shop.example.com',
+        cta: 'SHOP_NOW',
+      }),
+    ]
+
+    const code = codegenReddit(resources)
+    expect(code).toContain('product({')
+    expect(code).toContain("catalogId: 'cat_abc'")
+    expect(code).toContain("headline: 'Our Best Products'")
+    expect(code).toContain("clickUrl: 'https://shop.example.com'")
+    expect(code).toContain("cta: 'SHOP_NOW'")
+  })
+
+  test('monthly budget uses monthly() helper', () => {
+    const resources: Resource[] = [
+      campaignResource('Monthly Budget Campaign', 'TRAFFIC', {
+        budget: { amount: 300, currency: 'USD', period: 'monthly' },
+      }),
+    ]
+
+    const code = codegenReddit(resources)
+    expect(code).toContain('monthly(300)')
+    expect(code).toContain('monthly')
+  })
+
+  test('campaign with ad group but no ads generates empty ads array', () => {
+    const resources: Resource[] = [
+      campaignResource('Empty Ads Campaign', 'TRAFFIC', {
+        budget: { amount: 10, currency: 'USD', period: 'daily' },
+      }),
+      adGroupResource('empty-ads-campaign', 'No Ads Group', {
+        targeting: [{ _type: 'geo', locations: ['US'] }],
+      }),
+    ]
+
+    const code = codegenReddit(resources)
+    expect(code).toContain(".adGroup('No Ads Group'")
+    // Should end with empty ads array
+    expect(code).toContain(', [])')
+    // Should still build
+    expect(code).toContain('.build()')
+  })
+
   test('lookalike targeting', () => {
     const resources: Resource[] = [
       campaignResource('LAL Campaign', 'TRAFFIC'),
