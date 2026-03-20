@@ -11,9 +11,12 @@
 import type { PerformanceData, PerformancePeriod } from './types.ts'
 import type { GoogleAdsClient } from '../google/types.ts'
 import type { MetaClient } from '../meta/api.ts'
+import type { RedditClient } from '../reddit/api.ts'
+import type { RedditProviderConfig } from '../reddit/types.ts'
 import type { Cache } from '../core/cache.ts'
 import { fetchGooglePerformance } from '../google/performance.ts'
 import { fetchMetaPerformance } from '../meta/performance.ts'
+import { fetchRedditPerformance } from '../reddit/performance.ts'
 
 // ---------------------------------------------------------------------------
 // Input type — callers provide whichever provider clients are available
@@ -22,6 +25,7 @@ import { fetchMetaPerformance } from '../meta/performance.ts'
 export type FetchPerformanceInput = {
   readonly google?: { readonly client: GoogleAdsClient }
   readonly meta?: { readonly client: MetaClient; readonly accountId: string }
+  readonly reddit?: { readonly client: RedditClient; readonly config: RedditProviderConfig }
   readonly period: PerformancePeriod
   /** Optional cache instance for performance data caching. */
   readonly cache?: Cache
@@ -105,6 +109,20 @@ export async function fetchPerformance(input: FetchPerformanceInput): Promise<Pe
       fetchWithCache(
         'meta',
         () => fetchMetaPerformance(client, accountId, input.period),
+        cache,
+        project,
+        input.period,
+        cacheTtlMinutes,
+      ),
+    )
+  }
+
+  if (input.reddit) {
+    const { client, config } = input.reddit
+    fetches.push(
+      fetchWithCache(
+        'reddit',
+        () => fetchRedditPerformance(config, client, input.period),
         cache,
         project,
         input.period,

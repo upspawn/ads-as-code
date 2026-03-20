@@ -103,7 +103,7 @@ export type PerformanceViolation = {
 
 export type PerformanceData = {
   readonly resource: string
-  readonly provider: 'google' | 'meta'
+  readonly provider: 'google' | 'meta' | 'reddit'
   readonly kind: ResourceKind
   readonly period: { readonly start: Date; readonly end: Date }
   readonly metrics: PerformanceMetrics

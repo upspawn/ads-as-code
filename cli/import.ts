@@ -16,7 +16,7 @@ Fetches all active campaigns from your ad account and generates
 idiomatic TypeScript campaign files using the @upspawn/ads SDK.
 
 Flags:
-  --provider <p>  Provider to import from: google, meta (required)
+  --provider <p>  Provider to import from: google, meta, reddit (required)
   --all           Include paused campaigns
   --filter        Only import campaigns matching a glob pattern (e.g. "Search*")
   --json          Output results as JSON
@@ -196,7 +196,7 @@ export async function runImport(args: string[], flags: GlobalFlags) {
   // 1. Validate provider flag
   if (!providerName) {
     console.error('Error: --provider flag is required for import.')
-    console.error('Usage: ads import --provider <google|meta> [--all] [--filter "pattern"]')
+    console.error('Usage: ads import --provider <google|meta|reddit> [--all] [--filter "pattern"]')
     process.exit(1)
     return // unreachable, helps TS narrow providerName to string
   }
