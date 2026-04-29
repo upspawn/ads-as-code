@@ -16,15 +16,16 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 ships with npm 11.x, which is required for npm Trusted
+          # Publisher OIDC (>= 11.5.1). On Node 22 (bundled npm 10) Trusted
+          # Publisher fails over to NODE_AUTH_TOKEN and the registry rejects
+          # the publish with a misleading 404 PUT. We can't `npm install -g`
+          # to upgrade in-place either — both npm 11 and npm 12 trip
+          # `MODULE_NOT_FOUND: promise-retry` in arborist when overlaying
+          # onto npm 10. Cleanest path: ship a Node version that already
+          # has the right npm bundled.
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      # npm Trusted Publisher OIDC token exchange needs npm >= 11.5.1.
-      # Node 22's bundled npm is 10.x, which falls back to NODE_AUTH_TOKEN
-      # (rejected by the registry as a 404 on PUT once trusted publishing
-      # is enabled). Pin to a known-good npm 11.x — `npm@latest` currently
-      # resolves to npm 12.x which fails to overlay on npm 10
-      # (MODULE_NOT_FOUND: promise-retry from arborist).
-      - run: npm install -g npm@11
       - name: Set version from release tag
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
       - run: bun install
