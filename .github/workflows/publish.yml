@@ -18,7 +18,10 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
+      # Skip `npm install -g npm@latest` — it fails on Node 22 because
+      # current npm versions can't cleanly self-upgrade over the bundled npm
+      # (MODULE_NOT_FOUND on `promise-retry` from arborist). The npm bundled
+      # with Node 22 is already 10.x+, which supports `--provenance`.
       - name: Set version from release tag
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
       - run: bun install
