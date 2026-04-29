@@ -18,10 +18,13 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      # Skip `npm install -g npm@latest` — it fails on Node 22 because
-      # current npm versions can't cleanly self-upgrade over the bundled npm
-      # (MODULE_NOT_FOUND on `promise-retry` from arborist). The npm bundled
-      # with Node 22 is already 10.x+, which supports `--provenance`.
+      # npm Trusted Publisher OIDC token exchange needs npm >= 11.5.1.
+      # Node 22's bundled npm is 10.x, which falls back to NODE_AUTH_TOKEN
+      # (rejected by the registry as a 404 on PUT once trusted publishing
+      # is enabled). Pin to a known-good npm 11.x — `npm@latest` currently
+      # resolves to npm 12.x which fails to overlay on npm 10
+      # (MODULE_NOT_FOUND: promise-retry from arborist).
+      - run: npm install -g npm@11
       - name: Set version from release tag
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
       - run: bun install
