@@ -288,7 +288,10 @@ export async function runApply(rootDir: string, options: ApplyOptions = {}): Pro
     // Fetch live state from platform
     let actual: Resource[] = []
     try {
-      actual = await provider.fetchAll(config, cache)
+      // Always include paused campaigns when comparing local code to live state.
+      // Local code may declare campaigns as `status: 'paused'`; without this
+      // option they would be missing from `actual` and show as spurious creates.
+      actual = await provider.fetchAll(config, cache, { includePaused: true })
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       if (errMsg.includes('Cannot find module') || errMsg.includes('Module not found') ||

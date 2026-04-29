@@ -732,8 +732,15 @@ export function generateCampaignFile(resources: Resource[], campaignName: string
       }
     }
 
+    // Ad group status — only emit when it differs from the SDK default ('enabled')
+    // so codegen round-trips paused groups (e.g. those imported from a paused
+    // parent campaign) without round-trip drift.
+    const agStatus = ag.properties.status as string | undefined
+    const statusLine = agStatus && agStatus !== 'enabled' ? `status: ${quote(agStatus)},` : ''
+
     // Build the group body parts
     const bodyParts = [
+      statusLine,
       ...(skipKeywords ? [] : [keywordsLine]),
       adLines,
     ].filter(Boolean).join('\n    ')

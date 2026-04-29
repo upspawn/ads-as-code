@@ -419,7 +419,10 @@ async function planForProvider(
   // 4. Fetch live state from the ad platform
   let actual: Resource[] = []
   try {
-    actual = await providerModule.fetchAll(config, cache)
+    // Always include paused campaigns when comparing local code to live state.
+    // Local code may declare campaigns as `status: 'paused'`; without this
+    // option they would be missing from `actual` and show as spurious creates.
+    actual = await providerModule.fetchAll(config, cache, { includePaused: true })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
     if (

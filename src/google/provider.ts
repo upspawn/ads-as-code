@@ -1,4 +1,4 @@
-import type { ProviderModule } from '../core/providers.ts'
+import type { ProviderModule, FetchAllOptions } from '../core/providers.ts'
 import type { Resource, ApplyResult, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
 import type { GoogleFlattenable } from './flatten.ts'
@@ -15,11 +15,15 @@ const googleProvider: ProviderModule = {
     return flattenAll(campaigns as GoogleFlattenable[])
   },
 
-  async fetchAll(_config: AdsConfig, _cache: Cache): Promise<Resource[]> {
+  async fetchAll(
+    _config: AdsConfig,
+    _cache: Cache,
+    options?: FetchAllOptions,
+  ): Promise<Resource[]> {
     // Google client resolves credentials from env vars / ~/.ads/credentials.json,
     // matching the pattern used by all CLI commands.
     const client = await createGoogleClient({ type: 'env' })
-    return fetchAllState(client)
+    return fetchAllState(client, { includePaused: options?.includePaused })
   },
 
   async applyChangeset(
