@@ -1073,16 +1073,21 @@ describe('generateCampaignFile() with call extensions', () => {
 // ─── Snapshot Tests ──────────────────────────────────────
 
 describe('generateCampaignFile() snapshot', () => {
+  // codegen embeds today's ISO date in the file header. Replace it with a
+  // stable placeholder so the snapshot only fails on real codegen changes.
+  const stabilizeDate = (s: string): string =>
+    s.replace(/Imported from Google Ads on \d{4}-\d{2}-\d{2}/, 'Imported from Google Ads on YYYY-MM-DD')
+
   test('PDF campaign matches snapshot', () => {
     const resources = makePdfCampaignResources()
     const output = generateCampaignFile(resources, 'Search - PDF Renaming')
-    expect(output).toMatchSnapshot()
+    expect(stabilizeDate(output)).toMatchSnapshot()
   })
 
   test('Drive campaign matches snapshot', () => {
     const resources = makeDriveCampaignResources()
     const output = generateCampaignFile(resources, 'Search - Google Drive')
-    expect(output).toMatchSnapshot()
+    expect(stabilizeDate(output)).toMatchSnapshot()
   })
 })
 
