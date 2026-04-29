@@ -1,5 +1,26 @@
-import { mkdirSync, existsSync } from 'node:fs'
+import { mkdirSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+// ─── Protected File Marker ─────────────────────────────────
+
+/**
+ * Files containing this marker (case-insensitive, anywhere in the first
+ * `MARKER_SCAN_BYTES` bytes — typically as a top-of-file comment like
+ * `// @ads-import-protected`) are NOT overwritten by `ads import`. The
+ * importer logs them as skipped so users can reconcile by hand.
+ */
+const PROTECTED_MARKER = '@ads-import-protected'
+const MARKER_SCAN_BYTES = 4096
+
+function isProtected(filepath: string): boolean {
+  if (!existsSync(filepath)) return false
+  try {
+    const head = readFileSync(filepath, { encoding: 'utf8' }).slice(0, MARKER_SCAN_BYTES)
+    return head.toLowerCase().includes(PROTECTED_MARKER.toLowerCase())
+  } catch {
+    return false
+  }
+}
 import { loadConfig, discoverCampaigns } from '../src/core/discovery.ts'
 import { getProvider } from '../src/core/providers.ts'
 import { Cache } from '../src/core/cache.ts'
@@ -21,6 +42,11 @@ Flags:
   --filter        Only import campaigns matching a glob pattern (e.g. "Search*")
   --json          Output results as JSON
   --help, -h      Show this help message
+
+Protecting files from re-import:
+  Add the comment "// @ads-import-protected" near the top of any campaign,
+  targeting, or negatives file you have hand-tuned. Subsequent runs of
+  \`ads import\` will keep that file as-is and report it as protected.
 `.trim()
 
 // ─── Resource Grouping ─────────────────────────────────────
@@ -287,14 +313,22 @@ export async function runImport(args: string[], flags: GlobalFlags) {
   }
 
   // 9. Generate TypeScript files via provider codegen
+  //    Files containing the `@ads-import-protected` marker are preserved —
+  //    we still pass their resources to extractSharedConfig so the shared
+  //    targeting/negatives stay accurate.
   const written: string[] = []
+  const protectedFiles: string[] = []
   const allResources: Resource[][] = []
 
   for (const [slug, { name, resources: campaignResources }] of campaigns) {
     allResources.push(campaignResources)
-    const code = provider.codegen(campaignResources, name)
     const filename = `${slug}.ts`
     const filepath = join(campaignsDir, filename)
+    if (isProtected(filepath)) {
+      protectedFiles.push(filename)
+      continue
+    }
+    const code = provider.codegen(campaignResources, name)
     await Bun.write(filepath, code)
     written.push(filename)
   }
@@ -306,14 +340,22 @@ export async function runImport(args: string[], flags: GlobalFlags) {
 
   if (shared.targeting) {
     const targetingPath = join(rootDir, 'targeting.ts')
-    await Bun.write(targetingPath, shared.targeting)
-    written.push('targeting.ts')
+    if (isProtected(targetingPath)) {
+      protectedFiles.push('targeting.ts')
+    } else {
+      await Bun.write(targetingPath, shared.targeting)
+      written.push('targeting.ts')
+    }
   }
 
   if (shared.negatives) {
     const negativesPath = join(rootDir, 'negatives.ts')
-    await Bun.write(negativesPath, shared.negatives)
-    written.push('negatives.ts')
+    if (isProtected(negativesPath)) {
+      protectedFiles.push('negatives.ts')
+    } else {
+      await Bun.write(negativesPath, shared.negatives)
+      written.push('negatives.ts')
+    }
   }
 
   // 11. Seed cache with imported resources (only campaigns that were actually written)
@@ -350,6 +392,7 @@ export async function runImport(args: string[], flags: GlobalFlags) {
           sharedTargeting: !!shared.targeting,
           sharedNegatives: !!shared.negatives,
           totalFiles: written.length,
+          ...(protectedFiles.length > 0 ? { protectedFiles } : {}),
           ...(postFetchSummary ? { assets: postFetchSummary } : {}),
         },
         null,
@@ -360,12 +403,23 @@ export async function runImport(args: string[], flags: GlobalFlags) {
     console.log()
     console.log(`Imported ${campaigns.length} campaign(s) from ${providerName}:`)
     for (const [slug, { name, resources: res }] of campaigns) {
-      console.log(`  + campaigns/${slug}.ts  (${res.length} resources)  ${name}`)
+      const filename = `${slug}.ts`
+      const marker = protectedFiles.includes(filename) ? '  ' : '+ '
+      const note = protectedFiles.includes(filename) ? '  (protected — kept as-is)' : ''
+      console.log(`  ${marker}campaigns/${filename}  (${res.length} resources)  ${name}${note}`)
     }
-    if (shared.targeting) console.log(`  + targeting.ts  (shared targeting)`)
-    if (shared.negatives) console.log(`  + negatives.ts  (shared negatives)`)
+    if (shared.targeting) {
+      const note = protectedFiles.includes('targeting.ts') ? '  (protected — kept as-is)' : ''
+      const marker = protectedFiles.includes('targeting.ts') ? '  ' : '+ '
+      console.log(`  ${marker}targeting.ts  (shared targeting)${note}`)
+    }
+    if (shared.negatives) {
+      const note = protectedFiles.includes('negatives.ts') ? '  (protected — kept as-is)' : ''
+      const marker = protectedFiles.includes('negatives.ts') ? '  ' : '+ '
+      console.log(`  ${marker}negatives.ts  (shared negatives)${note}`)
+    }
     if (postFetchSummary) console.log(`  ${postFetchSummary}`)
     console.log()
-    console.log(`Total: ${written.length} files written`)
+    console.log(`Total: ${written.length} file(s) written, ${protectedFiles.length} protected`)
   }
 }
