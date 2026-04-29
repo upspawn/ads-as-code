@@ -1,4 +1,4 @@
-import type { ProviderModule } from '../core/providers.ts'
+import type { ProviderModule, FetchAllOptions } from '../core/providers.ts'
 import type { Resource, AdsConfig, Changeset } from '../core/types.ts'
 import type { Cache } from '../core/cache.ts'
 import type { MetaCampaign } from './index.ts'
@@ -26,7 +26,11 @@ const metaProvider: ProviderModule = {
     return deduplicateResourceSlugs(built.flatMap(flattenMeta))
   },
 
-  async fetchAll(config: AdsConfig, _cache: Cache): Promise<Resource[]> {
+  async fetchAll(
+    config: AdsConfig,
+    _cache: Cache,
+    _options?: FetchAllOptions,
+  ): Promise<Resource[]> {
     if (!config.meta) throw new Error('Meta provider config missing — add meta section to ads.config.ts')
     return fetchMetaAll(config.meta)
   },

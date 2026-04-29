@@ -223,7 +223,7 @@ export async function runImport(args: string[], flags: GlobalFlags) {
   }
   const cache = new Cache(join(cacheDir, 'cache.db'))
 
-  let resources = await provider.fetchAll(config!, cache)
+  let resources = await provider.fetchAll(config!, cache, { includePaused: includeAll })
 
   // 5. Run provider-specific post-fetch hook (e.g., Meta image download)
   let postFetchSummary: string | undefined
@@ -235,6 +235,22 @@ export async function runImport(args: string[], flags: GlobalFlags) {
 
   // 6. Group resources by campaign
   const campaignMap = groupByCampaign(resources)
+
+  // 6a. Drop orphan groups (no campaign resource — e.g. shared budgets not
+  //     attached to any returned campaign). codegen requires a campaign
+  //     resource per group; without this filter, those groups crash the import.
+  const orphanGroups: string[] = []
+  for (const [slug, group] of campaignMap) {
+    if (!group.resources.some((r) => r.kind === 'campaign')) {
+      orphanGroups.push(slug)
+      campaignMap.delete(slug)
+    }
+  }
+  if (orphanGroups.length > 0) {
+    console.warn(
+      `Skipping ${orphanGroups.length} orphan resource group(s) with no campaign:\n  - ${orphanGroups.join('\n  - ')}`,
+    )
+  }
 
   // 7. Filter if needed
   let campaigns = Array.from(campaignMap.entries())

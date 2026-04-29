@@ -2,6 +2,14 @@ import type { Resource, Changeset, ApplyResult, AdsConfig } from './types.ts'
 import type { DiscoveredCampaign } from './discovery.ts'
 import type { Cache } from './cache.ts'
 
+// ─── Shared Option Types ───────────────────────────────────
+
+/** Options for {@link ProviderModule.fetchAll}. */
+export type FetchAllOptions = {
+  /** Include paused campaigns. Defaults to false (enabled-only). */
+  readonly includePaused?: boolean
+}
+
 // ─── Provider Module Type ──────────────────────────────────
 
 /**
@@ -18,7 +26,11 @@ export type ProviderModule = {
   readonly flatten: (campaigns: unknown[]) => Resource[]
 
   /** Fetch all live state from the ad platform as Resource[]. */
-  readonly fetchAll: (config: AdsConfig, cache: Cache) => Promise<Resource[]>
+  readonly fetchAll: (
+    config: AdsConfig,
+    cache: Cache,
+    options?: FetchAllOptions,
+  ) => Promise<Resource[]>
 
   /** Apply a changeset (creates/updates/deletes) to the ad platform. */
   readonly applyChangeset: (
